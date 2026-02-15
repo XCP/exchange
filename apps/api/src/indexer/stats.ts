@@ -1,3 +1,5 @@
+import { batchExec } from "../lib/batch";
+
 export async function updatePairStats(
   db: D1Database,
   pair: string,
@@ -147,4 +149,109 @@ export async function updatePairStats(
       now
     )
     .run();
+}
+
+/**
+ * Update pair_stats with order book metrics (bid/ask counts, best prices, spread).
+ * Only recalculates for pairs that have open orders.
+ */
+export async function updateOrderBookStats(
+  db: D1Database,
+  now: number
+): Promise<void> {
+  const pairsWithOrders = await db
+    .prepare(
+      `SELECT pair, base_asset, quote_asset,
+              COUNT(*) as open_orders,
+              SUM(CASE WHEN side = 'bid' THEN 1 ELSE 0 END) as bid_count,
+              SUM(CASE WHEN side = 'ask' THEN 1 ELSE 0 END) as ask_count,
+              MAX(CASE WHEN side = 'bid' THEN price END) as best_bid,
+              MIN(CASE WHEN side = 'ask' THEN price END) as best_ask
+       FROM orders WHERE status = 'open'
+       GROUP BY pair`
+    )
+    .all<{
+      pair: string;
+      base_asset: string;
+      quote_asset: string;
+      open_orders: number;
+      bid_count: number;
+      ask_count: number;
+      best_bid: number | null;
+      best_ask: number | null;
+    }>();
+
+  const stmts = pairsWithOrders.results.map((p) => {
+    const spread =
+      p.best_bid && p.best_ask
+        ? Math.max(0, ((p.best_ask - p.best_bid) / p.best_ask) * 100)
+        : null;
+
+    return db
+      .prepare(
+        `INSERT INTO pair_stats (pair, base_asset, quote_asset, open_orders, bid_count, ask_count, best_bid, best_ask, spread, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT (pair) DO UPDATE SET
+           open_orders = excluded.open_orders,
+           bid_count = excluded.bid_count,
+           ask_count = excluded.ask_count,
+           best_bid = excluded.best_bid,
+           best_ask = excluded.best_ask,
+           spread = excluded.spread,
+           updated_at = excluded.updated_at`
+      )
+      .bind(
+        p.pair, p.base_asset, p.quote_asset,
+        p.open_orders, p.bid_count, p.ask_count,
+        p.best_bid, p.best_ask, spread, now
+      );
+  });
+
+  await batchExec(db, stmts);
+
+  // Zero out stats for pairs that no longer have open orders
+  await db
+    .prepare(
+      `UPDATE pair_stats SET open_orders = 0, bid_count = 0, ask_count = 0,
+       best_bid = NULL, best_ask = NULL, spread = NULL
+       WHERE open_orders > 0 AND NOT EXISTS (
+         SELECT 1 FROM orders WHERE orders.pair = pair_stats.pair AND orders.status = 'open'
+       )`
+    )
+    .run();
+}
+
+/**
+ * Refresh stale rolling-window stats for pairs that had recent activity
+ * but haven't traded in a while. Without this, volume_24h / trade_count_24h /
+ * volume_7d / volume_30d etc. remain frozen at their last-computed values.
+ * Checks all three time windows (24h, 7d, 30d).
+ */
+export async function refreshStalePairStats(
+  db: D1Database
+): Promise<number> {
+  const now = Math.floor(Date.now() / 1000);
+  const t24h = now - 86400;
+  const t7d = now - 604800;
+  const t30d = now - 2592000;
+
+  // Find pairs where any rolling window has non-zero metrics but last trade
+  // has moved outside that window (each window checked independently)
+  const stalePairs = await db
+    .prepare(
+      `SELECT pair, base_asset, quote_asset FROM pair_stats
+       WHERE last_trade_time IS NOT NULL AND (
+         ((trade_count_24h > 0 OR volume_24h > 0) AND last_trade_time < ?1)
+         OR ((trade_count_7d > 0 OR volume_7d > 0) AND last_trade_time < ?2)
+         OR ((trade_count_30d > 0 OR volume_30d > 0) AND last_trade_time < ?3)
+       )`
+    )
+    .bind(t24h, t7d, t30d)
+    .all<{ pair: string; base_asset: string; quote_asset: string }>();
+
+  for (const p of stalePairs.results) {
+    await updatePairStats(db, p.pair, p.base_asset, p.quote_asset);
+  }
+
+  return stalePairs.results.length;
 }

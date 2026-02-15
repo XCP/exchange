@@ -1,3 +1,57 @@
+export async function handleDispenserStatsList(
+  request: Request,
+  db: D1Database
+): Promise<Response> {
+  const url = new URL(request.url);
+  const sortCol = url.searchParams.get("sort") ?? "volume_24h";
+  const allowedSorts = [
+    "volume_24h",
+    "volume_7d",
+    "active_dispensers",
+    "dispense_count_24h",
+    "cheapest_price",
+    "total_available",
+  ];
+  const sort = allowedSorts.includes(sortCol) ? sortCol : "volume_24h";
+  const limit = Math.min(
+    parseInt(url.searchParams.get("limit") ?? "50", 10),
+    200
+  );
+  const offset = parseInt(url.searchParams.get("offset") ?? "0", 10);
+
+  const [countResult, rows] = await db.batch([
+    db.prepare(
+      `SELECT COUNT(*) as total FROM dispenser_stats WHERE active_dispensers > 0`
+    ),
+    db.prepare(
+      `SELECT ds.asset, ds.last_dispense_price, ds.last_dispense_time,
+              ds.price_change_24h, ds.volume_24h, ds.volume_7d,
+              ds.dispense_count_24h, ds.dispense_count_7d,
+              ds.active_dispensers, ds.total_available, ds.cheapest_price,
+              ds.high_24h, ds.low_24h, ds.updated_at,
+              (SELECT SUM(price * give_remaining) / SUM(give_remaining) FROM dispensers
+               WHERE asset = ds.asset AND status < 10 AND price > 0 AND give_remaining > 0) AS avg_price
+       FROM dispenser_stats ds
+       WHERE ds.active_dispensers > 0
+       ORDER BY ds.${sort} DESC
+       LIMIT ? OFFSET ?`
+    ).bind(limit, offset),
+  ]);
+
+  const total =
+    (countResult.results[0] as { total: number } | undefined)?.total ?? 0;
+
+  return Response.json(
+    {
+      dispenser_markets: rows.results,
+      total,
+      limit,
+      offset,
+    },
+    { headers: { "Cache-Control": "public, max-age=60" } }
+  );
+}
+
 export async function handleDispenserStats(
   db: D1Database,
   asset: string

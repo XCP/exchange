@@ -1,3 +1,5 @@
+import { LOCK_TIMEOUT_SECONDS } from "./lib/constants";
+import { fixScientificNotation } from "./lib/json";
 import { handleOhlc } from "./routes/ohlc";
 import { handleTrades } from "./routes/trades";
 import { handlePair, handlePairs } from "./routes/pairs";
@@ -6,14 +8,14 @@ import { handleBook } from "./routes/book";
 import { handleMarkets } from "./routes/markets";
 import { handleAsset } from "./routes/asset";
 import { handlePortfolioBids, handlePortfolioDispensers, handlePortfolioOrders } from "./routes/portfolio";
-import { handleDispenserStats } from "./routes/dispenser-stats";
+import { handleDispenserStats, handleDispenserStatsList } from "./routes/dispenser-stats";
 import { syncBlocks } from "./indexer/sync-block";
-import { runCatchupAggregation } from "./indexer/aggregate";
+import { runCatchupAggregation, aggregateCandlesForPair } from "./indexer/aggregate";
 import { backfillTrades, backfillDispenses } from "./indexer/backfill";
 import { syncOrders, syncDispensers, runSnapshotStep } from "./indexer/snapshot";
 import { getMode, setMode, deleteState } from "./indexer/state";
-import { aggregateCandlesForPair } from "./indexer/aggregate";
-import { updatePairStats } from "./indexer/stats";
+import { updatePairStats, refreshStalePairStats } from "./indexer/stats";
+import { refreshStaleDispenserStats } from "./indexer/dispenser-stats";
 
 export interface Env {
   DB: D1Database;
@@ -29,11 +31,23 @@ function corsHeaders(): Record<string, string> {
   };
 }
 
-function withCors(response: Response): Response {
+async function withCors(response: Response): Promise<Response> {
   const headers = new Headers(response.headers);
   for (const [key, value] of Object.entries(corsHeaders())) {
     headers.set(key, value);
   }
+
+  // Fix scientific notation in JSON responses (e.g. 7.1e-7 → 0.00000071)
+  const ct = response.headers.get("Content-Type") || ""
+  if (ct.includes("application/json")) {
+    const text = await response.text()
+    return new Response(fixScientificNotation(text), {
+      status: response.status,
+      statusText: response.statusText,
+      headers,
+    })
+  }
+
   return new Response(response.body, {
     status: response.status,
     statusText: response.statusText,
@@ -54,11 +68,11 @@ export default {
     // Auth gate for internal indexer endpoints
     if (path.startsWith("/indexer/") && request.method === "POST") {
       if (!env.INDEXER_TOKEN) {
-        return withCors(Response.json({ error: "INDEXER_TOKEN not configured" }, { status: 500 }));
+        return await withCors(Response.json({ error: "INDEXER_TOKEN not configured" }, { status: 500 }));
       }
       const auth = request.headers.get("Authorization");
       if (auth !== `Bearer ${env.INDEXER_TOKEN}`) {
-        return withCors(Response.json({ error: "Unauthorized" }, { status: 401 }));
+        return await withCors(Response.json({ error: "Unauthorized" }, { status: 401 }));
       }
     }
 
@@ -66,46 +80,46 @@ export default {
       // Route: GET /ohlc/:pair
       const ohlcMatch = path.match(/^\/ohlc\/([A-Za-z0-9._]+)$/);
       if (ohlcMatch) {
-        return withCors(await handleOhlc(request, env.DB, ohlcMatch[1]));
+        return await withCors(await handleOhlc(request, env.DB, ohlcMatch[1]));
       }
 
       // Route: GET /trades/:pair
       const tradesMatch = path.match(/^\/trades\/([A-Za-z0-9._]+)$/);
       if (tradesMatch) {
-        return withCors(await handleTrades(request, env.DB, tradesMatch[1]));
+        return await withCors(await handleTrades(request, env.DB, tradesMatch[1]));
       }
 
       // Route: GET /book/:pair
       const bookMatch = path.match(/^\/book\/([A-Za-z0-9._]+)$/);
       if (bookMatch) {
-        return withCors(await handleBook(request, env.DB, bookMatch[1]));
+        return await withCors(await handleBook(request, env.DB, bookMatch[1]));
       }
 
       // Route: GET /pair/:pair
       const pairMatch = path.match(/^\/pair\/([A-Za-z0-9._]+)$/);
       if (pairMatch) {
-        return withCors(await handlePair(env.DB, pairMatch[1]));
+        return await withCors(await handlePair(env.DB, pairMatch[1]));
       }
 
       // Route: GET /pairs
       if (path === "/pairs") {
-        return withCors(await handlePairs(request, env.DB));
+        return await withCors(await handlePairs(request, env.DB));
       }
 
       // Route: GET /markets
       if (path === "/markets") {
-        return withCors(await handleMarkets(request, env.DB));
+        return await withCors(await handleMarkets(request, env.DB));
       }
 
       // Route: GET /trending
       if (path === "/trending") {
-        return withCors(await handleTrending(request, env.DB));
+        return await withCors(await handleTrending(request, env.DB));
       }
 
       // Route: GET /asset/:name
       const assetMatch = path.match(/^\/asset\/([A-Za-z0-9._]+)$/);
       if (assetMatch) {
-        return withCors(await handleAsset(env.DB, assetMatch[1]));
+        return await withCors(await handleAsset(env.DB, assetMatch[1]));
       }
 
       // Route: GET /portfolio/:address/bids
@@ -113,7 +127,7 @@ export default {
         /^\/portfolio\/([A-Za-z0-9]+)\/bids$/
       );
       if (portfolioBidsMatch) {
-        return withCors(
+        return await withCors(
           await handlePortfolioBids(
             request,
             env.DB,
@@ -128,7 +142,7 @@ export default {
         /^\/portfolio\/([A-Za-z0-9]+)\/orders$/
       );
       if (portfolioOrdersMatch) {
-        return withCors(
+        return await withCors(
           await handlePortfolioOrders(request, env.DB, portfolioOrdersMatch[1])
         );
       }
@@ -138,7 +152,7 @@ export default {
         /^\/portfolio\/([A-Za-z0-9]+)\/dispensers$/
       );
       if (portfolioDispensersMatch) {
-        return withCors(
+        return await withCors(
           await handlePortfolioDispensers(
             request,
             env.DB,
@@ -147,42 +161,50 @@ export default {
         );
       }
 
+      // Route: GET /dispenser-stats (list)
+      if (path === "/dispenser-stats") {
+        return await withCors(await handleDispenserStatsList(request, env.DB));
+      }
+
       // Route: GET /dispenser-stats/:asset
       const dispenserStatsMatch = path.match(/^\/dispenser-stats\/([A-Za-z0-9._]+)$/);
       if (dispenserStatsMatch) {
-        return withCors(await handleDispenserStats(env.DB, dispenserStatsMatch[1]));
+        return await withCors(await handleDispenserStats(env.DB, dispenserStatsMatch[1]));
       }
 
       // Route: GET /status — mode, progress, table counts
       if (path === "/status") {
         const mode = await getMode(env.DB);
 
-        const [tradeCount, pairCount, openOrderCount, dispenseCount, openDispenserCount, candleCount] =
-          await Promise.all([
-            env.DB.prepare(`SELECT COUNT(*) as cnt FROM trades`).first<{ cnt: number }>(),
-            env.DB.prepare(`SELECT COUNT(*) as cnt FROM pair_stats`).first<{ cnt: number }>(),
-            env.DB.prepare(`SELECT COUNT(*) as cnt FROM orders WHERE status = 'open'`).first<{ cnt: number }>(),
-            env.DB.prepare(`SELECT COUNT(*) as cnt FROM dispenses`).first<{ cnt: number }>(),
-            env.DB.prepare(`SELECT COUNT(*) as cnt FROM dispensers WHERE status < 10`).first<{ cnt: number }>(),
-            env.DB.prepare(`SELECT COUNT(*) as cnt FROM candles`).first<{ cnt: number }>(),
+        const [tradeCount, pairCount, openOrderCount, dispenseCount, openDispenserCount, candleCount, state] =
+          await env.DB.batch([
+            env.DB.prepare(`SELECT COUNT(*) as cnt FROM trades`),
+            env.DB.prepare(`SELECT COUNT(*) as cnt FROM pair_stats`),
+            env.DB.prepare(`SELECT COUNT(*) as cnt FROM orders WHERE status = 'open'`),
+            env.DB.prepare(`SELECT COUNT(*) as cnt FROM dispenses`),
+            env.DB.prepare(`SELECT COUNT(*) as cnt FROM dispensers WHERE status < 10`),
+            env.DB.prepare(`SELECT COUNT(*) as cnt FROM candles`),
+            env.DB.prepare(`SELECT key, value FROM indexer_state`),
           ]);
 
-        const state = await env.DB
-          .prepare(`SELECT key, value FROM indexer_state`)
-          .all<{ key: string; value: string }>();
+        const cnt = (r: D1Result) => (r.results[0] as { cnt: number } | undefined)?.cnt ?? 0;
+        const stateRows = state.results as { key: string; value: string }[];
+        const staleKeys = ['aggregation_offset'];
 
-        return withCors(
+        return await withCors(
           Response.json({
             ok: true,
             mode,
-            trades: tradeCount?.cnt ?? 0,
-            pairs: pairCount?.cnt ?? 0,
-            open_orders: openOrderCount?.cnt ?? 0,
-            dispenses: dispenseCount?.cnt ?? 0,
-            open_dispensers: openDispenserCount?.cnt ?? 0,
-            candles: candleCount?.cnt ?? 0,
+            trades: cnt(tradeCount),
+            pairs: cnt(pairCount),
+            open_orders: cnt(openOrderCount),
+            dispenses: cnt(dispenseCount),
+            open_dispensers: cnt(openDispenserCount),
+            candles: cnt(candleCount),
             indexer: Object.fromEntries(
-              (state?.results ?? []).map((r) => [r.key, r.value])
+              stateRows
+                .filter((r) => !staleKeys.includes(r.key))
+                .map((r) => [r.key, r.value])
             ),
           })
         );
@@ -192,21 +214,21 @@ export default {
       if (path === "/indexer/start" && request.method === "POST") {
         const mode = await getMode(env.DB);
         if (mode !== "IDLE") {
-          return withCors(
+          return await withCors(
             Response.json({ error: `Cannot start: mode is ${mode}, expected IDLE` }, { status: 409 })
           );
         }
         // Clear any stale state from a previous aborted run before starting fresh
         await Promise.all([
-          deleteState(env.DB, "backfill_total"),
-          deleteState(env.DB, "backfill_offset"),
+          deleteState(env.DB, "trade_backfill_cursor"),
+          deleteState(env.DB, "trade_backfill_total"),
           deleteState(env.DB, "dispense_backfill_cursor"),
           deleteState(env.DB, "dispense_backfill_total"),
-          deleteState(env.DB, "aggregation_offset"),
+          deleteState(env.DB, "aggregation_cursor"),
           deleteState(env.DB, "sync_lock"),
         ]);
         await setMode(env.DB, "BACKFILL_TRADES");
-        return withCors(Response.json({ ok: true, mode: "BACKFILL_TRADES" }));
+        return await withCors(Response.json({ ok: true, mode: "BACKFILL_TRADES" }));
       }
 
       // POST /indexer/backfill?pages=20 — auto-detects current phase
@@ -220,24 +242,24 @@ export default {
         switch (mode) {
           case "BACKFILL_TRADES": {
             const result = await backfillTrades(env.DB, env.CP_API_BASE, pages);
-            return withCors(Response.json(result));
+            return await withCors(Response.json(result));
           }
           case "BACKFILL_DISPENSES": {
             const result = await backfillDispenses(env.DB, env.CP_API_BASE, pages);
-            return withCors(Response.json(result));
+            return await withCors(Response.json(result));
           }
           case "SNAPSHOT_SYNC": {
             const result = await runSnapshotStep(env.DB, env.CP_API_BASE);
-            return withCors(Response.json({ type: "snapshot", ...result }));
+            return await withCors(Response.json({ type: "snapshot", ...result }));
           }
           case "BUILD_AGGREGATES": {
             const result = await runCatchupAggregation(env.DB);
-            return withCors(Response.json({ type: "aggregates", ...result }));
+            return await withCors(Response.json({ type: "aggregates", ...result }));
           }
           case "FOLLOWING":
-            return withCors(Response.json({ done: true, mode: "FOLLOWING" }));
+            return await withCors(Response.json({ done: true, mode: "FOLLOWING" }));
           default:
-            return withCors(
+            return await withCors(
               Response.json({ error: `Cannot backfill in mode: ${mode}` }, { status: 409 })
             );
         }
@@ -250,12 +272,12 @@ export default {
         if (!hasOffset) {
           await env.DB
             .prepare(
-              `INSERT INTO indexer_state (key, value) VALUES ('aggregation_offset', '0')
+              `INSERT INTO indexer_state (key, value) VALUES ('aggregation_cursor', '')
                ON CONFLICT (key) DO NOTHING`
             )
             .run();
           const result = await runCatchupAggregation(env.DB);
-          return withCors(Response.json(result));
+          return await withCors(Response.json(result));
         }
 
         const offset = parseInt(url.searchParams.get("offset")!, 10);
@@ -283,7 +305,7 @@ export default {
           await updatePairStats(env.DB, p.pair, p.base_asset, p.quote_asset);
         }
 
-        return withCors(
+        return await withCors(
           Response.json({
             aggregated: pairs.results.length,
             offset,
@@ -299,7 +321,7 @@ export default {
           50
         );
         const result = await syncBlocks(env.DB, env.CP_API_BASE, maxBlocks);
-        return withCors(Response.json(result));
+        return await withCors(Response.json(result));
       }
 
       // POST /indexer/full-sync — re-snapshot orders+dispensers (recovery, any mode)
@@ -308,7 +330,7 @@ export default {
           syncOrders(env.DB, env.CP_API_BASE),
           syncDispensers(env.DB, env.CP_API_BASE),
         ]);
-        return withCors(Response.json({
+        return await withCors(Response.json({
           orders: orderResult.status === "fulfilled" ? orderResult.value : { error: String(orderResult.reason) },
           dispensers: dispenserResult.status === "fulfilled" ? dispenserResult.value : { error: String(dispenserResult.reason) },
         }));
@@ -318,22 +340,22 @@ export default {
       if (path === "/indexer/reset" && request.method === "POST") {
         await Promise.all([
           setMode(env.DB, "IDLE"),
-          deleteState(env.DB, "backfill_total"),
-          deleteState(env.DB, "backfill_offset"),
+          deleteState(env.DB, "trade_backfill_cursor"),
+          deleteState(env.DB, "trade_backfill_total"),
           deleteState(env.DB, "dispense_backfill_cursor"),
           deleteState(env.DB, "dispense_backfill_total"),
-          deleteState(env.DB, "aggregation_offset"),
+          deleteState(env.DB, "aggregation_cursor"),
         ]);
-        return withCors(Response.json({ ok: true, mode: "IDLE" }));
+        return await withCors(Response.json({ ok: true, mode: "IDLE" }));
       }
 
-      return withCors(
+      return await withCors(
         Response.json({ error: "Not found" }, { status: 404 })
       );
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       console.error("Request error:", message, e instanceof Error ? e.stack : "");
-      return withCors(
+      return await withCors(
         Response.json({ error: "Internal server error" }, { status: 500 })
       );
     }
@@ -346,40 +368,59 @@ export default {
   ): Promise<void> {
     ctx.waitUntil(
       (async () => {
+        // Cron concurrency guard: prevent overlapping cron executions
+        const now = Math.floor(Date.now() / 1000);
+        const lock = await env.DB
+          .prepare(
+            `INSERT INTO indexer_state (key, value) VALUES ('cron_lock', ?)
+             ON CONFLICT (key) DO UPDATE SET value = excluded.value
+             WHERE CAST(value AS INTEGER) < ?`
+          )
+          .bind(String(now), now - LOCK_TIMEOUT_SECONDS)
+          .run();
+        if (lock.meta.changes === 0) return; // Another cron is running
+
         try {
           const mode = await getMode(env.DB);
 
           switch (mode) {
             case "IDLE":
-              // Nothing to do — waiting for POST /indexer/start
               break;
 
             case "BACKFILL_TRADES": {
-              const r = await backfillTrades(env.DB, env.CP_API_BASE, 50);
+              const r = await backfillTrades(env.DB, env.CP_API_BASE, 20);
               console.log(`Cron: backfill trades — ${r.inserted} inserted, ${r.progress}% done`);
               break;
             }
 
             case "BACKFILL_DISPENSES": {
-              const r = await backfillDispenses(env.DB, env.CP_API_BASE, 50);
+              const r = await backfillDispenses(env.DB, env.CP_API_BASE, 20);
               console.log(`Cron: backfill dispenses — ${r.inserted} inserted, ${r.progress}% done`);
               break;
             }
 
             case "SNAPSHOT_SYNC": {
-              const r = await runSnapshotStep(env.DB, env.CP_API_BASE, 20);
+              const r = await runSnapshotStep(env.DB, env.CP_API_BASE, 10);
               console.log(`Cron: snapshot step=${r.step}`);
               break;
             }
 
             case "BUILD_AGGREGATES": {
-              const r = await runCatchupAggregation(env.DB);
-              console.log(`Cron: aggregation — processed=${r.processed}, done=${r.done}`);
+              const aggStart = Date.now();
+              let aggTotal = 0;
+              let aggDone = false;
+              // Loop through multiple batches per cron tick (up to 4 min wall-clock)
+              while (Date.now() - aggStart < 240_000) {
+                const r = await runCatchupAggregation(env.DB);
+                aggTotal += r.processed;
+                if (r.done) { aggDone = true; break; }
+              }
+              console.log(`Cron: aggregation — processed=${aggTotal}, done=${aggDone}, elapsed=${Date.now() - aggStart}ms`);
               break;
             }
 
             case "FOLLOWING": {
-              const sync = await syncBlocks(env.DB, env.CP_API_BASE, 10);
+              const sync = await syncBlocks(env.DB, env.CP_API_BASE, 5);
               if (sync.blocks_processed > 0) {
                 console.log(
                   `Sync: ${sync.blocks_processed} blocks (${sync.last_block}/${sync.current_block}) ` +
@@ -388,11 +429,36 @@ export default {
                   `dispenses=${sync.dispenses_inserted}`
                 );
               }
+
+              // Periodic stats refresh: recalculate stale 24h/7d windows every 6 hours
+              const STATS_REFRESH_INTERVAL = 6 * 3600;
+              const lastRefreshRow = await env.DB
+                .prepare(`SELECT value FROM indexer_state WHERE key = 'last_stats_refresh'`)
+                .first<{ value: string }>();
+              const lastRefresh = lastRefreshRow ? parseInt(lastRefreshRow.value, 10) : 0;
+              const now = Math.floor(Date.now() / 1000);
+
+              if (now - lastRefresh >= STATS_REFRESH_INTERVAL) {
+                const stalePairs = await refreshStalePairStats(env.DB);
+                const staleDispensers = await refreshStaleDispenserStats(env.DB);
+                await env.DB
+                  .prepare(
+                    `INSERT INTO indexer_state (key, value) VALUES ('last_stats_refresh', ?)
+                     ON CONFLICT (key) DO UPDATE SET value = excluded.value`
+                  )
+                  .bind(String(now))
+                  .run();
+                if (stalePairs > 0 || staleDispensers > 0) {
+                  console.log(`Stats refresh: ${stalePairs} pairs, ${staleDispensers} dispenser assets`);
+                }
+              }
               break;
             }
           }
         } catch (e) {
           console.error("Cron error:", e);
+        } finally {
+          await env.DB.prepare(`DELETE FROM indexer_state WHERE key = 'cron_lock'`).run();
         }
       })()
     );

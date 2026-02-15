@@ -4,15 +4,18 @@ import { useState } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
 import { useGlobalDispensers, useGlobalDispenses } from '@/lib/hooks/useGlobalDispensers'
+import { useDispenserMarkets } from '@/lib/hooks/useDispenserMarkets'
 import { formatAddress } from '@/utils/format-address'
-import { formatAmountTrade } from '@/utils/format-amount-trade'
 import { formatTimeAgo } from '@/utils/format-time-ago'
+import { formatPrice } from '@/utils/format-price'
+import { formatAmount } from '@/utils/format-amount'
 import { XCP_IMG_BASE } from '@/utils/constants'
 
-type Tab = 'dispensers' | 'dispenses'
+type Tab = 'markets' | 'dispensers' | 'dispenses'
 
 export default function DispensersPage() {
-  const [activeTab, setActiveTab] = useState<Tab>('dispensers')
+  const [activeTab, setActiveTab] = useState<Tab>('markets')
+  const { markets, isLoading: marketsLoading } = useDispenserMarkets()
   const { dispensers, isLoading: dispensersLoading } = useGlobalDispensers(50)
   const { dispenses, isLoading: dispensesLoading } = useGlobalDispenses(50)
 
@@ -26,7 +29,11 @@ export default function DispensersPage() {
 
         {/* Tab bar */}
         <div className="flex gap-1 mb-4">
-          {(['dispensers', 'dispenses'] as const).map((tab) => (
+          {([
+            ['markets', 'Dispenser Markets'],
+            ['dispensers', 'Open Dispensers'],
+            ['dispenses', 'Recent Dispenses'],
+          ] as const).map(([tab, label]) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -36,14 +43,94 @@ export default function DispensersPage() {
                   : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900'
               }`}
             >
-              {tab === 'dispensers' ? 'Open Dispensers' : 'Recent Dispenses'}
+              {label}
             </button>
           ))}
         </div>
 
-        {activeTab === 'dispensers' ? (
+        {activeTab === 'markets' && (
+          <div className="border border-zinc-800 rounded-sm overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-zinc-500 border-b border-zinc-800 bg-zinc-900/50">
+                  <th className="text-left font-normal px-3 py-2.5">Asset</th>
+                  <th className="text-right font-normal px-3 py-2.5">Lowest Price</th>
+                  <th className="text-right font-normal px-3 py-2.5 max-sm:hidden">Avg Price</th>
+                  <th className="text-right font-normal px-3 py-2.5">24h %</th>
+                  <th className="text-right font-normal px-3 py-2.5 max-sm:hidden">24h Vol</th>
+                  <th className="text-right font-normal px-3 py-2.5 max-sm:hidden">Depth</th>
+                  <th className="text-right font-normal px-3 py-2.5 max-sm:hidden">Dispensers</th>
+                  <th className="text-right font-normal px-3 py-2.5">24h Dispenses</th>
+                </tr>
+              </thead>
+              <tbody>
+                {marketsLoading ? (
+                  <tr>
+                    <td colSpan={8} className="text-center py-20 text-sm text-zinc-500">
+                      Loading dispenser markets...
+                    </td>
+                  </tr>
+                ) : markets.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="text-center py-20 text-sm text-zinc-600">
+                      No active dispenser markets found
+                    </td>
+                  </tr>
+                ) : (
+                  markets.map((m) => (
+                    <tr key={m.asset} className="hover:bg-zinc-900 transition-colors border-b border-zinc-800/50 last:border-0">
+                      <td className="px-3 py-2">
+                        <Link href={`/dispense/${m.asset}`} className="flex items-center gap-2">
+                          <Image
+                            src={`${XCP_IMG_BASE}/icon/${m.asset}`}
+                            alt=""
+                            width={16}
+                            height={16}
+                            className="rounded-sm"
+                            unoptimized
+                          />
+                          <span className="text-zinc-200 font-medium truncate hover:underline">{m.asset}</span>
+                        </Link>
+                      </td>
+                      <td className="text-right text-zinc-300 font-mono px-3 py-2">
+                        {m.cheapest_price != null ? formatPrice(m.cheapest_price) : '—'}
+                      </td>
+                      <td className="text-right text-zinc-400 font-mono px-3 py-2 max-sm:hidden">
+                        {m.avg_price != null ? formatPrice(m.avg_price) : '—'}
+                      </td>
+                      <td className={`text-right font-mono px-3 py-2 ${
+                        m.price_change_24h == null
+                          ? 'text-zinc-600'
+                          : m.price_change_24h >= 0
+                            ? 'text-green-400'
+                            : 'text-red-400'
+                      }`}>
+                        {m.price_change_24h != null
+                          ? `${m.price_change_24h >= 0 ? '+' : ''}${m.price_change_24h.toFixed(1)}%`
+                          : '—'}
+                      </td>
+                      <td className="text-right text-zinc-400 font-mono px-3 py-2 max-sm:hidden">
+                        {m.volume_24h != null && m.volume_24h > 0 ? formatAmount(m.volume_24h) : '—'}
+                      </td>
+                      <td className="text-right text-zinc-400 font-mono px-3 py-2 max-sm:hidden">
+                        {m.total_available != null && m.total_available > 0 ? formatAmount(m.total_available) : '—'}
+                      </td>
+                      <td className="text-right text-zinc-400 font-mono px-3 py-2 max-sm:hidden">
+                        {m.active_dispensers}
+                      </td>
+                      <td className="text-right text-zinc-400 font-mono px-3 py-2">
+                        {m.dispense_count_24h ?? 0}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {activeTab === 'dispensers' && (
           <div className="border border-zinc-800 rounded-sm overflow-hidden">
-            {/* Dispensers header */}
             <div className="grid grid-cols-6 gap-0 px-4 py-2.5 text-xs text-zinc-500 border-b border-zinc-800 bg-zinc-900/50 max-sm:grid-cols-4">
               <span>Asset</span>
               <span className="text-right">BTC Price</span>
@@ -95,9 +182,10 @@ export default function DispensersPage() {
               </div>
             )}
           </div>
-        ) : (
+        )}
+
+        {activeTab === 'dispenses' && (
           <div className="border border-zinc-800 rounded-sm overflow-hidden">
-            {/* Dispenses header */}
             <div className="grid grid-cols-6 gap-0 px-4 py-2.5 text-xs text-zinc-500 border-b border-zinc-800 bg-zinc-900/50 max-sm:grid-cols-4">
               <span>Asset</span>
               <span className="text-right">Quantity</span>
