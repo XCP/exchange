@@ -409,8 +409,10 @@ export default {
               const aggStart = Date.now();
               let aggTotal = 0;
               let aggDone = false;
-              // Loop through multiple batches per cron tick (up to 4 min wall-clock)
-              while (Date.now() - aggStart < 240_000) {
+              // D1 allows ~1000 queries per invocation; each batch uses ~270,
+              // so cap at 3 batches (150 pairs) to stay within limits
+              const MAX_AGG_BATCHES = 3;
+              for (let b = 0; b < MAX_AGG_BATCHES; b++) {
                 const r = await runCatchupAggregation(env.DB);
                 aggTotal += r.processed;
                 if (r.done) { aggDone = true; break; }
