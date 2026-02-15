@@ -116,6 +116,14 @@ export async function runIndexer(
       await aggregateCandlesForPair(db, pair, info.earliestTime);
       await updatePairStats(db, pair, info.base, info.quote);
     }
+  } else if (totalInserted > 0) {
+    // Flag that we need catch-up aggregation (cron will handle it)
+    await db
+      .prepare(
+        `INSERT INTO indexer_state (key, value) VALUES ('aggregation_offset', '0')
+         ON CONFLICT (key) DO NOTHING`
+      )
+      .run();
   }
 
   // Save run time

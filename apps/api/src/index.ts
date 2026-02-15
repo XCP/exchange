@@ -1,15 +1,18 @@
 import { handleOhlc } from "./routes/ohlc";
 import { handleTrades } from "./routes/trades";
-import { handlePairs } from "./routes/pairs";
+import { handlePair, handlePairs } from "./routes/pairs";
 import { handleTrending } from "./routes/trending";
 import { handleBook } from "./routes/book";
 import { handleMarkets } from "./routes/markets";
 import { handleAsset } from "./routes/asset";
 import { handlePortfolioBids, handlePortfolioOrders } from "./routes/portfolio";
+import { handleDispenserStats } from "./routes/dispenser-stats";
 import { runIndexer } from "./indexer/ingest";
 import { syncOrders } from "./indexer/orders";
-import { aggregateCandlesForPair } from "./indexer/aggregate";
+import { aggregateCandlesForPair, runCatchupAggregation } from "./indexer/aggregate";
 import { updatePairStats } from "./indexer/stats";
+import { runDispenseIndexer } from "./indexer/dispenses";
+import { syncDispensers } from "./indexer/dispensers";
 
 export interface Env {
   DB: D1Database;
@@ -65,6 +68,12 @@ export default {
         return withCors(await handleBook(request, env.DB, bookMatch[1]));
       }
 
+      // Route: GET /pair/:pair
+      const pairMatch = path.match(/^\/pair\/([A-Za-z0-9._]+)$/);
+      if (pairMatch) {
+        return withCors(await handlePair(env.DB, pairMatch[1]));
+      }
+
       // Route: GET /pairs
       if (path === "/pairs") {
         return withCors(await handlePairs(request, env.DB));
@@ -111,6 +120,12 @@ export default {
         );
       }
 
+      // Route: GET /dispenser-stats/:asset
+      const dispenserStatsMatch = path.match(/^\/dispenser-stats\/([A-Za-z0-9.]+)$/);
+      if (dispenserStatsMatch) {
+        return withCors(await handleDispenserStats(env.DB, dispenserStatsMatch[1]));
+      }
+
       // Route: GET /status (health check / indexer status)
       if (path === "/status") {
         const state = await env.DB
@@ -129,12 +144,22 @@ export default {
           .prepare(`SELECT COUNT(*) as cnt FROM orders WHERE status = 'open'`)
           .first<{ cnt: number }>();
 
+        const dispenseCount = await env.DB
+          .prepare(`SELECT COUNT(*) as cnt FROM dispenses`)
+          .first<{ cnt: number }>();
+
+        const openDispenserCount = await env.DB
+          .prepare(`SELECT COUNT(*) as cnt FROM dispensers WHERE status = 0`)
+          .first<{ cnt: number }>();
+
         return withCors(
           Response.json({
             ok: true,
             trades: tradeCount?.cnt ?? 0,
             pairs: pairCount?.cnt ?? 0,
             open_orders: openOrderCount?.cnt ?? 0,
+            dispenses: dispenseCount?.cnt ?? 0,
+            open_dispensers: openDispenserCount?.cnt ?? 0,
             indexer: Object.fromEntries(
               (state?.results ?? []).map((r) => [r.key, r.value])
             ),
@@ -143,11 +168,28 @@ export default {
       }
 
       // Rebuild candles + stats for a batch of pairs
+      // POST /indexer/aggregate → run catch-up (uses internal offset tracking)
+      // POST /indexer/aggregate?offset=0&limit=5 → manual batch at specific offset
       if (path === "/indexer/aggregate" && request.method === "POST") {
-        const offset = parseInt(url.searchParams.get("offset") ?? "0", 10);
+        const hasOffset = url.searchParams.has("offset");
+
+        if (!hasOffset) {
+          // Trigger catch-up aggregation (sets flag if not already set, then processes a batch)
+          await env.DB
+            .prepare(
+              `INSERT INTO indexer_state (key, value) VALUES ('aggregation_offset', '0')
+               ON CONFLICT (key) DO NOTHING`
+            )
+            .run();
+          const result = await runCatchupAggregation(env.DB);
+          return withCors(Response.json(result));
+        }
+
+        // Manual mode: specific offset + limit
+        const offset = parseInt(url.searchParams.get("offset")!, 10);
         const limit = Math.min(
-          parseInt(url.searchParams.get("limit") ?? "2", 10),
-          5
+          parseInt(url.searchParams.get("limit") ?? "5", 10),
+          10
         );
         const pairs = await env.DB
           .prepare(
@@ -178,7 +220,7 @@ export default {
         );
       }
 
-      // Manual trigger for backfill
+      // Manual trigger for trade backfill
       if (path === "/indexer/run" && request.method === "POST") {
         const pages = parseInt(url.searchParams.get("pages") ?? "5", 10);
         const skipAgg = url.searchParams.get("aggregate") !== "true";
@@ -187,6 +229,19 @@ export default {
           env.CP_API_BASE,
           Math.min(pages, 50),
           skipAgg
+        );
+        return withCors(Response.json(result));
+      }
+
+      // Manual trigger for dispense backfill
+      if (path === "/indexer/run-dispenses" && request.method === "POST") {
+        const pages = parseInt(url.searchParams.get("pages") ?? "5", 10);
+        const skipStats = url.searchParams.get("stats") !== "true";
+        const result = await runDispenseIndexer(
+          env.DB,
+          env.CP_API_BASE,
+          Math.min(pages, 50),
+          skipStats
         );
         return withCors(Response.json(result));
       }
@@ -213,18 +268,53 @@ export default {
     ctx: ExecutionContext
   ): Promise<void> {
     ctx.waitUntil(
-      Promise.all([
-        runIndexer(env.DB, env.CP_API_BASE, 50)
-          .then((r) =>
-            console.log(`Trades: inserted=${r.inserted} pages=${r.pages} done=${r.done}`)
-          )
-          .catch((e) => console.error("Trade indexer error:", e)),
-        syncOrders(env.DB, env.CP_API_BASE)
-          .then((r) =>
-            console.log(`Orders: synced=${r.synced} closed=${r.closed}`)
-          )
-          .catch((e) => console.error("Order sync error:", e)),
-      ])
+      (async () => {
+        // 1. Ingest new trades + sync orders + dispenses + dispensers in parallel
+        const [tradeResult, orderResult, dispenseResult, dispenserResult] = await Promise.allSettled([
+          runIndexer(env.DB, env.CP_API_BASE, 50),
+          syncOrders(env.DB, env.CP_API_BASE),
+          runDispenseIndexer(env.DB, env.CP_API_BASE, 50),
+          syncDispensers(env.DB, env.CP_API_BASE),
+        ]);
+
+        if (tradeResult.status === "fulfilled") {
+          const r = tradeResult.value;
+          console.log(`Trades: inserted=${r.inserted} pages=${r.pages} done=${r.done}`);
+        } else {
+          console.error("Trade indexer error:", tradeResult.reason);
+        }
+
+        if (orderResult.status === "fulfilled") {
+          const r = orderResult.value;
+          console.log(`Orders: synced=${r.synced} closed=${r.closed}`);
+        } else {
+          console.error("Order sync error:", orderResult.reason);
+        }
+
+        if (dispenseResult.status === "fulfilled") {
+          const r = dispenseResult.value;
+          console.log(`Dispenses: inserted=${r.inserted} pages=${r.pages} done=${r.done}`);
+        } else {
+          console.error("Dispense indexer error:", dispenseResult.reason);
+        }
+
+        if (dispenserResult.status === "fulfilled") {
+          const r = dispenserResult.value;
+          console.log(`Dispensers: synced=${r.synced} closed=${r.closed}`);
+        } else {
+          console.error("Dispenser sync error:", dispenserResult.reason);
+        }
+
+        // 2. Catch-up aggregation (runs after backfill until all pairs have candles)
+        try {
+          const agg = await runCatchupAggregation(env.DB);
+          if (!agg.done) {
+            console.log(`Catchup aggregation: processed=${agg.processed} offset=${agg.offset}`);
+          }
+        } catch (e) {
+          console.error("Catchup aggregation error:", e);
+        }
+      })()
     );
   },
 } satisfies ExportedHandler<Env>;

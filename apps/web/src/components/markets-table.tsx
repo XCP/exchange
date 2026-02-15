@@ -81,7 +81,7 @@ export function MarketsTable({ markets }: MarketsTableProps) {
           return (
             <Link
               key={`market-${i}`}
-              href={`/orders/${market.slug}`}
+              href={`/trade/${market.slug}`}
               className="grid grid-cols-4 gap-0 px-2 py-1 text-xs hover:bg-zinc-900 cursor-pointer"
             >
               {cells}

@@ -1,3 +1,5 @@
+import { updatePairStats } from "./stats";
+
 const INTERVAL_SECONDS: Record<string, number> = {
   "1h": 3600,
   "4h": 14400,
@@ -23,7 +25,6 @@ export async function aggregateCandlesForPair(
   sinceTime: number
 ): Promise<void> {
   for (const interval of ALL_INTERVALS) {
-    const bucketSize = INTERVAL_SECONDS[interval];
     const startBucket = bucketTimestamp(sinceTime, interval);
 
     // Get all trades for this pair from the affected time range
@@ -77,7 +78,8 @@ export async function aggregateCandlesForPair(
       entry.count++;
     }
 
-    // Upsert candles for each bucket
+    // Batch upsert candles (50 at a time to stay within D1 limits)
+    const stmts: D1PreparedStatement[] = [];
     for (const [timestamp, data] of buckets) {
       data.prices.sort((a, b) => a.time - b.time);
       const open = data.prices[0].price;
@@ -85,30 +87,92 @@ export async function aggregateCandlesForPair(
       const high = Math.max(...data.prices.map((p) => p.price));
       const low = Math.min(...data.prices.map((p) => p.price));
 
-      await db
-        .prepare(
-          `INSERT INTO candles (pair, interval, timestamp, open, high, low, close, volume, buy_volume, sell_volume, trades)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-           ON CONFLICT (pair, interval, timestamp)
-           DO UPDATE SET open = excluded.open, high = excluded.high, low = excluded.low,
-                         close = excluded.close, volume = excluded.volume,
-                         buy_volume = excluded.buy_volume, sell_volume = excluded.sell_volume,
-                         trades = excluded.trades`
-        )
-        .bind(
-          pair,
-          interval,
-          timestamp,
-          open,
-          high,
-          low,
-          close,
-          data.volume,
-          data.buyVolume,
-          data.sellVolume,
-          data.count
-        )
-        .run();
+      stmts.push(
+        db
+          .prepare(
+            `INSERT INTO candles (pair, interval, timestamp, open, high, low, close, volume, buy_volume, sell_volume, trades)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             ON CONFLICT (pair, interval, timestamp)
+             DO UPDATE SET open = excluded.open, high = excluded.high, low = excluded.low,
+                           close = excluded.close, volume = excluded.volume,
+                           buy_volume = excluded.buy_volume, sell_volume = excluded.sell_volume,
+                           trades = excluded.trades`
+          )
+          .bind(
+            pair,
+            interval,
+            timestamp,
+            open,
+            high,
+            low,
+            close,
+            data.volume,
+            data.buyVolume,
+            data.sellVolume,
+            data.count
+          )
+      );
+    }
+
+    for (let i = 0; i < stmts.length; i += 50) {
+      await db.batch(stmts.slice(i, i + 50));
     }
   }
+}
+
+/**
+ * Catch-up aggregation: processes a batch of pairs that haven't been aggregated yet.
+ * Called by the cron handler when `aggregation_offset` exists in indexer_state.
+ * Returns true when all pairs are done.
+ */
+const CATCHUP_BATCH_SIZE = 10;
+
+export async function runCatchupAggregation(
+  db: D1Database
+): Promise<{ done: boolean; processed: number; offset: number }> {
+  const row = await db
+    .prepare(`SELECT value FROM indexer_state WHERE key = 'aggregation_offset'`)
+    .first<{ value: string }>();
+
+  if (!row) return { done: true, processed: 0, offset: 0 };
+
+  const offset = parseInt(row.value, 10);
+  const pairs = await db
+    .prepare(
+      `SELECT pair, base_asset, quote_asset, first_trade_time
+       FROM pair_stats
+       ORDER BY pair LIMIT ? OFFSET ?`
+    )
+    .bind(CATCHUP_BATCH_SIZE, offset)
+    .all<{
+      pair: string;
+      base_asset: string;
+      quote_asset: string;
+      first_trade_time: number | null;
+    }>();
+
+  if (!pairs.results.length) {
+    // All pairs processed — clean up
+    await db
+      .prepare(`DELETE FROM indexer_state WHERE key = 'aggregation_offset'`)
+      .run();
+    return { done: true, processed: 0, offset };
+  }
+
+  for (const p of pairs.results) {
+    const earliest = p.first_trade_time ?? 0;
+    await aggregateCandlesForPair(db, p.pair, earliest);
+    await updatePairStats(db, p.pair, p.base_asset, p.quote_asset);
+  }
+
+  const nextOffset = offset + pairs.results.length;
+  await db
+    .prepare(
+      `INSERT INTO indexer_state (key, value) VALUES ('aggregation_offset', ?)
+       ON CONFLICT (key) DO UPDATE SET value = excluded.value`
+    )
+    .bind(String(nextOffset))
+    .run();
+
+  return { done: false, processed: pairs.results.length, offset };
 }

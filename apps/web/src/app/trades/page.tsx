@@ -51,7 +51,7 @@ export default function TradesPage() {
                 return (
                   <Link
                     key={trade.id}
-                    href={`/orders/${pairSlug}`}
+                    href={`/trade/${pairSlug}`}
                     className="grid grid-cols-6 gap-0 px-4 py-2 text-xs hover:bg-zinc-900 transition-colors cursor-pointer border-b border-zinc-800/50 last:border-0 max-sm:grid-cols-3"
                   >
                     <span className="flex items-center gap-2">

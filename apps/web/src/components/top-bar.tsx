@@ -10,10 +10,10 @@ export function TopBar() {
         </Link>
         <nav className="hidden sm:flex items-center gap-4">
           {[
-            { label: 'Markets', href: '/' },
-            { label: 'Orders', href: '/orders' },
-            { label: 'Dispensers', href: '/dispensers' },
-            { label: 'Trades', href: '/trades' },
+            { label: 'Trade', href: '/trade' },
+            { label: 'Dispense', href: '/dispense' },
+            { label: 'Swap', href: '#' },
+            { label: 'Top 100', href: '#' },
           ].map((link) => (
             <Link
               key={link.label}

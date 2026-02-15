@@ -2,8 +2,9 @@
 
 import { use, useCallback, useMemo, useState } from 'react'
 import { useTradingPair } from '@/lib/hooks/useTradingPair'
+import { useDispenserStats } from '@/lib/hooks/useDispenserStats'
 import { useAssetDispensers, useAssetDispenses } from '@/lib/hooks/useAssetDispensers'
-import { MarketHeader } from '@/components/market-header'
+import { DispenserMarketHeader } from '@/components/dispenser-market-header'
 import { DispenserDepthChart } from '@/components/dispenser-depth-chart'
 import { DispenserModal } from '@/components/dispenser-modal'
 import { DispenserDataTabs, DispensesTable } from '@/components/dispenser-data-tabs'
@@ -29,7 +30,8 @@ export default function AssetDispensersPage({ params }: { params: Promise<{ asse
 
   const market = `${asset}/BTC`
 
-  const { data: pairData, isLoading: pairLoading } = useTradingPair(`${asset}_XCP`)
+  const { data: pairData, isLoading: pairLoading } = useTradingPair(`${asset}_BTC`)
+  const { data: dispenserStats, isLoading: statsLoading } = useDispenserStats(asset)
   const { dispensers, isLoading: dispensersLoading } = useAssetDispensers(asset)
   const { dispenses, isLoading: dispensesLoading } = useAssetDispenses(asset)
 
@@ -53,12 +55,11 @@ export default function AssetDispensersPage({ params }: { params: Promise<{ asse
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 font-sans">
       {/* Full-width market header (NOT sticky) */}
-      <MarketHeader
+      <DispenserMarketHeader
         pairData={pairData}
-        baseSymbol={asset}
-        quoteSymbol="BTC"
-        market={market}
-        isLoading={pairLoading}
+        stats={dispenserStats}
+        asset={asset}
+        isLoading={pairLoading || statsLoading}
       />
 
       {/* Two-column grid */}
@@ -86,13 +87,13 @@ export default function AssetDispensersPage({ params }: { params: Promise<{ asse
             </div>
             <span className="text-xs font-semibold text-zinc-100">{market}</span>
             <span className="text-sm font-semibold text-zinc-100 font-mono ml-auto">
-              {pairData?.last_trade_price != null ? formatAmount(pairData.last_trade_price) : '—'}
+              {dispenserStats?.last_dispense_price != null ? formatAmount(dispenserStats.last_dispense_price) : '—'}
             </span>
-            {pairData?.price_change_24h != null && (
+            {dispenserStats?.price_change_24h != null && dispenserStats.price_change_24h !== 0 && (
               <span className={`rounded-sm px-1.5 py-0.5 text-xs font-medium ${
-                pairData.price_change_24h >= 0 ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'
+                dispenserStats.price_change_24h >= 0 ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'
               }`}>
-                {pairData.price_change_24h >= 0 ? '+' : ''}{pairData.price_change_24h.toFixed(1)}%
+                {dispenserStats.price_change_24h >= 0 ? '+' : ''}{dispenserStats.price_change_24h.toFixed(1)}%
               </span>
             )}
           </div>

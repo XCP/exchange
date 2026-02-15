@@ -2,63 +2,11 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { createChart, CandlestickSeries, HistogramSeries, type IChartApi, type ISeriesApi, type CandlestickData, type HistogramData, type Time, ColorType } from 'lightweight-charts'
+import { useOhlc } from '@/lib/hooks/useOhlc'
 
 interface ChartProps {
   pairSlug: string
   pairLabel?: string
-}
-
-// Generate realistic mock OHLC data resembling a low-cap XCP asset
-function generateMockData(): { candles: CandlestickData<Time>[]; volumes: HistogramData<Time>[] } {
-  const candles: CandlestickData<Time>[] = []
-  const volumes: HistogramData<Time>[] = []
-
-  const now = Math.floor(Date.now() / 1000)
-  const daySeconds = 86400
-  const numDays = 180
-
-  let price = 0.00135 // starting price in XCP terms
-  const baseVol = 5000
-
-  for (let i = 0; i < numDays; i++) {
-    const time = (now - (numDays - i) * daySeconds) as Time
-
-    // Random walk with slight upward drift, occasional spikes
-    const volatility = 0.04 + Math.random() * 0.06
-    const drift = 0.001
-    const spike = Math.random() > 0.93 ? (Math.random() - 0.4) * 0.15 : 0
-    const change = (Math.random() - 0.48 + drift) * volatility + spike
-
-    const open = price
-    const close = Math.max(open * (1 + change), 0.0001)
-    const high = Math.max(open, close) * (1 + Math.random() * 0.025)
-    const low = Math.min(open, close) * (1 - Math.random() * 0.025)
-
-    // Skip some days randomly to simulate sparse trading (~15% chance of no trade)
-    if (Math.random() < 0.15) {
-      price = close
-      continue
-    }
-
-    candles.push({
-      time,
-      open: parseFloat(open.toFixed(8)),
-      high: parseFloat(high.toFixed(8)),
-      low: parseFloat(low.toFixed(8)),
-      close: parseFloat(close.toFixed(8)),
-    })
-
-    const vol = baseVol * (0.3 + Math.random() * 1.5) * (1 + Math.abs(change) * 10)
-    volumes.push({
-      time,
-      value: Math.round(vol),
-      color: close >= open ? 'rgba(34,197,94,0.2)' : 'rgba(239,68,68,0.2)',
-    })
-
-    price = close
-  }
-
-  return { candles, volumes }
 }
 
 function fmtPrice(n: number): string {
@@ -76,6 +24,10 @@ export function Chart({ pairSlug, pairLabel }: ChartProps) {
   const candleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null)
   const volumeSeriesRef = useRef<ISeriesApi<'Histogram'> | null>(null)
   const [activeTimeframe, setActiveTimeframe] = useState('1D')
+  const candlesRef = useRef<CandlestickData<Time>[]>([])
+
+  // Fetch OHLC data from our API
+  const { candles: rawCandles, isLoading } = useOhlc(pairSlug, activeTimeframe)
 
   // OHLC header values from crosshair or last candle
   const [ohlcHeader, setOhlcHeader] = useState<{ o: string; h: string; l: string; c: string; green: boolean } | null>(null)
@@ -151,27 +103,11 @@ export function Chart({ pairSlug, pairLabel }: ChartProps) {
       scaleMargins: { top: 0.85, bottom: 0 },
     })
 
-    // Generate and set mock data
-    const { candles, volumes } = generateMockData()
-    candleSeries.setData(candles)
-    volumeSeries.setData(volumes)
-
-    // Set initial OHLC header from last candle
-    if (candles.length > 0) {
-      const last = candles[candles.length - 1]
-      setOhlcHeader({
-        o: fmtPrice(last.open),
-        h: fmtPrice(last.high),
-        l: fmtPrice(last.low),
-        c: fmtPrice(last.close),
-        green: last.close >= last.open,
-      })
-    }
-
     // Crosshair move → update OHLC header
     chart.subscribeCrosshairMove((param) => {
       if (!param.time || !param.seriesData) {
         // Reset to last candle
+        const candles = candlesRef.current
         if (candles.length > 0) {
           const last = candles[candles.length - 1]
           setOhlcHeader({
@@ -196,8 +132,6 @@ export function Chart({ pairSlug, pairLabel }: ChartProps) {
       }
     })
 
-    chart.timeScale().fitContent()
-
     chartRef.current = chart
     candleSeriesRef.current = candleSeries
     volumeSeriesRef.current = volumeSeries
@@ -213,6 +147,41 @@ export function Chart({ pairSlug, pairLabel }: ChartProps) {
       }
     }
   }, [initChart])
+
+  // Update chart data when candles change
+  useEffect(() => {
+    if (!candleSeriesRef.current || !volumeSeriesRef.current || !rawCandles.length) return
+
+    const candles: CandlestickData<Time>[] = rawCandles.map((c) => ({
+      time: c.t as Time,
+      open: c.o,
+      high: c.h,
+      low: c.l,
+      close: c.c,
+    }))
+
+    const volumes: HistogramData<Time>[] = rawCandles.map((c) => ({
+      time: c.t as Time,
+      value: c.v,
+      color: c.c >= c.o ? 'rgba(34,197,94,0.2)' : 'rgba(239,68,68,0.2)',
+    }))
+
+    candlesRef.current = candles
+    candleSeriesRef.current.setData(candles)
+    volumeSeriesRef.current.setData(volumes)
+
+    // Set OHLC header from last candle
+    const last = candles[candles.length - 1]
+    setOhlcHeader({
+      o: fmtPrice(last.open),
+      h: fmtPrice(last.high),
+      l: fmtPrice(last.low),
+      c: fmtPrice(last.close),
+      green: last.close >= last.open,
+    })
+
+    chartRef.current?.timeScale().fitContent()
+  }, [rawCandles])
 
   // Resize observer
   useEffect(() => {
@@ -268,7 +237,19 @@ export function Chart({ pairSlug, pairLabel }: ChartProps) {
       </div>
 
       {/* Chart canvas */}
-      <div ref={containerRef} style={{ height: '300px', width: '100%' }} />
+      <div className="relative" style={{ height: '300px', width: '100%' }}>
+        {isLoading && !rawCandles.length && (
+          <div className="absolute inset-0 flex items-center justify-center text-xs text-zinc-600">
+            Loading chart data...
+          </div>
+        )}
+        {!isLoading && !rawCandles.length && (
+          <div className="absolute inset-0 flex items-center justify-center text-xs text-zinc-600">
+            No candle data available
+          </div>
+        )}
+        <div ref={containerRef} style={{ height: '100%', width: '100%' }} />
+      </div>
     </div>
   )
 }

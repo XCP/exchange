@@ -3,6 +3,7 @@
 import { use, useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useTradingPair } from '@/lib/hooks/useTradingPair'
+import { usePairStats } from '@/lib/hooks/usePairStats'
 import { useOrderBook } from '@/lib/hooks/useOrderBook'
 import { MarketHeader } from '@/components/market-header'
 import { Chart } from '@/components/chart'
@@ -35,8 +36,18 @@ export default function PairOrdersPage({ params }: { params: Promise<{ pair: str
   const quoteSymbol = pairSlug.substring(lastUnderscoreIndex + 1)
   const market = `${baseSymbol}/${quoteSymbol}`
 
-  const { data: pairData, isLoading: pairLoading } = useTradingPair(pairSlug)
+  const { data: xcpData, isLoading: pairLoading } = useTradingPair(pairSlug)
+  const { data: pairStats } = usePairStats(pairSlug)
   const { bids, asks, spread, spreadPct } = useOrderBook(market)
+
+  // Merge 24h stats from DEX API into xcp.io pair data
+  const pairData = xcpData ? {
+    ...xcpData,
+    price_change_24h: pairStats?.price_change_24h ?? xcpData.price_change_24h,
+    high_24h: pairStats?.high_24h ?? xcpData.high_24h,
+    low_24h: pairStats?.low_24h ?? xcpData.low_24h,
+    volume_24h: pairStats?.volume_24h != null ? String(pairStats.volume_24h) : xcpData.volume_24h,
+  } : undefined
 
   const [mobileDataTab, setMobileDataTab] = useState<TabKey>('trades')
 
@@ -76,7 +87,7 @@ export default function PairOrdersPage({ params }: { params: Promise<{ pair: str
         isLoading={pairLoading}
         actionSlot={
           <Link
-            href={`/dispensers/${baseSymbol}`}
+            href={`/dispense/${baseSymbol}`}
             className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
           >
             Dispensers →

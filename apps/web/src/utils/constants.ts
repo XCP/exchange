@@ -1,5 +1,6 @@
 export const XCP_API_BASE = 'https://app.xcp.io/api/v1'
 export const COUNTERPARTY_API_BASE = 'https://api.counterparty.io:4000/v2'
+export const DEX_API_BASE = 'https://api.xcpdex.com'
 export const XCP_IMG_BASE = 'https://app.xcp.io/img'
 
 export const QUOTE_ASSETS: string[] = [

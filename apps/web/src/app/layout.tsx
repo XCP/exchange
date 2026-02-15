@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import { SWRProvider } from "@/lib/swr-provider";
 import { TopBar } from "@/components/top-bar";
 import { Footer } from "@/components/footer";
+import { FathomAnalytics } from "./fathom";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -31,6 +32,7 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-zinc-950 text-zinc-100`}
       >
+        <FathomAnalytics />
         <SWRProvider>
           <TopBar />
           {children}
