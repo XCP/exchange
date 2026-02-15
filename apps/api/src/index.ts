@@ -10,7 +10,7 @@ import { handleDispenserStats } from "./routes/dispenser-stats";
 import { syncBlocks } from "./indexer/sync-block";
 import { runCatchupAggregation } from "./indexer/aggregate";
 import { backfillTrades, backfillDispenses } from "./indexer/backfill";
-import { syncOrders, syncDispensers, runSnapshotSync } from "./indexer/snapshot";
+import { syncOrders, syncDispensers, runSnapshotStep } from "./indexer/snapshot";
 import { getMode, setMode, deleteState } from "./indexer/state";
 import { aggregateCandlesForPair } from "./indexer/aggregate";
 import { updatePairStats } from "./indexer/stats";
@@ -227,7 +227,7 @@ export default {
             return withCors(Response.json(result));
           }
           case "SNAPSHOT_SYNC": {
-            const result = await runSnapshotSync(env.DB, env.CP_API_BASE);
+            const result = await runSnapshotStep(env.DB, env.CP_API_BASE);
             return withCors(Response.json({ type: "snapshot", ...result }));
           }
           case "BUILD_AGGREGATES": {
@@ -346,19 +346,53 @@ export default {
   ): Promise<void> {
     ctx.waitUntil(
       (async () => {
-        // Cron: only sync blocks when in FOLLOWING mode
         try {
-          const sync = await syncBlocks(env.DB, env.CP_API_BASE, 10);
-          if (sync.blocks_processed > 0) {
-            console.log(
-              `Sync: ${sync.blocks_processed} blocks (${sync.last_block}/${sync.current_block}) ` +
-              `trades=${sync.trades_inserted} orders=+${sync.orders_upserted}/-${sync.orders_closed} ` +
-              `dispensers=+${sync.dispensers_upserted}/~${sync.dispensers_updated} ` +
-              `dispenses=${sync.dispenses_inserted}`
-            );
+          const mode = await getMode(env.DB);
+
+          switch (mode) {
+            case "IDLE":
+              // Nothing to do — waiting for POST /indexer/start
+              break;
+
+            case "BACKFILL_TRADES": {
+              const r = await backfillTrades(env.DB, env.CP_API_BASE, 50);
+              console.log(`Cron: backfill trades — ${r.inserted} inserted, ${r.progress}% done`);
+              break;
+            }
+
+            case "BACKFILL_DISPENSES": {
+              const r = await backfillDispenses(env.DB, env.CP_API_BASE, 50);
+              console.log(`Cron: backfill dispenses — ${r.inserted} inserted, ${r.progress}% done`);
+              break;
+            }
+
+            case "SNAPSHOT_SYNC": {
+              const r = await runSnapshotStep(env.DB, env.CP_API_BASE, 20);
+              console.log(`Cron: snapshot step=${r.step}`);
+              break;
+            }
+
+            case "BUILD_AGGREGATES": {
+              const r = await runCatchupAggregation(env.DB);
+              console.log(`Cron: aggregation — processed=${r.processed}, done=${r.done}`);
+              break;
+            }
+
+            case "FOLLOWING": {
+              const sync = await syncBlocks(env.DB, env.CP_API_BASE, 10);
+              if (sync.blocks_processed > 0) {
+                console.log(
+                  `Sync: ${sync.blocks_processed} blocks (${sync.last_block}/${sync.current_block}) ` +
+                  `trades=${sync.trades_inserted} orders=+${sync.orders_upserted}/-${sync.orders_closed} ` +
+                  `dispensers=+${sync.dispensers_upserted}/~${sync.dispensers_updated} ` +
+                  `dispenses=${sync.dispenses_inserted}`
+                );
+              }
+              break;
+            }
           }
         } catch (e) {
-          console.error("Block sync error:", e);
+          console.error("Cron error:", e);
         }
       })()
     );
