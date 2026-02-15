@@ -1,5 +1,8 @@
 'use client'
 
+import { useWallet } from '@/lib/wallet/wallet-context'
+import { useCompose } from '@/lib/wallet/useCompose'
+
 interface TradeFormProps {
   baseSymbol: string
   quoteSymbol: string
@@ -9,6 +12,12 @@ interface TradeFormProps {
   setPriceInput: (v: string) => void
   amountInput: string
   setAmountInput: (v: string) => void
+}
+
+const STATUS_LABELS: Record<string, string> = {
+  composing: 'Composing transaction...',
+  signing: 'Waiting for signature...',
+  broadcasting: 'Broadcasting...',
 }
 
 export function TradeForm({
@@ -21,11 +30,42 @@ export function TradeForm({
   amountInput,
   setAmountInput,
 }: TradeFormProps) {
+  const { status: walletStatus, connect, connecting } = useWallet()
+  const { status: txStatus, txid, error: txError, composeOrder, reset } = useCompose()
 
   const totalValue =
     priceInput && amountInput
       ? (parseFloat(priceInput) * parseFloat(amountInput.replace(/,/g, ''))).toFixed(8)
       : '0.00000000'
+
+  const handleSubmit = () => {
+    const price = parseFloat(priceInput)
+    const amount = parseFloat(amountInput?.replace(/,/g, '') || '0')
+    if (!price || !amount) return
+
+    if (tradeTab === 'buy') {
+      // Buy BASE: give QUOTE, get BASE
+      composeOrder({
+        give_asset: quoteSymbol,
+        give_quantity: Math.round(price * amount * 1e8),
+        get_asset: baseSymbol,
+        get_quantity: Math.round(amount * 1e8),
+      })
+    } else {
+      // Sell BASE: give BASE, get QUOTE
+      composeOrder({
+        give_asset: baseSymbol,
+        give_quantity: Math.round(amount * 1e8),
+        get_asset: quoteSymbol,
+        get_quantity: Math.round(price * amount * 1e8),
+      })
+    }
+  }
+
+  const isBusy = txStatus === 'composing' || txStatus === 'signing' || txStatus === 'broadcasting'
+  const price = parseFloat(priceInput)
+  const amount = parseFloat(amountInput?.replace(/,/g, '') || '0')
+  const isValid = price > 0 && amount > 0
 
   return (
     <div className="p-3 border-b border-zinc-800">
@@ -98,19 +138,55 @@ export function TradeForm({
         {/* Fee */}
         <div className="flex items-center justify-between pt-1 text-xs">
           <span className="text-zinc-600">Fee</span>
-          <span className="text-zinc-500 font-mono">0.0001 BTC</span>
+          <span className="text-zinc-500 font-mono">Dynamic (mempool rate)</span>
         </div>
 
-        {/* Connect Wallet button */}
-        <button
-          className={`w-full rounded-sm py-2.5 text-xs font-semibold uppercase tracking-wider transition-colors ${
-            tradeTab === 'buy'
-              ? 'bg-green-500 text-zinc-950 hover:bg-green-400'
-              : 'bg-red-500 text-zinc-950 hover:bg-red-400'
-          }`}
-        >
-          Connect Wallet
-        </button>
+        {/* Action button */}
+        {walletStatus !== 'connected' ? (
+          <button
+            onClick={walletStatus === 'disconnected' ? connect : undefined}
+            disabled={connecting}
+            className={`w-full rounded-sm py-2.5 text-xs font-semibold uppercase tracking-wider transition-colors ${
+              tradeTab === 'buy'
+                ? 'bg-green-500 text-zinc-950 hover:bg-green-400'
+                : 'bg-red-500 text-zinc-950 hover:bg-red-400'
+            } disabled:opacity-50`}
+          >
+            {walletStatus === 'not_detected' ? 'Install Wallet' : connecting ? 'Connecting...' : 'Connect Wallet'}
+          </button>
+        ) : (
+          <button
+            onClick={txStatus === 'confirmed' || txStatus === 'error' ? reset : handleSubmit}
+            disabled={isBusy || (txStatus === 'idle' && !isValid)}
+            className={`w-full rounded-sm py-2.5 text-xs font-semibold uppercase tracking-wider transition-colors ${
+              tradeTab === 'buy'
+                ? 'bg-green-500 text-zinc-950 hover:bg-green-400'
+                : 'bg-red-500 text-zinc-950 hover:bg-red-400'
+            } disabled:opacity-50`}
+          >
+            {txStatus === 'confirmed'
+              ? 'New Order'
+              : txStatus === 'error'
+                ? 'Try Again'
+                : isBusy
+                  ? STATUS_LABELS[txStatus]
+                  : tradeTab === 'buy'
+                    ? `Buy ${baseSymbol}`
+                    : `Sell ${baseSymbol}`}
+          </button>
+        )}
+
+        {/* Tx status feedback */}
+        {txStatus === 'confirmed' && txid && (
+          <div className="rounded-sm border border-green-500/20 bg-green-500/5 px-3 py-1.5 text-xs text-green-400 font-mono truncate">
+            Confirmed: {txid}
+          </div>
+        )}
+        {txStatus === 'error' && txError && (
+          <div className="rounded-sm border border-red-500/20 bg-red-500/5 px-3 py-1.5 text-xs text-red-400">
+            {txError}
+          </div>
+        )}
       </div>
     </div>
   )

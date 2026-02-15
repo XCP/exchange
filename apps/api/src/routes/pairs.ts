@@ -7,9 +7,9 @@ export async function handlePair(
   const row = await db
     .prepare(
       `SELECT pair, base_asset, quote_asset, last_price, last_trade_time,
-              last_side, price_change_24h, price_change_7d,
+              last_side, price_change_24h, price_change_7d, price_change_30d,
               volume_24h, volume_7d, volume_30d,
-              high_24h, low_24h,
+              high_24h, low_24h, high_7d, low_7d, high_30d, low_30d,
               trade_count_24h, trade_count_7d, trade_count_30d,
               first_trade_time
        FROM pair_stats WHERE pair = ?`
@@ -22,7 +22,7 @@ export async function handlePair(
   }
 
   return Response.json(row, {
-    headers: { "Cache-Control": "public, max-age=30" },
+    headers: { "Cache-Control": "public, max-age=60" },
   });
 }
 
@@ -40,34 +40,55 @@ export async function handlePairs(
     500
   );
 
+  const base = url.searchParams.get("base");
+  const offset = Math.max(
+    parseInt(url.searchParams.get("offset") ?? "0", 10) || 0,
+    0
+  );
+
   let query = `SELECT pair, base_asset, quote_asset, last_price, last_trade_time,
-                      last_side, price_change_24h, price_change_7d,
+                      last_side, price_change_24h, price_change_7d, price_change_30d,
                       volume_24h, volume_7d, volume_30d,
-                      high_24h, low_24h,
+                      high_24h, low_24h, high_7d, low_7d, high_30d, low_30d,
                       trade_count_24h, trade_count_7d, trade_count_30d,
                       first_trade_time
                FROM pair_stats`;
   const binds: (string | number)[] = [];
+  const conditions: string[] = [];
 
   if (quote) {
-    query += ` WHERE quote_asset = ?`;
+    conditions.push(`quote_asset = ?`);
     binds.push(quote);
+  }
+  if (base) {
+    conditions.push(`base_asset = ?`);
+    binds.push(base);
+  }
+  if (conditions.length > 0) {
+    query += ` WHERE ${conditions.join(" AND ")}`;
   }
 
   // D1 doesn't support parameterized ORDER BY, but sort is validated above
-  query += ` ORDER BY ${sort} DESC LIMIT ?`;
-  binds.push(limit);
+  query += ` ORDER BY ${sort} DESC LIMIT ? OFFSET ?`;
+  binds.push(limit, offset);
 
-  const result = await db
-    .prepare(query)
-    .bind(...binds)
-    .all();
+  // Count query (same conditions, no LIMIT/OFFSET)
+  let countQuery = `SELECT COUNT(*) as total FROM pair_stats`;
+  const countBinds = binds.slice(0, -2); // strip limit and offset
+  if (conditions.length > 0) {
+    countQuery += ` WHERE ${conditions.join(" AND ")}`;
+  }
+
+  const [result, countResult] = await Promise.all([
+    db.prepare(query).bind(...binds).all(),
+    db.prepare(countQuery).bind(...countBinds).first<{ total: number }>(),
+  ]);
 
   return Response.json(
-    { pairs: result.results },
+    { pairs: result.results, total: countResult?.total ?? 0, limit, offset },
     {
       headers: {
-        "Cache-Control": "public, max-age=30",
+        "Cache-Control": "public, max-age=60",
       },
     }
   );

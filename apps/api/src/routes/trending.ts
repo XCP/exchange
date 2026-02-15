@@ -1,6 +1,12 @@
 export async function handleTrending(
+  request: Request,
   db: D1Database
 ): Promise<Response> {
+  const url = new URL(request.url);
+  const resultLimit = Math.min(
+    parseInt(url.searchParams.get("limit") ?? "10", 10) || 10,
+    50
+  );
   // Get all pairs with recent activity for scoring
   const result = await db
     .prepare(
@@ -25,7 +31,7 @@ export async function handleTrending(
   if (!result.results.length) {
     return Response.json(
       { trending: [] },
-      { headers: { "Cache-Control": "public, max-age=30" } }
+      { headers: { "Cache-Control": "public, max-age=60" } }
     );
   }
 
@@ -44,13 +50,13 @@ export async function handleTrending(
   });
 
   scored.sort((a, b) => b.score - a.score);
-  const trending = scored.slice(0, 10).map(({ score, ...rest }) => rest);
+  const trending = scored.slice(0, resultLimit).map(({ score, ...rest }) => rest);
 
   return Response.json(
     { trending },
     {
       headers: {
-        "Cache-Control": "public, max-age=30",
+        "Cache-Control": "public, max-age=60",
       },
     }
   );

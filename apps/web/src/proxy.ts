@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from 'next/server'
  * Enforce uppercase slugs for /trade/[pair] and /dispense/[asset].
  * Redirects /trade/xcp_btc → /trade/XCP_BTC (301 permanent).
  */
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
 
   // Only apply to dynamic route segments

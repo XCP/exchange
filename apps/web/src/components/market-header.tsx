@@ -1,10 +1,15 @@
+'use client'
+
+import { useState } from 'react'
 import Image from 'next/image'
 import { formatAmount } from '@/utils/format-amount'
 import { XCP_IMG_BASE } from '@/utils/constants'
-import type { TradingPairDetail } from '@/types/trading'
+import type { TradingPairData } from '@/lib/hooks/useTradingPair'
+
+type Timeframe = '24h' | '7d' | '30d'
 
 interface MarketHeaderProps {
-  pairData: TradingPairDetail | undefined
+  pairData: TradingPairData | undefined
   baseSymbol: string
   quoteSymbol: string
   market: string
@@ -12,18 +17,26 @@ interface MarketHeaderProps {
   actionSlot?: React.ReactNode
 }
 
+function getStats(p: TradingPairData | undefined, tf: Timeframe) {
+  if (!p) return { change: null, volume: null, high: null, low: null, count: null }
+  if (tf === '7d') return { change: p.price_change_7d, volume: p.volume_7d, high: p.high_7d ?? null, low: p.low_7d ?? null, count: p.trade_count_7d }
+  if (tf === '30d') return { change: p.price_change_30d ?? null, volume: p.volume_30d, high: p.high_30d ?? null, low: p.low_30d ?? null, count: p.trade_count_30d }
+  return { change: p.price_change_24h, volume: p.volume_24h, high: p.high_24h, low: p.low_24h, count: p.trade_count_24h }
+}
+
 export function MarketHeader({ pairData, baseSymbol, quoteSymbol, market, isLoading, actionSlot }: MarketHeaderProps) {
-  const priceChange = pairData?.price_change_24h
-  const isPositive = priceChange != null && priceChange >= 0
+  const [tf, setTf] = useState<Timeframe>('24h')
+  const stats = getStats(pairData, tf)
+  const isPositive = stats.change != null && stats.change >= 0
 
   return (
     <div className="border-b border-zinc-800 bg-zinc-950 px-4 py-3">
       <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
         <div className="flex items-center gap-3">
           <div className="relative h-8 w-8 rounded-sm bg-zinc-800 overflow-hidden flex items-center justify-center">
-            {pairData?.base_asset?.asset ? (
+            {pairData?.base_asset ? (
               <Image
-                src={`${XCP_IMG_BASE}/icon/${pairData.base_asset.asset}`}
+                src={`${XCP_IMG_BASE}/icon/${pairData.base_asset}`}
                 alt={baseSymbol}
                 width={32}
                 height={32}
@@ -50,47 +63,65 @@ export function MarketHeader({ pairData, baseSymbol, quoteSymbol, market, isLoad
           ) : (
             <>
               <span className="text-lg font-semibold text-zinc-100 font-mono max-sm:text-base">
-                {pairData?.last_trade_price != null ? formatAmount(pairData.last_trade_price) : '—'}
+                {pairData?.last_price != null ? formatAmount(pairData.last_price) : '—'}
               </span>
               <span className="text-xs text-zinc-500">{quoteSymbol}</span>
-              {pairData?.last_trade_price_usd != null && (
-                <span className="text-xs text-zinc-400 max-sm:hidden">
-                  (${formatAmount(pairData.last_trade_price_usd, true)})
-                </span>
-              )}
             </>
           )}
         </div>
 
-        {priceChange != null && (
+        {stats.change != null && (
           <span className={`rounded-sm px-2 py-0.5 text-xs font-medium ${
             isPositive ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'
           }`}>
-            {isPositive ? '+' : ''}{priceChange.toFixed(1)}%
+            {isPositive ? '+' : ''}{stats.change.toFixed(1)}%
           </span>
         )}
 
         <div className="h-8 w-px bg-zinc-800 max-md:hidden" />
 
-        <div className="hidden md:flex gap-5">
+        <div className="hidden md:flex gap-5 items-end">
           <div>
-            <div className="text-xs text-zinc-500">24h High</div>
+            <div className="text-xs text-zinc-500">{tf} High</div>
             <div className="text-xs text-zinc-300 font-mono">
-              {pairData?.high_24h != null ? formatAmount(pairData.high_24h) : '—'}
+              {stats.high != null ? formatAmount(stats.high) : '—'}
             </div>
           </div>
           <div>
-            <div className="text-xs text-zinc-500">24h Low</div>
+            <div className="text-xs text-zinc-500">{tf} Low</div>
             <div className="text-xs text-zinc-300 font-mono">
-              {pairData?.low_24h != null ? formatAmount(pairData.low_24h) : '—'}
+              {stats.low != null ? formatAmount(stats.low) : '—'}
             </div>
           </div>
           <div>
-            <div className="text-xs text-zinc-500">24h Vol</div>
+            <div className="text-xs text-zinc-500">{tf} Vol</div>
             <div className="text-xs text-zinc-300 font-mono">
-              {pairData?.volume_24h ? `${formatAmount(pairData.volume_24h)} ${quoteSymbol}` : '—'}
+              {stats.volume ? `${formatAmount(stats.volume)} ${quoteSymbol}` : '—'}
             </div>
           </div>
+          <div>
+            <div className="text-xs text-zinc-500">Trades</div>
+            <div className="text-xs text-zinc-300 font-mono">
+              {stats.count != null && stats.count > 0 ? stats.count : '—'}
+            </div>
+          </div>
+        </div>
+
+        {/* Timeframe selector */}
+        <div className="flex rounded-sm overflow-hidden border border-zinc-800 ml-auto md:ml-0">
+          {(['24h', '7d', '30d'] as const).map((t) => (
+            <button
+              key={t}
+              onClick={() => setTf(t)}
+              className={`px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider transition-colors ${
+                tf === t
+                  ? 'bg-zinc-800 text-zinc-200'
+                  : 'text-zinc-600 hover:text-zinc-400'
+              }`}
+            >
+              {t}
+            </button>
+          ))}
         </div>
 
         {actionSlot && <div className="ml-auto">{actionSlot}</div>}

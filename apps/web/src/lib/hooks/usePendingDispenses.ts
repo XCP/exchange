@@ -20,7 +20,7 @@ interface MempoolEvent {
 }
 
 export function usePendingDispenses(dispenserSource: string | undefined) {
-  const { data, isLoading } = useSWR<CounterpartyResponse<MempoolEvent[]>>(
+  const { data, error, isLoading } = useSWR<CounterpartyResponse<MempoolEvent[]>>(
     dispenserSource ? mempoolDispensesUrl(dispenserSource) : null,
     fetcher,
     { refreshInterval: 10_000 }
@@ -31,6 +31,7 @@ export function usePendingDispenses(dispenserSource: string | undefined) {
   return {
     pendingCount: events.length,
     pendingEvents: events,
+    error,
     isLoading,
   }
 }

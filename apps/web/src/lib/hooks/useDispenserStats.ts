@@ -7,11 +7,16 @@ export interface DispenserStats {
   last_dispense_time: number | null
   price_change_24h: number | null
   price_change_7d: number | null
+  price_change_30d: number | null
   volume_24h: number | null
   volume_7d: number | null
   volume_30d: number | null
   high_24h: number | null
   low_24h: number | null
+  high_7d: number | null
+  low_7d: number | null
+  high_30d: number | null
+  low_30d: number | null
   dispense_count_24h: number | null
   dispense_count_7d: number | null
   dispense_count_30d: number | null

@@ -1,4 +1,4 @@
-import { XCP_API_BASE, COUNTERPARTY_API_BASE, DEX_API_BASE } from '@/utils/constants'
+import { COUNTERPARTY_API_BASE, DEX_API_BASE } from '@/utils/constants'
 
 export async function fetcher<T>(url: string): Promise<T> {
   const res = await fetch(url)
@@ -6,11 +6,6 @@ export async function fetcher<T>(url: string): Promise<T> {
     throw new Error(`API error: ${res.status} ${res.statusText}`)
   }
   return res.json()
-}
-
-// app.xcp.io URL builders
-export function xcpUrl(path: string): string {
-  return `${XCP_API_BASE}${path}`
 }
 
 // api.counterparty.io URL builders

@@ -1,90 +1,74 @@
+'use client'
+
 import Link from 'next/link'
-import type { OtherMarket } from '@/types/trading'
+import { useAssetMarkets } from '@/lib/hooks/useAssetMarkets'
 import { formatAmount } from '@/utils/format-amount'
-
-const EXTERNAL_QUOTES: Record<string, string> = {
-  JPY: 'zaif',
-  ETH: 'emblem',
-  WETH: 'emblem',
-  USDC: 'emblem',
-}
-
-function getExternalUrl(market: OtherMarket): string | null {
-  const dest = EXTERNAL_QUOTES[market.quote_asset.symbol]
-  if (!dest) return null
-
-  const asset = market.name.split('/')[0].toLowerCase()
-  if (dest === 'zaif') return `https://zaif.jp/trade/${asset}_jpy`
-  if (dest === 'emblem') return 'https://emblem.finance'
-  return null
-}
+import { formatTimeAgo } from '@/utils/format-time-ago'
 
 interface MarketsTableProps {
-  markets: OtherMarket[]
+  asset: string
+  currentPair?: string
 }
 
-export function MarketsTable({ markets }: MarketsTableProps) {
-  if (markets.length === 0) {
+export function MarketsTable({ asset, currentPair }: MarketsTableProps) {
+  const { pairs, isLoading } = useAssetMarkets(asset)
+
+  if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <span className="text-xs text-zinc-600">No other markets</span>
+        <span className="text-xs text-zinc-500">Loading markets...</span>
+      </div>
+    )
+  }
+
+  if (pairs.length === 0) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <span className="text-xs text-zinc-600">No other markets found</span>
       </div>
     )
   }
 
   return (
     <div>
-      <div className="grid grid-cols-4 gap-0 px-3 py-1.5 text-xs text-zinc-600 border-b border-zinc-800">
+      <div className="grid grid-cols-5 gap-0 px-3 py-1.5 text-xs text-zinc-600 border-b border-zinc-800 max-sm:grid-cols-3">
         <span>Pair</span>
         <span className="text-right">Price</span>
-        <span className="text-right">Mkt Cap</span>
-        <span className="text-right">Last Trade</span>
+        <span className="text-right max-sm:hidden">24h Vol</span>
+        <span className="text-right max-sm:hidden">Trades</span>
+        <span className="text-right">24h %</span>
       </div>
       <div className="px-1">
-        {markets.map((market, i) => {
-          const externalUrl = getExternalUrl(market)
-
-          const cells = (
-            <>
-              <span className="text-zinc-300 font-mono">
-                {market.name}
-                {externalUrl && <span className="ml-1 text-zinc-600">↗</span>}
-              </span>
-              <span className="text-right text-zinc-400 font-mono">
-                {market.last_trade_price != null ? formatAmount(market.last_trade_price) : '—'}
-              </span>
-              <span className="text-right text-zinc-500 font-mono">
-                {market.market_cap_usd ? `$${formatAmount(market.market_cap_usd, true)}` : '—'}
-              </span>
-              <span className="text-right text-zinc-500 font-mono">
-                {market.last_trade_date
-                  ? new Date(market.last_trade_date * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-                  : '—'}
-              </span>
-            </>
-          )
-
-          if (externalUrl) {
-            return (
-              <a
-                key={`market-${i}`}
-                href={externalUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="grid grid-cols-4 gap-0 px-2 py-1 text-xs hover:bg-zinc-900 cursor-pointer"
-              >
-                {cells}
-              </a>
-            )
-          }
-
+        {pairs.map((p) => {
+          const isCurrent = p.pair === currentPair
+          const slug = p.pair.replace('/', '_')
           return (
             <Link
-              key={`market-${i}`}
-              href={`/trade/${market.slug}`}
-              className="grid grid-cols-4 gap-0 px-2 py-1 text-xs hover:bg-zinc-900 cursor-pointer"
+              key={p.pair}
+              href={`/trade/${slug}`}
+              className={`grid grid-cols-5 gap-0 px-2 py-1.5 text-xs hover:bg-zinc-900 transition-colors max-sm:grid-cols-3 ${
+                isCurrent ? 'bg-zinc-900/50' : ''
+              }`}
             >
-              {cells}
+              <span className="text-zinc-100 font-medium">{p.pair}</span>
+              <span className="text-right text-zinc-300 font-mono">
+                {p.last_price != null ? formatAmount(p.last_price) : '—'}
+              </span>
+              <span className="text-right text-zinc-500 font-mono max-sm:hidden">
+                {p.volume_24h != null && p.volume_24h > 0 ? formatAmount(p.volume_24h) : '—'}
+              </span>
+              <span className="text-right text-zinc-500 font-mono max-sm:hidden">
+                {p.trade_count_24h ?? '—'}
+              </span>
+              <span className={`text-right font-mono ${
+                p.price_change_24h != null && p.price_change_24h >= 0
+                  ? 'text-green-400'
+                  : 'text-red-400'
+              }`}>
+                {p.price_change_24h != null
+                  ? `${p.price_change_24h >= 0 ? '+' : ''}${p.price_change_24h.toFixed(1)}%`
+                  : '—'}
+              </span>
             </Link>
           )
         })}

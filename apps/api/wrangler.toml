@@ -8,7 +8,7 @@ crons = ["*/10 * * * *"]
 [[d1_databases]]
 binding = "DB"
 database_name = "xcpdex"
-database_id = "02897310-a6ba-441c-bd17-bd84bbb25363"
+database_id = "c30d6223-aee2-4ee5-a9a2-e6ff2ce3dede"
 migrations_dir = "migrations"
 
 [vars]

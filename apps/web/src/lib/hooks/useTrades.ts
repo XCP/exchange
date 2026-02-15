@@ -1,66 +1,158 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import useSWR from 'swr'
-import BigNumber from 'bignumber.js'
-import { fetcher } from '@/lib/api/client'
-import { orderMatchesUrl } from '@/lib/api/counterparty'
-import { assetsToTradingPairFromSymbols } from '@/utils/trading-pair'
-import type { GlobalOrderMatch } from '@/types/trading'
-import type { CounterpartyResponse } from '@/types/api'
+import { fetcher, dexUrl } from '@/lib/api/client'
 
-export interface ProcessedTrade {
-  price: string
-  amount: string
+export interface Trade {
+  id: number
+  price: number
+  amount: number
+  volume: number
   side: 'buy' | 'sell'
   maker: string
   taker: string
   block_time: number
-  tx_hash: string
+  tx0: string
+  tx1: string
 }
 
-function processMatches(matches: GlobalOrderMatch[], baseSymbol: string, quoteSymbol: string): ProcessedTrade[] {
-  return matches.map(match => {
-    // Determine which side is base and which is quote
-    const fwdSymbol = match.forward_asset_info?.asset_longname ?? match.forward_asset
-    const bwdSymbol = match.backward_asset_info?.asset_longname ?? match.backward_asset
+interface DexTrade {
+  id: number
+  t: number
+  price: number
+  amount: number
+  volume: number
+  side: string
+  maker: string
+  taker: string
+  tx0: string
+  tx1: string
+}
 
-    const fwdIsBase = fwdSymbol === baseSymbol
-    const baseQty = new BigNumber(fwdIsBase ? match.forward_quantity_normalized : match.backward_quantity_normalized)
-    const quoteQty = new BigNumber(fwdIsBase ? match.backward_quantity_normalized : match.forward_quantity_normalized)
+interface TradesResponse {
+  pair: string
+  trades: DexTrade[]
+  next_cursor: string | null
+}
 
-    const price = baseQty.isGreaterThan(0) ? quoteQty.dividedBy(baseQty).toFixed(8) : '0.00000000'
+const PAGE_SIZE = 50
+const MAX_TRADES = 1000
 
-    // tx0 placed first (maker), tx1 matched against it (taker)
-    // If maker is giving quote asset, they're buying base → trade is a buy
-    const makerGivesQuote = fwdIsBase
-      ? match.backward_asset === match.forward_asset ? false : true  // backward is quote
-      : match.forward_asset === match.backward_asset ? false : true
-
-    // Simpler: if forward_asset is the base, the tx0 (maker) is selling base
-    const side: 'buy' | 'sell' = fwdIsBase ? 'sell' : 'buy'
-
-    return {
-      price,
-      amount: baseQty.toFixed(8),
-      side,
-      maker: match.tx0_address,
-      taker: match.tx1_address,
-      block_time: match.block_time,
-      tx_hash: match.tx1_hash,
-    }
-  })
+function mapTrade(t: DexTrade): Trade {
+  return {
+    id: t.id,
+    price: t.price,
+    amount: t.amount,
+    volume: t.volume,
+    side: t.side as 'buy' | 'sell',
+    maker: t.maker,
+    taker: t.taker,
+    block_time: t.t,
+    tx0: t.tx0,
+    tx1: t.tx1,
+  }
 }
 
 export function useTrades(market: string, baseSymbol: string, quoteSymbol: string) {
-  const { data, error, isLoading } = useSWR<CounterpartyResponse<GlobalOrderMatch[]>>(
-    market ? orderMatchesUrl(market) : null,
+  const pairSlug = market.replace('/', '_')
+  const url = market ? dexUrl(`/trades/${pairSlug}?limit=${PAGE_SIZE}`) : null
+
+  // SWR fetches the latest page (auto-refreshes)
+  const { data, error, isLoading } = useSWR<TradesResponse>(
+    url,
     fetcher,
-    { refreshInterval: 60_000 }
+    { refreshInterval: 60_000, revalidateOnFocus: false }
   )
 
-  const trades = data?.result ? processMatches(data.result, baseSymbol, quoteSymbol) : []
+  // Accumulated older trades (appended via loadMore)
+  const [olderTrades, setOlderTrades] = useState<Trade[]>([])
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [nextCursor, setNextCursor] = useState<string | null>(null)
+  const [hasMore, setHasMore] = useState(true)
+
+  // Reset when pair changes
+  const prevPair = useRef('')
+  useEffect(() => {
+    if (pairSlug !== prevPair.current) {
+      prevPair.current = pairSlug
+      setOlderTrades([])
+      setNextCursor(null)
+      setHasMore(true)
+    }
+  }, [pairSlug])
+
+  // Track the cursor from the initial SWR response
+  useEffect(() => {
+    if (data) {
+      setNextCursor(data.next_cursor)
+      if (!data.next_cursor) setHasMore(false)
+    }
+  }, [data])
+
+  // Map latest trades from SWR
+  const latestTrades = useMemo(
+    () => (data?.trades ?? []).map(mapTrade),
+    [data]
+  )
+
+  // Merge: latest (newest) + older, deduplicate by id (fall back to tx0+tx1)
+  const trades = useMemo(() => {
+    if (!olderTrades.length) return latestTrades
+    const seen = new Set<string>()
+    const key = (t: Trade) => t.id != null ? String(t.id) : `${t.tx0}-${t.tx1}`
+    const result: Trade[] = []
+    for (const t of latestTrades) {
+      const k = key(t)
+      if (!seen.has(k)) { seen.add(k); result.push(t) }
+    }
+    for (const t of olderTrades) {
+      const k = key(t)
+      if (!seen.has(k)) { seen.add(k); result.push(t) }
+    }
+    return result
+  }, [latestTrades, olderTrades])
+
+  // Stable refs for the loadMore callback
+  const stateRef = useRef({ pairSlug, nextCursor, olderTrades, latestTrades })
+  stateRef.current = { pairSlug, nextCursor, olderTrades, latestTrades }
+
+  const loadMore = useCallback(async () => {
+    const { pairSlug: pair, nextCursor: cursor } = stateRef.current
+    if (!pair || !cursor || loadingMore || !hasMore) return
+
+    // Cap total trades
+    const totalSoFar = stateRef.current.latestTrades.length + stateRef.current.olderTrades.length
+    if (totalSoFar >= MAX_TRADES) {
+      setHasMore(false)
+      return
+    }
+
+    setLoadingMore(true)
+    try {
+      const moreUrl = dexUrl(`/trades/${pair}?limit=${PAGE_SIZE}&cursor=${cursor}`)
+      const resp: TradesResponse = await fetcher(moreUrl)
+
+      if (!resp.trades.length) {
+        setHasMore(false)
+        setNextCursor(null)
+      } else {
+        const newTrades = resp.trades.map(mapTrade)
+        setOlderTrades((prev) => [...prev, ...newTrades])
+        setNextCursor(resp.next_cursor)
+        if (!resp.next_cursor) setHasMore(false)
+      }
+    } catch (e) {
+      console.error('Failed to load more trades:', e)
+    } finally {
+      setLoadingMore(false)
+    }
+  }, [loadingMore, hasMore])
 
   return {
     trades,
     error,
     isLoading,
+    loadMore,
+    loadingMore,
+    hasMore,
   }
 }

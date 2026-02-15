@@ -63,6 +63,7 @@ export interface CounterpartyDispenser {
   give_remaining: number;
   give_remaining_normalized: string;
   satoshirate: number;
+  satoshirate_normalized: string;
   satoshi_price: number;
   price: number;
   price_normalized: string;

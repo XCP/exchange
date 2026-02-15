@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import Image from 'next/image'
+import Link from 'next/link'
 import { useGlobalDispensers, useGlobalDispenses } from '@/lib/hooks/useGlobalDispensers'
 import { formatAddress } from '@/utils/format-address'
 import { formatAmountTrade } from '@/utils/format-amount-trade'
@@ -65,8 +66,9 @@ export default function DispensersPage() {
                 {dispensers.map((d) => {
                   const assetName = d.asset_info?.asset_longname ?? d.asset
                   return (
-                    <div
+                    <Link
                       key={d.tx_hash}
+                      href={`/dispense/${d.asset}`}
                       className="grid grid-cols-6 gap-0 px-4 py-2 text-xs hover:bg-zinc-900 transition-colors border-b border-zinc-800/50 last:border-0 max-sm:grid-cols-4"
                     >
                       <span className="flex items-center gap-2">
@@ -87,7 +89,7 @@ export default function DispensersPage() {
                       <span className="text-right text-zinc-600 font-mono">
                         {d.block_time ? formatTimeAgo(d.block_time) : '—'}
                       </span>
-                    </div>
+                    </Link>
                   )
                 })}
               </div>
@@ -118,8 +120,9 @@ export default function DispensersPage() {
                 {dispenses.map((d) => {
                   const assetName = d.asset_info?.asset_longname ?? d.asset
                   return (
-                    <div
+                    <Link
                       key={`${d.tx_hash}-${d.dispense_index}`}
+                      href={`/dispense/${d.asset}`}
                       className="grid grid-cols-6 gap-0 px-4 py-2 text-xs hover:bg-zinc-900 transition-colors border-b border-zinc-800/50 last:border-0 max-sm:grid-cols-4"
                     >
                       <span className="flex items-center gap-2">
@@ -140,7 +143,7 @@ export default function DispensersPage() {
                       <span className="text-right text-zinc-600 font-mono">
                         {d.block_time ? formatTimeAgo(d.block_time) : '—'}
                       </span>
-                    </div>
+                    </Link>
                   )
                 })}
               </div>

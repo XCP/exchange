@@ -1,11 +1,13 @@
 import { updatePairStats } from "./stats";
+import { getMode, setMode } from "./state";
 
-const INTERVAL_SECONDS: Record<string, number> = {
+export const INTERVAL_SECONDS: Record<string, number> = {
   "1h": 3600,
   "4h": 14400,
   "1d": 86400,
   "1w": 604800,
   "1m": 2592000, // 30 days
+  "1y": 31536000, // 365 days
 };
 
 export const ALL_INTERVALS = Object.keys(INTERVAL_SECONDS);
@@ -27,13 +29,15 @@ export async function aggregateCandlesForPair(
   for (const interval of ALL_INTERVALS) {
     const startBucket = bucketTimestamp(sinceTime, interval);
 
-    // Get all trades for this pair from the affected time range
+    // Get all trades for this pair from the affected time range.
+    // Secondary sort by rowid ensures deterministic open/close when
+    // multiple trades share the same block_time.
     const trades = await db
       .prepare(
         `SELECT block_time, price, amount, volume, side
          FROM trades
          WHERE pair = ? AND block_time >= ?
-         ORDER BY block_time ASC`
+         ORDER BY block_time ASC, rowid ASC`
       )
       .bind(pair, startBucket)
       .all<{
@@ -82,10 +86,10 @@ export async function aggregateCandlesForPair(
     const stmts: D1PreparedStatement[] = [];
     for (const [timestamp, data] of buckets) {
       data.prices.sort((a, b) => a.time - b.time);
-      const open = data.prices[0].price;
-      const close = data.prices[data.prices.length - 1].price;
-      const high = Math.max(...data.prices.map((p) => p.price));
-      const low = Math.min(...data.prices.map((p) => p.price));
+      const open = parseFloat(data.prices[0].price.toFixed(8));
+      const close = parseFloat(data.prices[data.prices.length - 1].price.toFixed(8));
+      const high = parseFloat(Math.max(...data.prices.map((p) => p.price)).toFixed(8));
+      const low = parseFloat(Math.min(...data.prices.map((p) => p.price)).toFixed(8));
 
       stmts.push(
         db
@@ -125,7 +129,7 @@ export async function aggregateCandlesForPair(
  * Called by the cron handler when `aggregation_offset` exists in indexer_state.
  * Returns true when all pairs are done.
  */
-const CATCHUP_BATCH_SIZE = 10;
+const CATCHUP_BATCH_SIZE = 200;
 
 export async function runCatchupAggregation(
   db: D1Database
@@ -156,6 +160,13 @@ export async function runCatchupAggregation(
     await db
       .prepare(`DELETE FROM indexer_state WHERE key = 'aggregation_offset'`)
       .run();
+
+    // If we were in BUILD_AGGREGATES, transition to FOLLOWING
+    const mode = await getMode(db);
+    if (mode === "BUILD_AGGREGATES") {
+      await setMode(db, "FOLLOWING");
+    }
+
     return { done: true, processed: 0, offset };
   }
 

@@ -1,13 +1,18 @@
 'use client'
 
-import { useEffect, useRef, useState, useCallback } from 'react'
-import { createChart, CandlestickSeries, HistogramSeries, type IChartApi, type ISeriesApi, type CandlestickData, type HistogramData, type Time, ColorType } from 'lightweight-charts'
+import { useEffect, useRef, useState } from 'react'
+import { createChart, CandlestickSeries, HistogramSeries, PriceScaleMode, type IChartApi, type ISeriesApi, type CandlestickData, type HistogramData, type Time, ColorType } from 'lightweight-charts'
 import { useOhlc } from '@/lib/hooks/useOhlc'
 
 interface ChartProps {
   pairSlug: string
   pairLabel?: string
 }
+
+const ALL_TIMEFRAMES = ['1H', '4H', '1D', '1W', '1M', '1Y'] as const
+
+// Minimum real candles needed to show a timeframe button
+const MIN_REAL_CANDLES = 3
 
 function fmtPrice(n: number): string {
   if (n === 0) return '0'
@@ -18,21 +23,50 @@ function fmtPrice(n: number): string {
   return n.toFixed(2)
 }
 
+function fmtVol(n: number): string {
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(2) + 'M'
+  if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K'
+  if (n >= 1) return n.toFixed(2)
+  if (n > 0) return n.toFixed(4)
+  return '0'
+}
+
 export function Chart({ pairSlug, pairLabel }: ChartProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
   const candleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null)
   const volumeSeriesRef = useRef<ISeriesApi<'Histogram'> | null>(null)
   const [activeTimeframe, setActiveTimeframe] = useState('1D')
+  const [logScale, setLogScale] = useState(false)
   const candlesRef = useRef<CandlestickData<Time>[]>([])
+  const volumesRef = useRef<HistogramData<Time>[]>([])
+  const prevCandleCount = useRef(0)
 
   // Fetch OHLC data from our API
-  const { candles: rawCandles, isLoading } = useOhlc(pairSlug, activeTimeframe)
+  const { candles: rawCandles, realCandleCount, isLoading, loadMore, loadingMore, hasMore } = useOhlc(pairSlug, activeTimeframe)
+
+  // Auto-bump to 1D if sub-daily timeframe has too few real candles
+  const hasAutoSelected = useRef(false)
+  useEffect(() => {
+    if (hasAutoSelected.current) return
+    if (!isLoading && rawCandles.length > 0) {
+      if ((activeTimeframe === '1H' || activeTimeframe === '4H') && realCandleCount < MIN_REAL_CANDLES) {
+        setActiveTimeframe('1D')
+      }
+      hasAutoSelected.current = true
+    }
+  }, [isLoading, rawCandles.length, realCandleCount, activeTimeframe])
+
+  // Reset auto-select flag and candle count when pair or timeframe changes
+  useEffect(() => {
+    hasAutoSelected.current = false
+    prevCandleCount.current = 0
+  }, [pairSlug, activeTimeframe])
 
   // OHLC header values from crosshair or last candle
-  const [ohlcHeader, setOhlcHeader] = useState<{ o: string; h: string; l: string; c: string; green: boolean } | null>(null)
+  const [ohlcHeader, setOhlcHeader] = useState<{ o: string; h: string; l: string; c: string; v: string; green: boolean } | null>(null)
 
-  const initChart = useCallback(() => {
+  const initChart = () => {
     if (!containerRef.current) return
 
     // Clean up previous chart
@@ -83,14 +117,7 @@ export function Chart({ pairSlug, pairLabel }: ChartProps) {
       priceFormat: {
         type: 'custom',
         minMove: 0.00000001,
-        formatter: (price: number) => {
-          if (price === 0) return '0'
-          const abs = Math.abs(price)
-          if (abs < 0.0001) return price.toFixed(8)
-          if (abs < 0.01) return price.toFixed(6)
-          if (abs < 1) return price.toFixed(4)
-          return price.toFixed(2)
-        },
+        formatter: fmtPrice,
       },
     })
 
@@ -110,23 +137,27 @@ export function Chart({ pairSlug, pairLabel }: ChartProps) {
         const candles = candlesRef.current
         if (candles.length > 0) {
           const last = candles[candles.length - 1]
+          const lastVol = volumesRef.current[volumesRef.current.length - 1]
           setOhlcHeader({
             o: fmtPrice(last.open),
             h: fmtPrice(last.high),
             l: fmtPrice(last.low),
             c: fmtPrice(last.close),
+            v: fmtVol(lastVol?.value ?? 0),
             green: last.close >= last.open,
           })
         }
         return
       }
       const d = param.seriesData.get(candleSeries) as CandlestickData<Time> | undefined
+      const vol = param.seriesData.get(volumeSeries) as HistogramData<Time> | undefined
       if (d) {
         setOhlcHeader({
           o: fmtPrice(d.open),
           h: fmtPrice(d.high),
           l: fmtPrice(d.low),
           c: fmtPrice(d.close),
+          v: fmtVol(vol?.value ?? 0),
           green: d.close >= d.open,
         })
       }
@@ -135,7 +166,7 @@ export function Chart({ pairSlug, pairLabel }: ChartProps) {
     chartRef.current = chart
     candleSeriesRef.current = candleSeries
     volumeSeriesRef.current = volumeSeries
-  }, [])
+  }
 
   // Create chart on mount
   useEffect(() => {
@@ -146,7 +177,7 @@ export function Chart({ pairSlug, pairLabel }: ChartProps) {
         chartRef.current = null
       }
     }
-  }, [initChart])
+  }, [])
 
   // Update chart data when candles change
   useEffect(() => {
@@ -167,36 +198,108 @@ export function Chart({ pairSlug, pairLabel }: ChartProps) {
     }))
 
     candlesRef.current = candles
+    volumesRef.current = volumes
     candleSeriesRef.current.setData(candles)
     volumeSeriesRef.current.setData(volumes)
 
     // Set OHLC header from last candle
     const last = candles[candles.length - 1]
+    const lastVol = volumes[volumes.length - 1]
     setOhlcHeader({
       o: fmtPrice(last.open),
       h: fmtPrice(last.high),
       l: fmtPrice(last.low),
       c: fmtPrice(last.close),
+      v: fmtVol(lastVol?.value ?? 0),
       green: last.close >= last.open,
     })
 
-    chartRef.current?.timeScale().fitContent()
+    // Only fitContent on initial load, not when prepending history
+    const isInitialLoad = prevCandleCount.current === 0
+    prevCandleCount.current = candles.length
+    if (isInitialLoad) {
+      chartRef.current?.timeScale().fitContent()
+    }
   }, [rawCandles])
 
-  // Resize observer
+  // Lazy-load older candles when user scrolls to the left edge
+  const loadMoreRef = useRef(loadMore)
+  loadMoreRef.current = loadMore
+  const hasMoreRef = useRef(hasMore)
+  hasMoreRef.current = hasMore
+  const loadingMoreRef = useRef(loadingMore)
+  loadingMoreRef.current = loadingMore
+
+  useEffect(() => {
+    const chart = chartRef.current
+    if (!chart) return
+
+    const handler = (logicalRange: { from: number; to: number } | null) => {
+      if (!logicalRange || !hasMoreRef.current || loadingMoreRef.current) return
+      // When the user scrolls so that the leftmost visible bar is within
+      // 10 bars of the data start, trigger a load
+      if (logicalRange.from < 10) {
+        loadMoreRef.current()
+      }
+    }
+
+    chart.timeScale().subscribeVisibleLogicalRangeChange(handler)
+    return () => chart.timeScale().unsubscribeVisibleLogicalRangeChange(handler)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rawCandles])
+
+  // Resize observer — runs once after chart is initialized
   useEffect(() => {
     const container = containerRef.current
-    if (!container || !chartRef.current) return
+    const chart = chartRef.current
+    if (!container || !chart) return
 
     const ro = new ResizeObserver((entries) => {
       for (const entry of entries) {
         const { width, height } = entry.contentRect
-        chartRef.current?.applyOptions({ width, height })
+        chart.applyOptions({ width, height })
       }
     })
     ro.observe(container)
     return () => ro.disconnect()
-  }, [chartRef.current])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rawCandles])
+
+  // Toggle log/linear price scale
+  useEffect(() => {
+    chartRef.current?.applyOptions({
+      rightPriceScale: {
+        mode: logScale ? PriceScaleMode.Logarithmic : PriceScaleMode.Normal,
+      },
+    })
+  }, [logScale])
+
+  // Adjust time formatting based on timeframe
+  useEffect(() => {
+    if (!chartRef.current) return
+    const showTime = activeTimeframe === '1H' || activeTimeframe === '4H'
+    chartRef.current.applyOptions({
+      localization: {
+        timeFormatter: (time: unknown) => {
+          const d = new Date((time as number) * 1000)
+          if (activeTimeframe === '1Y') return d.getUTCFullYear().toString()
+          if (activeTimeframe === '1M')
+            return d.toLocaleDateString('en-US', { month: 'short', year: 'numeric', timeZone: 'UTC' })
+          if (activeTimeframe === '1W' || activeTimeframe === '1D')
+            return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })
+          return d.toLocaleDateString('en-US', {
+            month: 'short', day: 'numeric', year: 'numeric',
+            hour: '2-digit', minute: '2-digit', timeZone: 'UTC', hour12: false,
+          })
+        },
+      },
+      timeScale: { timeVisible: showTime },
+    })
+  }, [activeTimeframe])
+
+  const resetZoom = () => {
+    chartRef.current?.timeScale().fitContent()
+  }
 
   return (
     <div>
@@ -205,7 +308,7 @@ export function Chart({ pairSlug, pairLabel }: ChartProps) {
         <div className="flex items-center gap-3">
           <span className="text-xs font-medium text-zinc-300 max-sm:hidden">{pairLabel ?? pairSlug}</span>
           <div className="flex items-center gap-0.5">
-            {['1H', '4H', '1D', '1W', '1M'].map((tf) => (
+            {ALL_TIMEFRAMES.map((tf) => (
               <button
                 key={tf}
                 onClick={() => setActiveTimeframe(tf)}
@@ -218,6 +321,26 @@ export function Chart({ pairSlug, pairLabel }: ChartProps) {
                 {tf}
               </button>
             ))}
+          </div>
+          <div className="flex items-center gap-0.5 border-l border-zinc-800 pl-2">
+            <button
+              onClick={() => setLogScale((s) => !s)}
+              title={logScale ? 'Switch to linear scale' : 'Switch to log scale'}
+              className={`px-2 py-0.5 text-xs rounded-sm transition-colors ${
+                logScale
+                  ? 'bg-zinc-800 text-zinc-100'
+                  : 'text-zinc-500 hover:text-zinc-300'
+              }`}
+            >
+              Log
+            </button>
+            <button
+              onClick={resetZoom}
+              title="Reset zoom"
+              className="px-2 py-0.5 text-xs rounded-sm text-zinc-500 hover:text-zinc-300 transition-colors"
+            >
+              Reset
+            </button>
           </div>
         </div>
         {ohlcHeader && (
@@ -232,6 +355,8 @@ export function Chart({ pairSlug, pairLabel }: ChartProps) {
             <span className={`text-xs font-mono ${ohlcHeader.green ? 'text-green-400' : 'text-red-400'}`}>
               {ohlcHeader.c}
             </span>
+            <span className="text-xs text-zinc-600">V</span>
+            <span className="text-xs text-zinc-300 font-mono">{ohlcHeader.v}</span>
           </div>
         )}
       </div>
@@ -249,6 +374,11 @@ export function Chart({ pairSlug, pairLabel }: ChartProps) {
           </div>
         )}
         <div ref={containerRef} style={{ height: '100%', width: '100%' }} />
+        {loadingMore && (
+          <div className="absolute top-2 left-2 text-xs text-zinc-500">
+            Loading history...
+          </div>
+        )}
       </div>
     </div>
   )

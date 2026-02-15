@@ -1,5 +1,6 @@
 'use client'
 
+import { useCallback, useRef } from 'react'
 import { useTrades } from '@/lib/hooks/useTrades'
 import { formatAmountTrade } from '@/utils/format-amount-trade'
 import { formatTimeAgo } from '@/utils/format-time-ago'
@@ -12,7 +13,29 @@ interface TradesListProps {
 }
 
 export function TradesList({ market, baseSymbol, quoteSymbol }: TradesListProps) {
-  const { trades, isLoading } = useTrades(market, baseSymbol, quoteSymbol)
+  const { trades, isLoading, loadMore, loadingMore, hasMore } = useTrades(market, baseSymbol, quoteSymbol)
+  const loadMoreRef = useRef(loadMore)
+  loadMoreRef.current = loadMore
+  const observerRef = useRef<IntersectionObserver | null>(null)
+
+  // Callback ref: fires when the sentinel DOM node mounts/unmounts
+  const sentinelRef = useCallback((node: HTMLDivElement | null) => {
+    if (observerRef.current) {
+      observerRef.current.disconnect()
+      observerRef.current = null
+    }
+    if (!node) return
+
+    observerRef.current = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          loadMoreRef.current()
+        }
+      },
+      { rootMargin: '200px' }
+    )
+    observerRef.current.observe(node)
+  }, [])
 
   if (isLoading) {
     return (
@@ -32,7 +55,7 @@ export function TradesList({ market, baseSymbol, quoteSymbol }: TradesListProps)
 
   return (
     <div>
-      <div className="grid grid-cols-5 gap-0 px-3 py-1.5 text-xs text-zinc-600">
+      <div className="grid grid-cols-3 sm:grid-cols-5 gap-0 px-3 py-1.5 text-xs text-zinc-600 sticky top-0 bg-zinc-950 z-10">
         <span>Price ({quoteSymbol})</span>
         <span className="text-right">Amount</span>
         <span className="text-right max-sm:hidden">Maker</span>
@@ -40,10 +63,10 @@ export function TradesList({ market, baseSymbol, quoteSymbol }: TradesListProps)
         <span className="text-right">Time</span>
       </div>
       <div className="px-1">
-        {trades.map((trade, i) => (
+        {trades.map((trade) => (
           <div
-            key={`trade-${i}`}
-            className="grid grid-cols-5 gap-0 px-2 py-px text-xs hover:bg-zinc-900 cursor-default"
+            key={trade.id ?? `${trade.tx0}-${trade.tx1}`}
+            className="grid grid-cols-3 sm:grid-cols-5 gap-0 px-2 py-px text-xs hover:bg-zinc-900 cursor-default"
           >
             <span className={`font-mono ${trade.side === 'buy' ? 'text-green-400' : 'text-red-400'}`}>
               {formatAmountTrade(trade.price)}
@@ -60,6 +83,18 @@ export function TradesList({ market, baseSymbol, quoteSymbol }: TradesListProps)
             </span>
           </div>
         ))}
+        {loadingMore && (
+          <div className="flex items-center justify-center py-2">
+            <span className="text-xs text-zinc-500">Loading more...</span>
+          </div>
+        )}
+        {!hasMore && trades.length > 50 && (
+          <div className="flex items-center justify-center py-2">
+            <span className="text-xs text-zinc-700">{trades.length} trades loaded</span>
+          </div>
+        )}
+        {/* Sentinel: callback ref sets up IntersectionObserver when this mounts */}
+        {hasMore && <div ref={sentinelRef} className="h-px" />}
       </div>
     </div>
   )

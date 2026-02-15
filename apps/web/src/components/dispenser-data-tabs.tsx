@@ -6,7 +6,7 @@ import { MarketsTable } from '@/components/markets-table'
 import { DispensersEmpty } from '@/components/dispensers-empty'
 import { formatAddress } from '@/utils/format-address'
 import { formatTimeAgo } from '@/utils/format-time-ago'
-import type { Dispense, OtherMarket } from '@/types/trading'
+import type { Dispense } from '@/types/trading'
 
 type TabKey = 'dispenses' | 'holders' | 'markets' | 'dispensers'
 
@@ -22,10 +22,9 @@ interface DispenserDataTabsProps {
   totalSupply: number
   dispenses: Dispense[]
   dispensesLoading: boolean
-  otherMarkets: OtherMarket[]
 }
 
-export function DispenserDataTabs({ asset, totalSupply, dispenses, dispensesLoading, otherMarkets }: DispenserDataTabsProps) {
+export function DispenserDataTabs({ asset, totalSupply, dispenses, dispensesLoading }: DispenserDataTabsProps) {
   const [activeTab, setActiveTab] = useState<TabKey>('dispenses')
 
   return (
@@ -53,7 +52,7 @@ export function DispenserDataTabs({ asset, totalSupply, dispenses, dispensesLoad
           <DispensesTable dispenses={dispenses} isLoading={dispensesLoading} />
         )}
         {activeTab === 'holders' && <HoldersTable asset={asset} totalSupply={totalSupply} />}
-        {activeTab === 'markets' && <MarketsTable markets={otherMarkets} />}
+        {activeTab === 'markets' && <MarketsTable asset={asset} />}
         {activeTab === 'dispensers' && <DispensersEmpty />}
       </div>
     </>

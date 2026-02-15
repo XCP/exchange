@@ -3,7 +3,6 @@
 import { use, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useTradingPair } from '@/lib/hooks/useTradingPair'
-import { usePairStats } from '@/lib/hooks/usePairStats'
 import { useOrderBook } from '@/lib/hooks/useOrderBook'
 import { MarketHeader } from '@/components/market-header'
 import { Chart } from '@/components/chart'
@@ -36,22 +35,12 @@ export default function PairOrdersPage({ params }: { params: Promise<{ pair: str
   const quoteSymbol = pairSlug.substring(lastUnderscoreIndex + 1)
   const market = `${baseSymbol}/${quoteSymbol}`
 
-  const { data: xcpData, isLoading: pairLoading } = useTradingPair(pairSlug)
-  const { data: pairStats } = usePairStats(pairSlug)
+  const { data: pairData, isLoading: pairLoading } = useTradingPair(pairSlug)
   const { bids, asks, spread, spreadPct } = useOrderBook(market)
-
-  // Merge 24h stats from DEX API into xcp.io pair data
-  const pairData = xcpData ? {
-    ...xcpData,
-    price_change_24h: pairStats?.price_change_24h ?? xcpData.price_change_24h,
-    high_24h: pairStats?.high_24h ?? xcpData.high_24h,
-    low_24h: pairStats?.low_24h ?? xcpData.low_24h,
-    volume_24h: pairStats?.volume_24h != null ? String(pairStats.volume_24h) : xcpData.volume_24h,
-  } : undefined
 
   const [mobileDataTab, setMobileDataTab] = useState<TabKey>('trades')
 
-  const lastPrice = pairData?.last_trade_price != null ? formatAmount(pairData.last_trade_price) : undefined
+  const lastPrice = pairData?.last_price != null ? formatAmount(pairData.last_price) : undefined
 
   // Lifted trade form state
   const [tradeTab, setTradeTab] = useState<'buy' | 'sell'>('buy')
@@ -72,9 +61,9 @@ export default function PairOrdersPage({ params }: { params: Promise<{ pair: str
     setTradeTab(side)
     setPriceInput(entry.price.replace(/,/g, ''))
   }
-  const totalSupply = pairData?.base_asset?.supply ?? 0
-  const baseAsset = pairData?.base_asset?.asset ?? baseSymbol
-  const otherMarkets = pairData?.other_markets ?? []
+
+  const totalSupply = pairData?.asset_info?.supply ?? 0
+  const baseAsset = pairData?.base_asset ?? baseSymbol
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 font-sans">
@@ -138,7 +127,7 @@ export default function PairOrdersPage({ params }: { params: Promise<{ pair: str
               </div>
               <span className="text-xs font-semibold text-zinc-100">{market}</span>
               <span className="text-sm font-semibold text-zinc-100 font-mono ml-auto">
-                {pairData?.last_trade_price != null ? formatAmount(pairData.last_trade_price) : '—'}
+                {pairData?.last_price != null ? formatAmount(pairData.last_price) : '—'}
               </span>
               {pairData?.price_change_24h != null && (
                 <span className={`rounded-sm px-1.5 py-0.5 text-xs font-medium ${
@@ -164,7 +153,7 @@ export default function PairOrdersPage({ params }: { params: Promise<{ pair: str
               quoteSymbol={quoteSymbol}
               baseAsset={baseAsset}
               totalSupply={totalSupply}
-              otherMarkets={otherMarkets}
+              currentPair={`${baseSymbol}/${quoteSymbol}`}
             />
           </div>
         </div>
@@ -202,7 +191,7 @@ export default function PairOrdersPage({ params }: { params: Promise<{ pair: str
         <div className="order-5 lg:hidden bg-zinc-950 h-[300px] overflow-y-auto">
           {mobileDataTab === 'trades' && <TradesList market={market} baseSymbol={baseSymbol} quoteSymbol={quoteSymbol} />}
           {mobileDataTab === 'holders' && <HoldersTable asset={baseAsset} totalSupply={totalSupply} />}
-          {mobileDataTab === 'markets' && <MarketsTable markets={otherMarkets} />}
+          {mobileDataTab === 'markets' && <MarketsTable asset={baseAsset} currentPair={`${baseSymbol}/${quoteSymbol}`} />}
           {mobileDataTab === 'orders' && <OrdersEmpty />}
         </div>
       </div>

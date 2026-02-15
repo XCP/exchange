@@ -45,9 +45,8 @@ export default function AssetDispensersPage({ params }: { params: Promise<{ asse
     setModalDispenser(d)
   }
 
-  const totalSupply = pairData?.base_asset?.supply ?? 0
-  const baseAsset = pairData?.base_asset?.asset ?? asset
-  const otherMarkets = pairData?.other_markets ?? []
+  const totalSupply = pairData?.asset_info?.supply ?? 0
+  const baseAsset = pairData?.base_asset ?? asset
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 font-sans">
@@ -111,7 +110,6 @@ export default function AssetDispensersPage({ params }: { params: Promise<{ asse
               totalSupply={totalSupply}
               dispenses={dispenses}
               dispensesLoading={dispensesLoading}
-              otherMarkets={otherMarkets}
             />
           </div>
         </div>
@@ -149,7 +147,7 @@ export default function AssetDispensersPage({ params }: { params: Promise<{ asse
             <DispensesTable dispenses={dispenses} isLoading={dispensesLoading} />
           )}
           {mobileDataTab === 'holders' && <HoldersTable asset={baseAsset} totalSupply={totalSupply} />}
-          {mobileDataTab === 'markets' && <MarketsTable markets={otherMarkets} />}
+          {mobileDataTab === 'markets' && <MarketsTable asset={baseAsset} />}
           {mobileDataTab === 'dispensers' && <DispensersEmpty />}
         </div>
       </div>

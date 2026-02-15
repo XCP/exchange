@@ -5,14 +5,15 @@ import { handleTrending } from "./routes/trending";
 import { handleBook } from "./routes/book";
 import { handleMarkets } from "./routes/markets";
 import { handleAsset } from "./routes/asset";
-import { handlePortfolioBids, handlePortfolioOrders } from "./routes/portfolio";
+import { handlePortfolioBids, handlePortfolioDispensers, handlePortfolioOrders } from "./routes/portfolio";
 import { handleDispenserStats } from "./routes/dispenser-stats";
-import { runIndexer } from "./indexer/ingest";
-import { syncOrders } from "./indexer/orders";
-import { aggregateCandlesForPair, runCatchupAggregation } from "./indexer/aggregate";
+import { syncBlocks } from "./indexer/sync-block";
+import { runCatchupAggregation } from "./indexer/aggregate";
+import { backfillTrades, backfillDispenses } from "./indexer/backfill";
+import { syncOrders, syncDispensers, runSnapshotSync } from "./indexer/snapshot";
+import { getMode, setMode, deleteState } from "./indexer/state";
+import { aggregateCandlesForPair } from "./indexer/aggregate";
 import { updatePairStats } from "./indexer/stats";
-import { runDispenseIndexer } from "./indexer/dispenses";
-import { syncDispensers } from "./indexer/dispensers";
 
 export interface Env {
   DB: D1Database;
@@ -98,11 +99,11 @@ export default {
 
       // Route: GET /trending
       if (path === "/trending") {
-        return withCors(await handleTrending(env.DB));
+        return withCors(await handleTrending(request, env.DB));
       }
 
       // Route: GET /asset/:name
-      const assetMatch = path.match(/^\/asset\/([A-Za-z0-9.]+)$/);
+      const assetMatch = path.match(/^\/asset\/([A-Za-z0-9._]+)$/);
       if (assetMatch) {
         return withCors(await handleAsset(env.DB, assetMatch[1]));
       }
@@ -132,46 +133,54 @@ export default {
         );
       }
 
+      // Route: GET /portfolio/:address/dispensers
+      const portfolioDispensersMatch = path.match(
+        /^\/portfolio\/([A-Za-z0-9]+)\/dispensers$/
+      );
+      if (portfolioDispensersMatch) {
+        return withCors(
+          await handlePortfolioDispensers(
+            request,
+            env.DB,
+            portfolioDispensersMatch[1]
+          )
+        );
+      }
+
       // Route: GET /dispenser-stats/:asset
-      const dispenserStatsMatch = path.match(/^\/dispenser-stats\/([A-Za-z0-9.]+)$/);
+      const dispenserStatsMatch = path.match(/^\/dispenser-stats\/([A-Za-z0-9._]+)$/);
       if (dispenserStatsMatch) {
         return withCors(await handleDispenserStats(env.DB, dispenserStatsMatch[1]));
       }
 
-      // Route: GET /status (health check / indexer status)
+      // Route: GET /status — mode, progress, table counts
       if (path === "/status") {
+        const mode = await getMode(env.DB);
+
+        const [tradeCount, pairCount, openOrderCount, dispenseCount, openDispenserCount, candleCount] =
+          await Promise.all([
+            env.DB.prepare(`SELECT COUNT(*) as cnt FROM trades`).first<{ cnt: number }>(),
+            env.DB.prepare(`SELECT COUNT(*) as cnt FROM pair_stats`).first<{ cnt: number }>(),
+            env.DB.prepare(`SELECT COUNT(*) as cnt FROM orders WHERE status = 'open'`).first<{ cnt: number }>(),
+            env.DB.prepare(`SELECT COUNT(*) as cnt FROM dispenses`).first<{ cnt: number }>(),
+            env.DB.prepare(`SELECT COUNT(*) as cnt FROM dispensers WHERE status < 10`).first<{ cnt: number }>(),
+            env.DB.prepare(`SELECT COUNT(*) as cnt FROM candles`).first<{ cnt: number }>(),
+          ]);
+
         const state = await env.DB
           .prepare(`SELECT key, value FROM indexer_state`)
           .all<{ key: string; value: string }>();
 
-        const tradeCount = await env.DB
-          .prepare(`SELECT COUNT(*) as cnt FROM trades`)
-          .first<{ cnt: number }>();
-
-        const pairCount = await env.DB
-          .prepare(`SELECT COUNT(*) as cnt FROM pair_stats`)
-          .first<{ cnt: number }>();
-
-        const openOrderCount = await env.DB
-          .prepare(`SELECT COUNT(*) as cnt FROM orders WHERE status = 'open'`)
-          .first<{ cnt: number }>();
-
-        const dispenseCount = await env.DB
-          .prepare(`SELECT COUNT(*) as cnt FROM dispenses`)
-          .first<{ cnt: number }>();
-
-        const openDispenserCount = await env.DB
-          .prepare(`SELECT COUNT(*) as cnt FROM dispensers WHERE status = 0`)
-          .first<{ cnt: number }>();
-
         return withCors(
           Response.json({
             ok: true,
+            mode,
             trades: tradeCount?.cnt ?? 0,
             pairs: pairCount?.cnt ?? 0,
             open_orders: openOrderCount?.cnt ?? 0,
             dispenses: dispenseCount?.cnt ?? 0,
             open_dispensers: openDispenserCount?.cnt ?? 0,
+            candles: candleCount?.cnt ?? 0,
             indexer: Object.fromEntries(
               (state?.results ?? []).map((r) => [r.key, r.value])
             ),
@@ -179,14 +188,66 @@ export default {
         );
       }
 
-      // Rebuild candles + stats for a batch of pairs
-      // POST /indexer/aggregate → run catch-up (uses internal offset tracking)
-      // POST /indexer/aggregate?offset=0&limit=5 → manual batch at specific offset
+      // POST /indexer/start — IDLE → BACKFILL_TRADES
+      if (path === "/indexer/start" && request.method === "POST") {
+        const mode = await getMode(env.DB);
+        if (mode !== "IDLE") {
+          return withCors(
+            Response.json({ error: `Cannot start: mode is ${mode}, expected IDLE` }, { status: 409 })
+          );
+        }
+        // Clear any stale state from a previous aborted run before starting fresh
+        await Promise.all([
+          deleteState(env.DB, "backfill_total"),
+          deleteState(env.DB, "backfill_offset"),
+          deleteState(env.DB, "dispense_backfill_cursor"),
+          deleteState(env.DB, "dispense_backfill_total"),
+          deleteState(env.DB, "aggregation_offset"),
+          deleteState(env.DB, "sync_lock"),
+        ]);
+        await setMode(env.DB, "BACKFILL_TRADES");
+        return withCors(Response.json({ ok: true, mode: "BACKFILL_TRADES" }));
+      }
+
+      // POST /indexer/backfill?pages=20 — auto-detects current phase
+      if (path === "/indexer/backfill" && request.method === "POST") {
+        const pages = Math.min(
+          parseInt(url.searchParams.get("pages") ?? "20", 10),
+          50
+        );
+        const mode = await getMode(env.DB);
+
+        switch (mode) {
+          case "BACKFILL_TRADES": {
+            const result = await backfillTrades(env.DB, env.CP_API_BASE, pages);
+            return withCors(Response.json(result));
+          }
+          case "BACKFILL_DISPENSES": {
+            const result = await backfillDispenses(env.DB, env.CP_API_BASE, pages);
+            return withCors(Response.json(result));
+          }
+          case "SNAPSHOT_SYNC": {
+            const result = await runSnapshotSync(env.DB, env.CP_API_BASE);
+            return withCors(Response.json({ type: "snapshot", ...result }));
+          }
+          case "BUILD_AGGREGATES": {
+            const result = await runCatchupAggregation(env.DB);
+            return withCors(Response.json({ type: "aggregates", ...result }));
+          }
+          case "FOLLOWING":
+            return withCors(Response.json({ done: true, mode: "FOLLOWING" }));
+          default:
+            return withCors(
+              Response.json({ error: `Cannot backfill in mode: ${mode}` }, { status: 409 })
+            );
+        }
+      }
+
+      // POST /indexer/aggregate — manual aggregate trigger (any mode)
       if (path === "/indexer/aggregate" && request.method === "POST") {
         const hasOffset = url.searchParams.has("offset");
 
         if (!hasOffset) {
-          // Trigger catch-up aggregation (sets flag if not already set, then processes a batch)
           await env.DB
             .prepare(
               `INSERT INTO indexer_state (key, value) VALUES ('aggregation_offset', '0')
@@ -197,11 +258,10 @@ export default {
           return withCors(Response.json(result));
         }
 
-        // Manual mode: specific offset + limit
         const offset = parseInt(url.searchParams.get("offset")!, 10);
         const limit = Math.min(
-          parseInt(url.searchParams.get("limit") ?? "5", 10),
-          10
+          parseInt(url.searchParams.get("limit") ?? "100", 10),
+          200
         );
         const pairs = await env.DB
           .prepare(
@@ -232,30 +292,39 @@ export default {
         );
       }
 
-      // Manual trigger for trade backfill
-      if (path === "/indexer/run" && request.method === "POST") {
-        const pages = parseInt(url.searchParams.get("pages") ?? "5", 10);
-        const skipAgg = url.searchParams.get("aggregate") !== "true";
-        const result = await runIndexer(
-          env.DB,
-          env.CP_API_BASE,
-          Math.min(pages, 50),
-          skipAgg
+      // POST /indexer/sync?blocks=10 — manual block sync
+      if (path === "/indexer/sync" && request.method === "POST") {
+        const maxBlocks = Math.min(
+          parseInt(url.searchParams.get("blocks") ?? "10", 10),
+          50
         );
+        const result = await syncBlocks(env.DB, env.CP_API_BASE, maxBlocks);
         return withCors(Response.json(result));
       }
 
-      // Manual trigger for dispense backfill
-      if (path === "/indexer/run-dispenses" && request.method === "POST") {
-        const pages = parseInt(url.searchParams.get("pages") ?? "5", 10);
-        const skipStats = url.searchParams.get("stats") !== "true";
-        const result = await runDispenseIndexer(
-          env.DB,
-          env.CP_API_BASE,
-          Math.min(pages, 50),
-          skipStats
-        );
-        return withCors(Response.json(result));
+      // POST /indexer/full-sync — re-snapshot orders+dispensers (recovery, any mode)
+      if (path === "/indexer/full-sync" && request.method === "POST") {
+        const [orderResult, dispenserResult] = await Promise.allSettled([
+          syncOrders(env.DB, env.CP_API_BASE),
+          syncDispensers(env.DB, env.CP_API_BASE),
+        ]);
+        return withCors(Response.json({
+          orders: orderResult.status === "fulfilled" ? orderResult.value : { error: String(orderResult.reason) },
+          dispensers: dispenserResult.status === "fulfilled" ? dispenserResult.value : { error: String(dispenserResult.reason) },
+        }));
+      }
+
+      // POST /indexer/reset — reset to IDLE (for re-index)
+      if (path === "/indexer/reset" && request.method === "POST") {
+        await Promise.all([
+          setMode(env.DB, "IDLE"),
+          deleteState(env.DB, "backfill_total"),
+          deleteState(env.DB, "backfill_offset"),
+          deleteState(env.DB, "dispense_backfill_cursor"),
+          deleteState(env.DB, "dispense_backfill_total"),
+          deleteState(env.DB, "aggregation_offset"),
+        ]);
+        return withCors(Response.json({ ok: true, mode: "IDLE" }));
       }
 
       return withCors(
@@ -263,13 +332,9 @@ export default {
       );
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
-      const stack = e instanceof Error ? e.stack : undefined;
-      console.error("Request error:", message, stack);
+      console.error("Request error:", message, e instanceof Error ? e.stack : "");
       return withCors(
-        Response.json(
-          { error: message, stack },
-          { status: 500 }
-        )
+        Response.json({ error: "Internal server error" }, { status: 500 })
       );
     }
   },
@@ -281,50 +346,19 @@ export default {
   ): Promise<void> {
     ctx.waitUntil(
       (async () => {
-        // 1. Ingest new trades + sync orders + dispenses + dispensers in parallel
-        const [tradeResult, orderResult, dispenseResult, dispenserResult] = await Promise.allSettled([
-          runIndexer(env.DB, env.CP_API_BASE, 50),
-          syncOrders(env.DB, env.CP_API_BASE),
-          runDispenseIndexer(env.DB, env.CP_API_BASE, 50),
-          syncDispensers(env.DB, env.CP_API_BASE),
-        ]);
-
-        if (tradeResult.status === "fulfilled") {
-          const r = tradeResult.value;
-          console.log(`Trades: inserted=${r.inserted} pages=${r.pages} done=${r.done}`);
-        } else {
-          console.error("Trade indexer error:", tradeResult.reason);
-        }
-
-        if (orderResult.status === "fulfilled") {
-          const r = orderResult.value;
-          console.log(`Orders: synced=${r.synced} closed=${r.closed}`);
-        } else {
-          console.error("Order sync error:", orderResult.reason);
-        }
-
-        if (dispenseResult.status === "fulfilled") {
-          const r = dispenseResult.value;
-          console.log(`Dispenses: inserted=${r.inserted} pages=${r.pages} done=${r.done}`);
-        } else {
-          console.error("Dispense indexer error:", dispenseResult.reason);
-        }
-
-        if (dispenserResult.status === "fulfilled") {
-          const r = dispenserResult.value;
-          console.log(`Dispensers: synced=${r.synced} closed=${r.closed}`);
-        } else {
-          console.error("Dispenser sync error:", dispenserResult.reason);
-        }
-
-        // 2. Catch-up aggregation (runs after backfill until all pairs have candles)
+        // Cron: only sync blocks when in FOLLOWING mode
         try {
-          const agg = await runCatchupAggregation(env.DB);
-          if (!agg.done) {
-            console.log(`Catchup aggregation: processed=${agg.processed} offset=${agg.offset}`);
+          const sync = await syncBlocks(env.DB, env.CP_API_BASE, 10);
+          if (sync.blocks_processed > 0) {
+            console.log(
+              `Sync: ${sync.blocks_processed} blocks (${sync.last_block}/${sync.current_block}) ` +
+              `trades=${sync.trades_inserted} orders=+${sync.orders_upserted}/-${sync.orders_closed} ` +
+              `dispensers=+${sync.dispensers_upserted}/~${sync.dispensers_updated} ` +
+              `dispenses=${sync.dispenses_inserted}`
+            );
           }
         } catch (e) {
-          console.error("Catchup aggregation error:", e);
+          console.error("Block sync error:", e);
         }
       })()
     );

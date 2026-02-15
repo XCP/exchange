@@ -63,6 +63,6 @@ export async function handleAsset(
       pairs: pairs.results,
       last_trade: lastTrade,
     },
-    { headers: { "Cache-Control": "public, max-age=30" } }
+    { headers: { "Cache-Control": "public, max-age=60" } }
   );
 }

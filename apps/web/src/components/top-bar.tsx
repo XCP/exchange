@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { SearchInput } from '@/components/search-input'
+import { WalletButton } from '@/components/wallet-button'
 
 export function TopBar() {
   return (
@@ -38,10 +39,7 @@ export function TopBar() {
           <span className="text-xs text-zinc-300 font-mono">—</span>
         </div>
         <div className="h-4 w-px bg-zinc-800" />
-        <div className="flex items-center gap-1.5">
-          <div className="h-1.5 w-1.5 rounded-full bg-green-500" />
-          <span className="text-xs text-zinc-500">Synced</span>
-        </div>
+        <WalletButton />
       </div>
     </header>
   )

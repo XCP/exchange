@@ -1,12 +1,12 @@
 import { formatAddress } from '@/utils/format-address'
-import type { TradingPairDetail } from '@/types/trading'
+import type { TradingPairData } from '@/lib/hooks/useTradingPair'
 
 interface AssetInfoProps {
-  pairData: TradingPairDetail
+  pairData: TradingPairData
 }
 
 export function AssetInfo({ pairData }: AssetInfoProps) {
-  const baseAsset = pairData.base_asset
+  const ai = pairData.asset_info
 
   return (
     <div className="p-3">
@@ -15,25 +15,25 @@ export function AssetInfo({ pairData }: AssetInfoProps) {
         <div>
           <div className="text-xs text-zinc-600">Owner</div>
           <div className="text-xs text-zinc-400 font-mono truncate">
-            {baseAsset?.issuer ? formatAddress(baseAsset.issuer) : '—'}
+            {ai?.owner || ai?.issuer ? formatAddress((ai.owner || ai.issuer)!) : '—'}
           </div>
         </div>
         <div>
           <div className="text-xs text-zinc-600">Issued</div>
           <div className="text-xs text-zinc-400 font-mono">
-            {baseAsset?.block_index ? `Block ${baseAsset.block_index.toLocaleString()}` : '—'}
+            {ai?.first_issuance_block_index ? `Block ${ai.first_issuance_block_index.toLocaleString()}` : '—'}
           </div>
         </div>
         <div>
           <div className="text-xs text-zinc-600">Description</div>
           <div className="text-xs text-zinc-400 leading-relaxed">
-            {baseAsset?.description || '—'}
+            {ai?.description || '—'}
           </div>
         </div>
-        {baseAsset?.asset_longname && (
+        {ai?.asset_longname && (
           <div>
             <div className="text-xs text-zinc-600">Subasset of</div>
-            <div className="text-xs text-zinc-400 font-mono">{baseAsset.asset_longname}</div>
+            <div className="text-xs text-zinc-400 font-mono">{ai.asset_longname}</div>
           </div>
         )}
       </div>

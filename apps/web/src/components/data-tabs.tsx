@@ -5,7 +5,6 @@ import { TradesList } from '@/components/trades-list'
 import { HoldersTable } from '@/components/holders-table'
 import { MarketsTable } from '@/components/markets-table'
 import { OrdersEmpty } from '@/components/orders-empty'
-import type { OtherMarket } from '@/types/trading'
 
 type TabKey = 'trades' | 'holders' | 'markets' | 'orders'
 
@@ -22,10 +21,10 @@ interface DataTabsProps {
   quoteSymbol: string
   baseAsset: string
   totalSupply: number
-  otherMarkets: OtherMarket[]
+  currentPair?: string
 }
 
-export function DataTabs({ market, baseSymbol, quoteSymbol, baseAsset, totalSupply, otherMarkets }: DataTabsProps) {
+export function DataTabs({ market, baseSymbol, quoteSymbol, baseAsset, totalSupply, currentPair }: DataTabsProps) {
   const [activeTab, setActiveTab] = useState<TabKey>('trades')
 
   return (
@@ -51,7 +50,7 @@ export function DataTabs({ market, baseSymbol, quoteSymbol, baseAsset, totalSupp
       <div className="h-[340px] overflow-y-auto">
         {activeTab === 'trades' && <TradesList market={market} baseSymbol={baseSymbol} quoteSymbol={quoteSymbol} />}
         {activeTab === 'holders' && <HoldersTable asset={baseAsset} totalSupply={totalSupply} />}
-        {activeTab === 'markets' && <MarketsTable markets={otherMarkets} />}
+        {activeTab === 'markets' && <MarketsTable asset={baseAsset} currentPair={currentPair} />}
         {activeTab === 'orders' && <OrdersEmpty />}
       </div>
     </>

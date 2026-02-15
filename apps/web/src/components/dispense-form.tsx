@@ -1,6 +1,8 @@
 'use client'
 
 import { useState } from 'react'
+import { useWallet } from '@/lib/wallet/wallet-context'
+import { useCompose } from '@/lib/wallet/useCompose'
 import { formatAddress } from '@/utils/format-address'
 import { formatAmount } from '@/utils/format-amount'
 import type { Dispenser } from '@/types/trading'
@@ -12,7 +14,15 @@ interface DispenseFormProps {
   onSelectIndex: (i: number) => void
 }
 
+const STATUS_LABELS: Record<string, string> = {
+  composing: 'Composing transaction...',
+  signing: 'Waiting for signature...',
+  broadcasting: 'Broadcasting...',
+}
+
 export function DispenseForm({ asset, sortedDispensers, selectedIndex, onSelectIndex }: DispenseFormProps) {
+  const { status: walletStatus, connect, connecting } = useWallet()
+  const { status: txStatus, txid, error: txError, composeDispense, composeDispenser, reset } = useCompose()
   const [tab, setTab] = useState<'buy' | 'sell'>('buy')
   const [quantity, setQuantity] = useState('1')
 
@@ -21,9 +31,10 @@ export function DispenseForm({ asset, sortedDispensers, selectedIndex, onSelectI
   const [sellQtyPerDispense, setSellQtyPerDispense] = useState('')
   const [sellEscrow, setSellEscrow] = useState('')
 
-  // Buy calculations
-  const selected = sortedDispensers[selectedIndex]
-  const maxDispenses = selected && selected.give_quantity > 0
+  // Clamp index to valid range when dispensers change
+  const clampedIndex = sortedDispensers.length === 0 ? 0 : Math.min(selectedIndex, sortedDispensers.length - 1)
+  const selected = sortedDispensers[clampedIndex]
+  const maxDispenses = selected && selected.give_quantity > 0 && Number.isFinite(selected.give_remaining / selected.give_quantity)
     ? Math.floor(selected.give_remaining / selected.give_quantity)
     : 0
   const qty = parseInt(quantity, 10) || 0
@@ -37,12 +48,86 @@ export function DispenseForm({ asset, sortedDispensers, selectedIndex, onSelectI
     ? (sellPriceNum * sellQtyNum).toFixed(8)
     : '0.00000000'
 
+  const isBusy = txStatus === 'composing' || txStatus === 'signing' || txStatus === 'broadcasting'
+
+  const handleBuy = () => {
+    if (!selected || qty <= 0) return
+    composeDispense({
+      dispenser: selected.tx_hash,
+      quantity: qty * selected.satoshi_price,
+    })
+  }
+
+  const handleSell = () => {
+    if (!sellPriceNum || !sellQtyNum || !sellEscrow) return
+    const mainchainrate = Math.round(sellPriceNum * sellQtyNum * 1e8)
+    composeDispenser({
+      asset,
+      give_quantity: Math.round(sellQtyNum * 1e8),
+      escrow_quantity: Math.round(parseFloat(sellEscrow) * 1e8),
+      mainchainrate,
+    })
+  }
+
+  const actionButton = (color: 'green' | 'red', label: string, onSubmit: () => void) => {
+    if (walletStatus !== 'connected') {
+      return (
+        <button
+          onClick={walletStatus === 'disconnected' ? connect : undefined}
+          disabled={connecting}
+          className={`w-full rounded-sm py-2.5 text-xs font-semibold uppercase tracking-wider transition-colors ${
+            color === 'green'
+              ? 'bg-green-500 text-zinc-950 hover:bg-green-400'
+              : 'bg-red-500 text-zinc-950 hover:bg-red-400'
+          } disabled:opacity-50`}
+        >
+          {walletStatus === 'not_detected' ? 'Install Wallet' : connecting ? 'Connecting...' : 'Connect Wallet'}
+        </button>
+      )
+    }
+
+    return (
+      <button
+        onClick={txStatus === 'confirmed' || txStatus === 'error' ? reset : onSubmit}
+        disabled={isBusy}
+        className={`w-full rounded-sm py-2.5 text-xs font-semibold uppercase tracking-wider transition-colors ${
+          color === 'green'
+            ? 'bg-green-500 text-zinc-950 hover:bg-green-400'
+            : 'bg-red-500 text-zinc-950 hover:bg-red-400'
+        } disabled:opacity-50`}
+      >
+        {txStatus === 'confirmed'
+          ? 'Done'
+          : txStatus === 'error'
+            ? 'Try Again'
+            : isBusy
+              ? STATUS_LABELS[txStatus]
+              : label}
+      </button>
+    )
+  }
+
+  const txFeedback = (
+    <>
+      {txStatus === 'confirmed' && txid && (
+        <div className="rounded-sm border border-green-500/20 bg-green-500/5 px-3 py-1.5 text-xs text-green-400 font-mono truncate">
+          Confirmed: {txid}
+        </div>
+      )}
+      {txStatus === 'error' && txError && (
+        <div className="rounded-sm border border-red-500/20 bg-red-500/5 px-3 py-1.5 text-xs text-red-400">
+          {txError}
+        </div>
+      )}
+    </>
+  )
+
   return (
     <div className="p-3 border-b border-zinc-800">
       {/* Buy/Sell toggle */}
       <div className="mb-3 flex rounded-sm overflow-hidden">
         <button
-          onClick={() => setTab('buy')}
+          onClick={() => { setTab('buy'); reset() }}
           className={`flex-1 py-2 text-xs font-semibold uppercase tracking-wider transition-colors ${
             tab === 'buy'
               ? 'bg-green-500/15 text-green-400 border border-green-500/30'
@@ -52,7 +137,7 @@ export function DispenseForm({ asset, sortedDispensers, selectedIndex, onSelectI
           Buy
         </button>
         <button
-          onClick={() => setTab('sell')}
+          onClick={() => { setTab('sell'); reset() }}
           className={`flex-1 py-2 text-xs font-semibold uppercase tracking-wider transition-colors ${
             tab === 'sell'
               ? 'bg-red-500/15 text-red-400 border border-red-500/30'
@@ -74,7 +159,7 @@ export function DispenseForm({ asset, sortedDispensers, selectedIndex, onSelectI
               </div>
             ) : (
               <select
-                value={selectedIndex}
+                value={clampedIndex}
                 onChange={(e) => onSelectIndex(Number(e.target.value))}
                 className="w-full rounded-sm border border-zinc-800 bg-zinc-900 px-3 py-1.5 text-xs text-zinc-200 outline-none focus:border-zinc-600 transition-colors font-mono"
               >
@@ -131,10 +216,8 @@ export function DispenseForm({ asset, sortedDispensers, selectedIndex, onSelectI
             <span className="text-zinc-500 font-mono">{btcCost} BTC</span>
           </div>
 
-          {/* Connect Wallet button */}
-          <button className="w-full rounded-sm bg-green-500 py-2.5 text-xs font-semibold uppercase tracking-wider text-zinc-950 hover:bg-green-400 transition-colors">
-            Connect Wallet
-          </button>
+          {actionButton('green', `Buy ${asset}`, handleBuy)}
+          {txFeedback}
         </div>
       ) : (
         <div className="space-y-2">
@@ -185,13 +268,11 @@ export function DispenseForm({ asset, sortedDispensers, selectedIndex, onSelectI
           {/* Fee */}
           <div className="flex items-center justify-between pt-1 text-xs">
             <span className="text-zinc-600">Fee</span>
-            <span className="text-zinc-500 font-mono">0.0001 BTC</span>
+            <span className="text-zinc-500 font-mono">Dynamic (mempool rate)</span>
           </div>
 
-          {/* Connect Wallet button */}
-          <button className="w-full rounded-sm bg-red-500 py-2.5 text-xs font-semibold uppercase tracking-wider text-zinc-950 hover:bg-red-400 transition-colors">
-            Connect Wallet
-          </button>
+          {actionButton('red', 'Create Dispenser', handleSell)}
+          {txFeedback}
         </div>
       )}
     </div>

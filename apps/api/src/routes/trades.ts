@@ -6,21 +6,28 @@ export async function handleTrades(
   const url = new URL(request.url);
   const limit = Math.min(
     parseInt(url.searchParams.get("limit") ?? "50", 10) || 50,
-    200
+    500
   );
   const cursor = url.searchParams.get("cursor");
 
+  // Uses idx_trades_pair_id index: (pair, id DESC)
+  // id is monotonically increasing with block_time, so ORDER BY id DESC
+  // is equivalent to chronological DESC and enables efficient cursor scan.
   let query = `SELECT id, block_time, price, amount, volume, side, maker, taker,
                       tx0_hash, tx1_hash
                FROM trades WHERE pair = ?`;
   const binds: (string | number)[] = [pair];
 
   if (cursor) {
+    const cursorId = parseInt(cursor, 10);
+    if (!Number.isFinite(cursorId)) {
+      return Response.json({ error: "Invalid cursor" }, { status: 400 });
+    }
     query += ` AND id < ?`;
-    binds.push(parseInt(cursor, 10));
+    binds.push(cursorId);
   }
 
-  query += ` ORDER BY block_time DESC, id DESC LIMIT ?`;
+  query += ` ORDER BY id DESC LIMIT ?`;
   binds.push(limit);
 
   const result = await db
@@ -40,6 +47,7 @@ export async function handleTrades(
     }>();
 
   const trades = result.results.map((t) => ({
+    id: t.id,
     t: t.block_time,
     price: t.price,
     amount: t.amount,
@@ -60,7 +68,7 @@ export async function handleTrades(
     { pair, trades, next_cursor: nextCursor },
     {
       headers: {
-        "Cache-Control": "no-cache",
+        "Cache-Control": "public, max-age=60",
       },
     }
   );

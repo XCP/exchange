@@ -34,116 +34,10 @@ export interface Order {
   get_price_normalized?: string
 }
 
-export interface OrderMatch {
-  id: string
-  market_pair: string
-  market_dir: string
-  market_price: string
-  forward_asset: string
-  forward_quantity_normalized: string
-  backward_asset: string
-  backward_quantity_normalized: string
-  block_time: number
-  tx0_address: string
-  tx0_hash: string
-  tx0_index: number
-  tx0_block_index: number
-  tx1_address: string
-  tx1_hash: string
-  tx1_index: number
-  tx1_block_index: number
-  forward_quantity: number
-  backward_quantity: number
-  tx1_expiration: number
-  match_expire_index: number
-  status: string
-  confirmed: boolean
-  forward_asset_info: AssetInfo
-  backward_asset_info: AssetInfo
-}
-
 export interface OrderBookEntry {
   price: string
   amount: string
   total: string
-}
-
-export interface Trade {
-  direction: 'buy' | 'sell'
-  type: string
-  price: string
-  price_usd?: string
-  base_asset: string
-  quote_asset: string
-  volume: string
-  link?: string
-  maker?: string
-  taker?: string
-  tx_hash?: string
-  confirmed_at: number
-}
-
-export interface TradingPairDetail {
-  market_cap?: string
-  market_cap_usd?: string
-  volume_7d?: string
-  volume_7d_usd?: string
-  volume_30d?: string
-  volume_30d_usd?: string
-  volume_all?: string
-  volume_all_usd?: string
-  last_trade_type?: string
-  last_trade_link?: string
-  last_trade_price?: number
-  last_trade_price_usd?: number
-  last_trade_date?: number
-  price_change_24h?: number
-  high_24h?: number
-  low_24h?: number
-  volume_24h?: string
-  base_asset: {
-    asset: string
-    symbol: string
-    supply: number
-    issued?: number
-    burned?: number
-    locked: boolean
-    divisible: boolean
-    description?: string
-    issuer?: string
-    asset_longname?: string | null
-    block_index?: number
-  }
-  quote_asset: {
-    asset?: string
-    symbol: string
-    type: string
-  }
-  other_markets?: OtherMarket[]
-}
-
-export interface OtherMarket {
-  name: string
-  slug: string
-  market_cap?: string
-  market_cap_usd?: string
-  last_trade_type?: string
-  last_trade_link?: string
-  last_trade_price?: number
-  last_trade_price_usd?: number
-  last_trade_date?: number
-  quote_asset: {
-    symbol: string
-  }
-}
-
-export interface OHLCCandle {
-  timestamp: number
-  open: number
-  high: number
-  low: number
-  close: number
-  volume: number
 }
 
 export interface Dispenser {
@@ -211,27 +105,3 @@ export interface GlobalOrderMatch {
   backward_quantity_normalized: string
 }
 
-export interface TradingPairSummary {
-  name: string
-  slug: string
-  total_supply?: number
-  market_cap?: string
-  market_cap_usd?: string
-  volume_7d?: string
-  volume_7d_usd?: string
-  volume_30d?: string
-  volume_30d_usd?: string
-  volume_all?: string
-  volume_all_usd?: string
-  trades_7d?: number
-  trades_30d?: number
-  trades_all?: number
-  price_change_7d?: string
-  price_change_30d?: string
-  price_change_365d?: string
-  last_trade_type?: string
-  last_trade_link?: string
-  last_trade_price?: string
-  last_trade_price_usd?: string
-  last_trade_date?: number
-}
