@@ -100,7 +100,7 @@ export async function fetchOrderMatches(
   const data: CounterpartyApiResponse<OrderMatch> = await res.json();
   return {
     matches: data.result,
-    nextCursor: data.next_cursor != null ? String(Math.floor(data.next_cursor)) : null,
+    nextCursor: data.next_cursor != null ? String(data.next_cursor) : null,
   };
 }
 
@@ -124,7 +124,7 @@ export async function fetchDispenses(
   const data: CounterpartyApiResponse<CounterpartyDispense> = await res.json();
   return {
     dispenses: data.result,
-    nextCursor: data.next_cursor != null ? String(Math.floor(data.next_cursor)) : null,
+    nextCursor: data.next_cursor != null ? String(data.next_cursor) : null,
   };
 }
 
@@ -150,7 +150,7 @@ export async function fetchDispensers(
   const data: CounterpartyApiResponse<CounterpartyDispenser> = await res.json();
   return {
     dispensers: data.result,
-    nextCursor: data.next_cursor != null ? String(Math.floor(data.next_cursor)) : null,
+    nextCursor: data.next_cursor != null ? String(data.next_cursor) : null,
   };
 }
 
@@ -176,6 +176,6 @@ export async function fetchOrders(
   const data: CounterpartyApiResponse<Order> = await res.json();
   return {
     orders: data.result,
-    nextCursor: data.next_cursor != null ? String(Math.floor(data.next_cursor)) : null,
+    nextCursor: data.next_cursor != null ? String(data.next_cursor) : null,
   };
 }

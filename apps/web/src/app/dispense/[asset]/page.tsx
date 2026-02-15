@@ -1,6 +1,6 @@
 'use client'
 
-import { use, useCallback, useMemo, useState } from 'react'
+import { use, useState } from 'react'
 import { useTradingPair } from '@/lib/hooks/useTradingPair'
 import { useDispenserStats } from '@/lib/hooks/useDispenserStats'
 import { useAssetDispensers, useAssetDispenses } from '@/lib/hooks/useAssetDispensers'
@@ -39,14 +39,11 @@ export default function AssetDispensersPage({ params }: { params: Promise<{ asse
   const [mobileDataTab, setMobileDataTab] = useState<MobileTabKey>('dispenses')
   const [modalDispenser, setModalDispenser] = useState<Dispenser | null>(null)
 
-  const sortedDispensers = useMemo(
-    () => [...dispensers].sort((a, b) => a.price - b.price),
-    [dispensers]
-  )
+  const sortedDispensers = [...dispensers].sort((a, b) => a.price - b.price)
 
-  const handleDispenserClick = useCallback((d: Dispenser) => {
+  const handleDispenserClick = (d: Dispenser) => {
     setModalDispenser(d)
-  }, [])
+  }
 
   const totalSupply = pairData?.base_asset?.supply ?? 0
   const baseAsset = pairData?.base_asset?.asset ?? asset

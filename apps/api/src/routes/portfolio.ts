@@ -3,7 +3,7 @@ interface Balance {
   quantity_normalized: string;
 }
 
-interface CPBalanceResponse {
+interface CounterpartyBalanceResponse {
   result: Balance[];
   next_cursor: string | null;
 }
@@ -21,9 +21,9 @@ async function fetchBalances(
     if (cursor) url.searchParams.set("cursor", cursor);
 
     const res = await fetch(url.toString());
-    if (!res.ok) throw new Error(`CP API error: ${res.status}`);
+    if (!res.ok) throw new Error(`Counterparty API error: ${res.status}`);
 
-    const data: CPBalanceResponse = await res.json();
+    const data: CounterpartyBalanceResponse = await res.json();
 
     for (const b of data.result) {
       if (parseFloat(b.quantity_normalized) > 0) {

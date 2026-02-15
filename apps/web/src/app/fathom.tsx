@@ -15,8 +15,9 @@ function TrackPageView() {
   useEffect(() => {
     if (!pathname) return
 
+    const search = searchParams?.toString()
     trackPageview({
-      url: pathname + searchParams?.toString(),
+      url: pathname + (search ? `?${search}` : ''),
       referrer: document.referrer,
     })
   }, [pathname, searchParams])

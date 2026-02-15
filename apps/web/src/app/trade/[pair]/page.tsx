@@ -1,6 +1,6 @@
 'use client'
 
-import { use, useCallback, useEffect, useRef, useState } from 'react'
+import { use, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useTradingPair } from '@/lib/hooks/useTradingPair'
 import { usePairStats } from '@/lib/hooks/usePairStats'
@@ -68,10 +68,10 @@ export default function PairOrdersPage({ params }: { params: Promise<{ pair: str
   }, [lastPrice])
 
   // Click an order book row → fill price only (amount left to user intent)
-  const handleBookRowClick = useCallback((entry: OrderBookEntry, side: 'buy' | 'sell') => {
+  const handleBookRowClick = (entry: OrderBookEntry, side: 'buy' | 'sell') => {
     setTradeTab(side)
     setPriceInput(entry.price.replace(/,/g, ''))
-  }, [])
+  }
   const totalSupply = pairData?.base_asset?.supply ?? 0
   const baseAsset = pairData?.base_asset?.asset ?? baseSymbol
   const otherMarkets = pairData?.other_markets ?? []

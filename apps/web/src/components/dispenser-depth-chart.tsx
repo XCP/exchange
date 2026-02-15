@@ -1,6 +1,5 @@
 'use client'
 
-import { useMemo } from 'react'
 import { formatAddress } from '@/utils/format-address'
 import { formatAmount } from '@/utils/format-amount'
 import { formatTimeAgo } from '@/utils/format-time-ago'
@@ -31,7 +30,7 @@ export function DispenserDepthChart({
   onSelectIndex,
   onDispenserClick,
 }: DispenserDepthChartProps) {
-  const levels = useMemo(() => {
+  const levels = (() => {
     const map = new Map<number, PriceLevel>()
     dispensers.forEach((d, i) => {
       const existing = map.get(d.satoshi_price)
@@ -50,12 +49,9 @@ export function DispenserDepthChart({
       }
     })
     return Array.from(map.values())
-  }, [dispensers])
+  })()
 
-  const maxRemaining = useMemo(
-    () => levels.length > 0 ? Math.max(...levels.map(l => l.totalRemaining)) : 1,
-    [levels],
-  )
+  const maxRemaining = levels.length > 0 ? Math.max(...levels.map(l => l.totalRemaining)) : 1
 
   // Which price level is selected (derived from selectedIndex)
   const selectedPrice = dispensers[selectedIndex]?.satoshi_price ?? null

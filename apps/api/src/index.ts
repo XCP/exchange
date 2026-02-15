@@ -17,6 +17,7 @@ import { syncDispensers } from "./indexer/dispensers";
 export interface Env {
   DB: D1Database;
   CP_API_BASE: string;
+  INDEXER_TOKEN?: string;
 }
 
 function corsHeaders(): Record<string, string> {
@@ -48,6 +49,17 @@ export default {
 
     const url = new URL(request.url);
     const path = url.pathname;
+
+    // Auth gate for internal indexer endpoints
+    if (path.startsWith("/indexer/") && request.method === "POST") {
+      if (!env.INDEXER_TOKEN) {
+        return withCors(Response.json({ error: "INDEXER_TOKEN not configured" }, { status: 500 }));
+      }
+      const auth = request.headers.get("Authorization");
+      if (auth !== `Bearer ${env.INDEXER_TOKEN}`) {
+        return withCors(Response.json({ error: "Unauthorized" }, { status: 401 }));
+      }
+    }
 
     try {
       // Route: GET /ohlc/:pair
