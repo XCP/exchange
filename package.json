@@ -1,0 +1,5 @@
+{
+  "name": "exchange",
+  "private": true,
+  "workspaces": ["apps/*"]
+}

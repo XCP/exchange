@@ -1,0 +1,8 @@
+node_modules/
+.next/
+.wrangler/
+.dev.vars
+dist/
+*.tsbuildinfo
+.env
+.env.local

@@ -1,0 +1,24 @@
+export const XCP_API_BASE = 'https://app.xcp.io/api/v1'
+export const COUNTERPARTY_API_BASE = 'https://api.counterparty.io:4000/v2'
+export const XCP_IMG_BASE = 'https://app.xcp.io/img'
+
+export const QUOTE_ASSETS: string[] = [
+  'BTC', 'XCP', 'XBTC', 'FLDC', 'SJCX', 'BITCRYSTALS', 'LTBCOIN', 'SCOTCOIN',
+  'PEPECASH', 'BITCORN', 'CORNFUTURES', 'NEWBITCORN', 'DATABITS', 'MAFIACASH',
+  'PENISIUM', 'RUSTBITS', 'WILLCOIN', 'XFCCOIN', 'SOVEREIGNC', 'OLINCOIN',
+  'BITROCK', 'DANKMEMECASH', 'COMMONFROG.PURCHASE', 'PEPSTEIN.HUSHMONEY',
+  'SCUDOCOIN', 'GREEEEEECOIN', 'MOULACOIN', 'LICKOIN', 'IAMCOIN', 'NEOCASH',
+  'RELICASH', 'SHADILAYCASH', 'BLUEBEARCASH', 'FAKEAPECASH', 'DANKROSECASH',
+  'DESANTISCASH', 'DOLLARCASH', 'BOBOCASH', 'SHARPS', 'CRONOS', 'BOBOXX', 'SWARM',
+  'DABC', 'KEKO', 'NVST', 'POWC', 'NOJAK', 'NOMNI', 'BASSMINT', 'RAIZER.BTC',
+  'RAIZER', 'FUUUUUH.BTC', 'FUUUUUH', 'WOOOOK', 'VACUS', 'MUUI', 'FUTURECREDIT',
+]
+
+export const QUOTE_KEYWORDS: string[] = ['CASH', 'COIN', 'MONEY', 'BTC']
+
+export const BURN_ADDRESSES: string[] = [
+  '1CounterpartyXXXXXXXXXXXXXXXUWLpVr',
+  '1BitcoinEaterAddressDontSendf59kuE',
+]
+
+export const DEFAULT_MARKET = 'XCP'

@@ -1,0 +1,835 @@
+'use client'
+
+import React, { useState } from 'react'
+
+// -- Mock Data (from Layout L) ------------------------------------------------
+
+const asks = [
+  { price: '0.00000450', amount: '125,000', total: '0.5625' },
+  { price: '0.00000448', amount: '89,000', total: '0.3987' },
+  { price: '0.00000445', amount: '250,000', total: '1.1125' },
+  { price: '0.00000442', amount: '67,000', total: '0.2961' },
+  { price: '0.00000440', amount: '180,000', total: '0.7920' },
+  { price: '0.00000435', amount: '340,000', total: '1.4790' },
+  { price: '0.00000432', amount: '95,000', total: '0.4104' },
+  { price: '0.00000430', amount: '500,000', total: '2.1500' },
+]
+
+const bids = [
+  { price: '0.00000420', amount: '200,000', total: '0.8400' },
+  { price: '0.00000418', amount: '150,000', total: '0.6270' },
+  { price: '0.00000415', amount: '88,000', total: '0.3652' },
+  { price: '0.00000410', amount: '420,000', total: '1.7220' },
+  { price: '0.00000405', amount: '175,000', total: '0.7088' },
+  { price: '0.00000400', amount: '600,000', total: '2.4000' },
+  { price: '0.00000395', amount: '95,000', total: '0.3753' },
+  { price: '0.00000390', amount: '310,000', total: '1.2090' },
+]
+
+const recentTrades = [
+  { price: '0.00000420', amount: '15,000', time: '2m ago', side: 'buy' },
+  { price: '0.00000422', amount: '8,500', time: '5m ago', side: 'sell' },
+  { price: '0.00000420', amount: '45,000', time: '8m ago', side: 'buy' },
+  { price: '0.00000418', amount: '12,000', time: '12m ago', side: 'buy' },
+  { price: '0.00000425', amount: '5,000', time: '15m ago', side: 'sell' },
+  { price: '0.00000420', amount: '100,000', time: '22m ago', side: 'buy' },
+  { price: '0.00000415', amount: '25,000', time: '35m ago', side: 'buy' },
+  { price: '0.00000428', amount: '7,500', time: '42m ago', side: 'sell' },
+  { price: '0.00000420', amount: '50,000', time: '1h ago', side: 'buy' },
+  { price: '0.00000410', amount: '30,000', time: '1h ago', side: 'buy' },
+  { price: '0.00000430', amount: '18,000', time: '2h ago', side: 'sell' },
+  { price: '0.00000415', amount: '60,000', time: '2h ago', side: 'buy' },
+  { price: '0.00000420', amount: '22,000', time: '3h ago', side: 'buy' },
+  { price: '0.00000435', amount: '9,000', time: '3h ago', side: 'sell' },
+  { price: '0.00000418', amount: '40,000', time: '4h ago', side: 'buy' },
+]
+
+const chartBars = [
+  { open: 38, close: 42 },
+  { open: 42, close: 40 },
+  { open: 40, close: 44 },
+  { open: 44, close: 43 },
+  { open: 43, close: 41 },
+  { open: 41, close: 39 },
+  { open: 39, close: 36 },
+  { open: 36, close: 38 },
+  { open: 38, close: 35 },
+  { open: 35, close: 37 },
+  { open: 37, close: 40 },
+  { open: 40, close: 42 },
+  { open: 42, close: 45 },
+  { open: 45, close: 43 },
+  { open: 43, close: 46 },
+  { open: 46, close: 48 },
+  { open: 48, close: 44 },
+  { open: 44, close: 42 },
+  { open: 42, close: 45 },
+  { open: 45, close: 47 },
+  { open: 47, close: 44 },
+  { open: 44, close: 46 },
+  { open: 46, close: 42 },
+  { open: 42, close: 42 },
+]
+
+const volumes = [45, 72, 38, 90, 55, 68, 82, 30, 95, 42, 60, 75, 88, 50, 65, 100, 78, 35, 58, 92, 48, 70, 55, 40]
+
+const holders = [
+  { address: '1Pe7...k8Fd', balance: '125,000,000', pct: '12.50%', tag: '' },
+  { address: '1A1z...xY9m', balance: '89,420,000', pct: '8.94%', tag: '' },
+  { address: 'bc1q...7w3p', balance: '67,100,000', pct: '6.71%', tag: '' },
+  { address: '1Bvr...nNpJ', balance: '45,800,000', pct: '4.58%', tag: '' },
+  { address: '1Cou...pVr', balance: '38,200,000', pct: '3.82%', tag: 'Burn' },
+  { address: 'bc1q...f9k2', balance: '22,500,000', pct: '2.25%', tag: '' },
+  { address: '1J9u...RtY4', balance: '18,900,000', pct: '1.89%', tag: '' },
+  { address: '1Kf3...wQ7x', balance: '15,300,000', pct: '1.53%', tag: '' },
+]
+
+const markets = [
+  { pair: 'PEPECASH/XCP', price: '0.00000420', change: '+5.2%', volume: '3.42 XCP', positive: true },
+  { pair: 'PEPECASH/BTC', price: '0.00000001', change: '+2.1%', volume: '0.045 BTC', positive: true },
+  { pair: 'PEPECASH/FLDC', price: '125.00', change: '-1.3%', volume: '8,420 FLDC', positive: false },
+]
+
+// -- Component ----------------------------------------------------------------
+
+export default function TradePageLayoutN() {
+  const [tradeTab, setTradeTab] = useState<'buy' | 'sell'>('buy')
+  const [dataTab, setDataTab] = useState<'trades' | 'holders' | 'markets' | 'orders'>('trades')
+  const [mobileDataTab, setMobileDataTab] = useState<'trades' | 'holders' | 'markets' | 'orders'>('trades')
+  const [priceInput, setPriceInput] = useState('0.00000420')
+  const [amountInput, setAmountInput] = useState('')
+
+  const totalValue =
+    priceInput && amountInput
+      ? (parseFloat(priceInput) * parseFloat(amountInput.replace(/,/g, ''))).toFixed(8)
+      : '0.00000000'
+
+  // Top 5 for compact book strip
+  const stripBids = bids.slice(0, 5)
+  const stripAsks = [...asks].reverse().slice(0, 5)
+  const stripMaxBid = Math.max(...stripBids.map((b) => parseFloat(b.total)))
+  const stripMaxAsk = Math.max(...stripAsks.map((a) => parseFloat(a.total)))
+
+  // -- Compact Order Book Strip (always visible, between chart and tabs) --
+  const CompactBookStrip = () => (
+    <div className="border-y border-zinc-800">
+      {/* Header row */}
+      <div className="flex items-center justify-between px-3 py-1 bg-zinc-900/50 border-b border-zinc-800">
+        <span className="text-xs text-zinc-500">Order Book</span>
+        <div className="flex items-center gap-1.5">
+          <span className="text-[11px] font-mono text-zinc-400">Spread: 0.00000010</span>
+          <span className="text-[11px] text-zinc-600">(0.24%)</span>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 divide-x divide-zinc-800">
+        {/* Bids (left) */}
+        <div>
+          <div className="grid grid-cols-3 gap-0 px-3 py-1 text-[10px] text-zinc-600 border-b border-zinc-800/50">
+            <span>Price</span>
+            <span className="text-right">Amt</span>
+            <span className="text-right">Total</span>
+          </div>
+          <div className="px-0.5">
+            {stripBids.map((bid, i) => {
+              const depthPct = (parseFloat(bid.total) / stripMaxBid) * 100
+              return (
+                <div
+                  key={`strip-bid-${i}`}
+                  className="relative grid grid-cols-3 gap-0 px-2 py-px hover:bg-zinc-900 cursor-pointer"
+                >
+                  <div
+                    className="absolute inset-y-0 right-0 bg-green-500/10"
+                    style={{ width: `${depthPct}%` }}
+                  />
+                  <span className="relative z-10 text-green-400 font-mono text-[11px]">{bid.price}</span>
+                  <span className="relative z-10 text-right text-zinc-400 font-mono text-[11px]">{bid.amount}</span>
+                  <span className="relative z-10 text-right text-zinc-500 font-mono text-[11px]">{bid.total}</span>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* Asks (right) */}
+        <div>
+          <div className="grid grid-cols-3 gap-0 px-3 py-1 text-[10px] text-zinc-600 border-b border-zinc-800/50">
+            <span>Price</span>
+            <span className="text-right">Amt</span>
+            <span className="text-right">Total</span>
+          </div>
+          <div className="px-0.5">
+            {stripAsks.map((ask, i) => {
+              const depthPct = (parseFloat(ask.total) / stripMaxAsk) * 100
+              return (
+                <div
+                  key={`strip-ask-${i}`}
+                  className="relative grid grid-cols-3 gap-0 px-2 py-px hover:bg-zinc-900 cursor-pointer"
+                >
+                  <div
+                    className="absolute inset-y-0 right-0 bg-red-500/10"
+                    style={{ width: `${depthPct}%` }}
+                  />
+                  <span className="relative z-10 text-red-400 font-mono text-[11px]">{ask.price}</span>
+                  <span className="relative z-10 text-right text-zinc-400 font-mono text-[11px]">{ask.amount}</span>
+                  <span className="relative z-10 text-right text-zinc-500 font-mono text-[11px]">{ask.total}</span>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+
+  // -- Trades List --
+  const TradesList = () => (
+    <div>
+      <div className="grid grid-cols-3 gap-0 px-3 py-1.5 text-xs text-zinc-600">
+        <span>Price (XCP)</span>
+        <span className="text-right">Amount</span>
+        <span className="text-right">Time</span>
+      </div>
+      <div className="px-1">
+        {recentTrades.map((trade, i) => (
+          <div
+            key={`trade-${i}`}
+            className="grid grid-cols-3 gap-0 px-2 py-px text-xs hover:bg-zinc-900 cursor-default"
+          >
+            <span className={`font-mono ${trade.side === 'buy' ? 'text-green-400' : 'text-red-400'}`}>
+              {trade.price}
+            </span>
+            <span className="text-right text-zinc-400 font-mono">{trade.amount}</span>
+            <span className="text-right text-zinc-600 font-mono">{trade.time}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+
+  // -- Orders (empty state) --
+  const OrdersEmpty = () => (
+    <div className="flex flex-col items-center justify-center h-full gap-3">
+      <svg className="h-8 w-8 text-zinc-600" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+      </svg>
+      <span className="text-xs text-zinc-500">Connect your wallet to view orders</span>
+      <a href="#" className="text-xs font-medium text-green-400 hover:text-green-300 transition-colors">
+        Connect Wallet
+      </a>
+    </div>
+  )
+
+  // -- Holders Table --
+  const HoldersTable = () => (
+    <div>
+      <div className="grid grid-cols-3 gap-0 px-3 py-1.5 text-xs text-zinc-600 border-b border-zinc-800">
+        <span>Address</span>
+        <span className="text-right">Balance</span>
+        <span className="text-right">% Supply</span>
+      </div>
+      <div className="px-1">
+        {holders.map((holder, i) => (
+          <div
+            key={`holder-${i}`}
+            className="grid grid-cols-3 gap-0 px-2 py-1 text-xs hover:bg-zinc-900 cursor-default"
+          >
+            <span className="text-zinc-400 font-mono">{holder.address}</span>
+            <span className="text-right text-zinc-400 font-mono">{holder.balance}</span>
+            <span className="text-right text-zinc-500 font-mono">
+              {holder.pct}
+              {holder.tag && (
+                <span className="ml-1.5 text-yellow-500/80">({holder.tag})</span>
+              )}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+
+  // -- Markets Table --
+  const MarketsTable = () => (
+    <div>
+      <div className="grid grid-cols-4 gap-0 px-3 py-1.5 text-xs text-zinc-600 border-b border-zinc-800">
+        <span>Pair</span>
+        <span className="text-right">Price</span>
+        <span className="text-right">24h Vol</span>
+        <span className="text-right">24h %</span>
+      </div>
+      <div className="px-1">
+        {[
+          { pair: 'PEPECASH / XCP', price: '0.00000420', vol: '3.42 XCP', change: '+5.2%', up: true },
+          { pair: 'PEPECASH / BTC', price: '0.00000003', vol: '0.08 BTC', change: '+4.8%', up: true },
+          { pair: 'PEPECASH / FLDC', price: '12.50', vol: '125K FLDC', change: '-1.2%', up: false },
+        ].map((market, i) => (
+          <div
+            key={`market-${i}`}
+            className="grid grid-cols-4 gap-0 px-2 py-1 text-xs hover:bg-zinc-900 cursor-pointer"
+          >
+            <span className="text-zinc-300 font-mono">{market.pair}</span>
+            <span className="text-right text-zinc-400 font-mono">{market.price}</span>
+            <span className="text-right text-zinc-500 font-mono">{market.vol}</span>
+            <span
+              className={`text-right font-mono ${
+                market.up ? 'text-green-400' : 'text-red-400'
+              }`}
+            >
+              {market.change}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+
+  return (
+    <div className="min-h-screen bg-zinc-950 text-zinc-100 font-sans">
+      {/* -- 1. Sticky Top Bar ------------------------------------------------- */}
+      <header className="sticky top-0 z-50 flex items-center justify-between gap-4 border-b border-zinc-800 bg-zinc-950/95 backdrop-blur-sm px-4 py-2">
+        <div className="flex items-center gap-6">
+          <span className="text-sm font-bold tracking-wider text-green-500 font-mono">
+            XCP DEX
+          </span>
+          <nav className="hidden sm:flex items-center gap-4">
+            {['Markets', 'Trade', 'Orders', 'Dispensers'].map((link) => (
+              <a
+                key={link}
+                href="#"
+                className={`text-xs font-medium transition-colors hover:text-zinc-100 ${
+                  link === 'Trade' ? 'text-zinc-100' : 'text-zinc-500'
+                }`}
+              >
+                {link}
+              </a>
+            ))}
+          </nav>
+        </div>
+
+        {/* Search -- full input on sm+, icon-only on mobile */}
+        <div className="hidden sm:flex items-center flex-1 max-w-md mx-4">
+          <div className="relative w-full">
+            <svg
+              className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-zinc-500"
+              fill="none"
+              viewBox="0 0 24 24"
+              strokeWidth={2}
+              stroke="currentColor"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+            </svg>
+            <input
+              type="text"
+              placeholder="Search markets..."
+              className="w-full rounded-sm border border-zinc-800 bg-zinc-900 py-1.5 pl-8 pr-10 text-xs text-zinc-200 placeholder-zinc-600 outline-none transition-colors focus:border-zinc-600 focus:bg-zinc-900/80"
+            />
+            <kbd className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded border border-zinc-700 bg-zinc-800 px-1.5 py-px text-[10px] font-mono text-zinc-500">
+              /
+            </kbd>
+          </div>
+        </div>
+        <button className="sm:hidden flex items-center justify-center h-7 w-7 rounded-sm border border-zinc-800 bg-zinc-900 text-zinc-500 hover:text-zinc-300 hover:border-zinc-700 transition-colors">
+          <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+          </svg>
+        </button>
+
+        <div className="flex items-center gap-5">
+          <div className="hidden md:flex items-center gap-2">
+            <span className="text-xs text-zinc-500">BTC</span>
+            <span className="text-xs text-zinc-300 font-mono">$97,428.00</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-zinc-500">Block</span>
+            <span className="text-xs text-zinc-300 font-mono">886,241</span>
+          </div>
+          <div className="h-4 w-px bg-zinc-800" />
+          <div className="flex items-center gap-1.5">
+            <div className="h-1.5 w-1.5 rounded-full bg-green-500" />
+            <span className="text-xs text-zinc-500">Synced</span>
+          </div>
+        </div>
+      </header>
+
+      {/* -- 2. Full-Width Market Header (NOT sticky) -------------------------- */}
+      <div className="border-b border-zinc-800 bg-zinc-950 px-4 py-3">
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+          <div className="flex items-center gap-3">
+            <div className="flex h-8 w-8 items-center justify-center rounded-sm bg-zinc-800 text-xs font-bold text-green-400">
+              PC
+            </div>
+            <div>
+              <h1 className="text-sm font-semibold text-zinc-100">PEPECASH / XCP</h1>
+              <span className="text-xs text-zinc-500 max-sm:hidden">Counterparty DEX</span>
+            </div>
+          </div>
+          <div className="h-8 w-px bg-zinc-800 max-sm:hidden" />
+          <div className="flex items-baseline gap-2">
+            <span className="text-lg font-semibold text-zinc-100 font-mono max-sm:text-base">
+              0.00000420
+            </span>
+            <span className="text-xs text-zinc-500">XCP</span>
+            <span className="text-xs text-zinc-400 max-sm:hidden">($0.0031)</span>
+          </div>
+          <span className="rounded-sm bg-green-500/10 px-2 py-0.5 text-xs font-medium text-green-400">
+            +5.2%
+          </span>
+          <div className="h-8 w-px bg-zinc-800 max-md:hidden" />
+          <div className="hidden md:flex gap-5">
+            <div>
+              <div className="text-xs text-zinc-500">24h High</div>
+              <div className="text-xs text-zinc-300 font-mono">0.00000450</div>
+            </div>
+            <div>
+              <div className="text-xs text-zinc-500">24h Low</div>
+              <div className="text-xs text-zinc-300 font-mono">0.00000390</div>
+            </div>
+            <div>
+              <div className="text-xs text-zinc-500">24h Vol</div>
+              <div className="text-xs text-zinc-300 font-mono">3.42 XCP</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* -- 3. Two-Column Grid ------------------------------------------------ */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 lg:min-h-[calc(100vh-37px)] gap-px bg-zinc-800">
+
+        {/* == LEFT Sidebar -- Form (order-2 on mobile, order-1 on desktop) ==== */}
+        <div className="hidden lg:flex lg:order-1 col-span-1 lg:col-span-3 bg-zinc-950 flex-col">
+
+          {/* Trade Form */}
+          <div className="p-3 border-b border-zinc-800">
+            {/* Buy/Sell toggle */}
+            <div className="mb-3 flex rounded-sm overflow-hidden">
+              <button
+                onClick={() => setTradeTab('buy')}
+                className={`flex-1 py-2 text-xs font-semibold uppercase tracking-wider transition-colors ${
+                  tradeTab === 'buy'
+                    ? 'bg-green-500/15 text-green-400 border border-green-500/30'
+                    : 'bg-zinc-900 text-zinc-500 border border-zinc-800 hover:text-zinc-300'
+                }`}
+              >
+                Buy
+              </button>
+              <button
+                onClick={() => setTradeTab('sell')}
+                className={`flex-1 py-2 text-xs font-semibold uppercase tracking-wider transition-colors ${
+                  tradeTab === 'sell'
+                    ? 'bg-red-500/15 text-red-400 border border-red-500/30'
+                    : 'bg-zinc-900 text-zinc-500 border border-zinc-800 hover:text-zinc-300'
+                }`}
+              >
+                Sell
+              </button>
+            </div>
+
+            {/* Stacked form inputs */}
+            <div className="space-y-2">
+              <div>
+                <label className="mb-1 block text-xs text-zinc-500">Price (XCP)</label>
+                <input
+                  type="text"
+                  value={priceInput}
+                  onChange={(e) => setPriceInput(e.target.value)}
+                  className="w-full rounded-sm border border-zinc-800 bg-zinc-900 px-3 py-1.5 text-xs text-zinc-200 outline-none focus:border-zinc-600 transition-colors font-mono"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-zinc-500">Amount (PEPECASH)</label>
+                <input
+                  type="text"
+                  value={amountInput}
+                  onChange={(e) => setAmountInput(e.target.value)}
+                  placeholder="0"
+                  className="w-full rounded-sm border border-zinc-800 bg-zinc-900 px-3 py-1.5 text-xs text-zinc-200 placeholder-zinc-700 outline-none focus:border-zinc-600 transition-colors font-mono"
+                />
+              </div>
+
+              {/* Percentage buttons */}
+              <div className="flex gap-1">
+                {['25%', '50%', '75%', '100%'].map((pct) => (
+                  <button
+                    key={pct}
+                    className="flex-1 rounded-sm border border-zinc-800 bg-zinc-900 py-1 text-xs text-zinc-500 hover:border-zinc-700 hover:text-zinc-300 transition-colors"
+                  >
+                    {pct}
+                  </button>
+                ))}
+              </div>
+
+              {/* Total */}
+              <div>
+                <label className="mb-1 block text-xs text-zinc-500">Total (XCP)</label>
+                <div className="w-full rounded-sm border border-zinc-800 bg-zinc-900/50 px-3 py-1.5 text-xs text-zinc-400 font-mono">
+                  {totalValue}
+                </div>
+              </div>
+
+              {/* Fee */}
+              <div className="flex items-center justify-between pt-1 text-xs">
+                <span className="text-zinc-600">Fee</span>
+                <span className="text-zinc-500 font-mono">0.0001 BTC</span>
+              </div>
+
+              {/* Connect Wallet button */}
+              <button
+                className={`w-full rounded-sm py-2.5 text-xs font-semibold uppercase tracking-wider transition-colors ${
+                  tradeTab === 'buy'
+                    ? 'bg-green-500 text-zinc-950 hover:bg-green-400'
+                    : 'bg-red-500 text-zinc-950 hover:bg-red-400'
+                }`}
+              >
+                Connect Wallet
+              </button>
+            </div>
+          </div>
+
+          {/* Quick Stats (desktop only) */}
+          <div className="hidden lg:block p-3 border-b border-zinc-800">
+            <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+              <div>
+                <div className="text-xs text-zinc-600">Market Cap</div>
+                <div className="text-xs text-zinc-300 font-mono">$3.1M</div>
+              </div>
+              <div>
+                <div className="text-xs text-zinc-600">Holders</div>
+                <div className="text-xs text-zinc-300 font-mono">4,521</div>
+              </div>
+              <div>
+                <div className="text-xs text-zinc-600">Supply</div>
+                <div className="text-xs text-zinc-300 font-mono">1B</div>
+              </div>
+              <div>
+                <div className="text-xs text-zinc-600">Divisible</div>
+                <div className="text-xs text-green-400 font-mono">Yes</div>
+              </div>
+              <div>
+                <div className="text-xs text-zinc-600">Locked</div>
+                <div className="text-xs text-green-400 font-mono">Yes</div>
+              </div>
+              <div>
+                <div className="text-xs text-zinc-600">7d Vol</div>
+                <div className="text-xs text-zinc-300 font-mono">12.5 XCP</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Asset Info (desktop only) */}
+          <div className="hidden lg:block p-3">
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-2">Asset Info</h3>
+            <div className="space-y-2">
+              <div>
+                <div className="text-xs text-zinc-600">Owner</div>
+                <div className="text-xs text-zinc-400 font-mono truncate">1Pe7...k8Fd</div>
+              </div>
+              <div>
+                <div className="text-xs text-zinc-600">Issued</div>
+                <div className="text-xs text-zinc-400 font-mono">Block 468,238 <span className="text-zinc-600">· May 2017</span></div>
+              </div>
+              <div>
+                <div className="text-xs text-zinc-600">Description</div>
+                <div className="text-xs text-zinc-400 leading-relaxed">The official currency of the Rare Pepe ecosystem</div>
+              </div>
+              <div>
+                <div className="text-xs text-zinc-600 mb-1">Links</div>
+                <div className="flex items-center gap-2">
+                  <a href="#" className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors">
+                    <svg className="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" /></svg>
+                  </a>
+                  <a href="#" className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors">
+                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0112 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 013 12c0-1.605.42-3.113 1.157-4.418" /></svg>
+                  </a>
+                  <a href="#" className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors">
+                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244" /></svg>
+                  </a>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        {/* == MAIN Content Area =============================================== */}
+        <div className="order-1 lg:order-2 col-span-1 lg:col-span-9 bg-zinc-950 flex flex-col">
+
+          {/* Mobile condensed market info */}
+          <div className="lg:hidden flex items-center gap-3 border-b border-zinc-800 px-3 py-2">
+            <div className="flex h-6 w-6 items-center justify-center rounded-sm bg-zinc-800 text-[10px] font-bold text-green-400">
+              PC
+            </div>
+            <span className="text-xs font-semibold text-zinc-100">PEPECASH / XCP</span>
+            <span className="text-sm font-semibold text-zinc-100 font-mono ml-auto">0.00000420</span>
+            <span className="rounded-sm bg-green-500/10 px-1.5 py-0.5 text-xs font-medium text-green-400">
+              +5.2%
+            </span>
+          </div>
+
+          {/* Chart Area */}
+          <div className="border-b border-zinc-800">
+            <div className="flex items-center justify-between border-b border-zinc-800 px-3 py-1.5">
+              <div className="flex items-center gap-3">
+                <span className="text-xs font-medium text-zinc-300 max-sm:hidden">PEPECASH/XCP</span>
+                <div className="flex items-center gap-0.5">
+                  {['1H', '4H', '1D', '1W', '1M'].map((tf) => (
+                    <button
+                      key={tf}
+                      className={`px-2 py-0.5 text-xs rounded-sm transition-colors ${
+                        tf === '1D'
+                          ? 'bg-zinc-800 text-zinc-100'
+                          : 'text-zinc-500 hover:text-zinc-300'
+                      }`}
+                    >
+                      {tf}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="flex items-center gap-2 max-sm:hidden">
+                <span className="text-xs text-zinc-600">O</span>
+                <span className="text-xs text-zinc-300 font-mono">420</span>
+                <span className="text-xs text-zinc-600">H</span>
+                <span className="text-xs text-zinc-300 font-mono">450</span>
+                <span className="text-xs text-zinc-600">L</span>
+                <span className="text-xs text-zinc-300 font-mono">390</span>
+                <span className="text-xs text-zinc-600">C</span>
+                <span className="text-xs text-green-400 font-mono">420</span>
+              </div>
+            </div>
+
+            {/* Chart visualization */}
+            <div className="relative px-4 py-4 max-sm:px-2" style={{ minHeight: '300px' }}>
+              {/* Y-axis labels */}
+              <div className="absolute left-0 top-4 bottom-4 flex flex-col justify-between w-8 max-sm:w-6">
+                {['450', '440', '430', '420', '410', '400', '390'].map((label) => (
+                  <span
+                    key={label}
+                    className="text-right pr-1 text-zinc-700 font-mono"
+                    style={{ fontSize: '9px' }}
+                  >
+                    {label}
+                  </span>
+                ))}
+              </div>
+
+              {/* Grid lines */}
+              <div className="absolute left-8 right-4 top-4 bottom-4 max-sm:left-6 max-sm:right-2">
+                {[0, 1, 2, 3, 4, 5, 6].map((i) => (
+                  <div
+                    key={`grid-${i}`}
+                    className="absolute left-0 right-0 border-t border-zinc-900"
+                    style={{ top: `${(i / 6) * 100}%` }}
+                  />
+                ))}
+              </div>
+
+              {/* Candlestick bars */}
+              <div className="absolute left-10 right-4 top-4 bottom-4 flex items-end gap-0.5 max-sm:left-7 max-sm:right-2">
+                {chartBars.map((bar, i) => {
+                  const min = 34
+                  const max = 50
+                  const range = max - min
+                  const barBottom = ((Math.min(bar.open, bar.close) - min) / range) * 100
+                  const barHeight = (Math.abs(bar.close - bar.open) / range) * 100
+                  const isGreen = bar.close >= bar.open
+                  const wickTop = ((Math.max(bar.open, bar.close) - min) / range) * 100
+                  const wickBottom = barBottom
+
+                  return (
+                    <div key={`bar-${i}`} className="relative flex-1" style={{ height: '100%' }}>
+                      <div
+                        className="absolute left-1/2 -translate-x-1/2"
+                        style={{
+                          bottom: `${wickBottom}%`,
+                          height: `${wickTop - wickBottom + Math.max(barHeight, 2)}%`,
+                          width: '1px',
+                          backgroundColor: isGreen ? '#22c55e' : '#ef4444',
+                          opacity: 0.5,
+                        }}
+                      />
+                      <div
+                        className="absolute left-0.5 right-0.5"
+                        style={{
+                          bottom: `${barBottom}%`,
+                          height: `${Math.max(barHeight, 2)}%`,
+                          backgroundColor: isGreen ? '#22c55e' : '#ef4444',
+                          opacity: 0.85,
+                        }}
+                      />
+                    </div>
+                  )
+                })}
+              </div>
+
+              {/* Current price line */}
+              <div className="absolute left-8 right-4 max-sm:left-6 max-sm:right-2" style={{ top: '50%' }}>
+                <div className="border-t border-dashed border-green-500/40" />
+              </div>
+
+              {/* Volume bars */}
+              <div
+                className="absolute left-10 right-4 bottom-4 flex items-end gap-0.5 max-sm:left-7 max-sm:right-2"
+                style={{ height: '20%' }}
+              >
+                {chartBars.map((bar, i) => {
+                  const vol = volumes[i] || 50
+                  const isGreen = bar.close >= bar.open
+                  return (
+                    <div key={`vol-${i}`} className="relative flex-1" style={{ height: '100%' }}>
+                      <div
+                        className="absolute bottom-0 left-0.5 right-0.5"
+                        style={{
+                          height: `${vol}%`,
+                          backgroundColor: isGreen ? '#22c55e' : '#ef4444',
+                          opacity: 0.15,
+                        }}
+                      />
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          </div>
+
+          {/* -- Compact Order Book Strip (always visible on all screen sizes) -- */}
+          <CompactBookStrip />
+
+          {/* -- Desktop Tab Bar (hidden on mobile) ---------------------------- */}
+          <div className="hidden lg:block">
+            <div className="flex border-b border-zinc-800">
+              {(['trades', 'holders', 'markets', 'orders'] as const).map((tab) => {
+                const labels = { trades: 'Trades', holders: 'Holders', markets: 'Markets', orders: 'Orders' }
+                return (
+                  <button
+                    key={tab}
+                    onClick={() => setDataTab(tab)}
+                    className={`flex-1 py-2.5 text-xs font-semibold uppercase tracking-wider transition-colors ${
+                      dataTab === tab
+                        ? 'text-zinc-100 border-b-2 border-green-500'
+                        : 'text-zinc-500 border-b-2 border-transparent hover:text-zinc-300'
+                    }`}
+                  >
+                    {labels[tab]}
+                  </button>
+                )
+              })}
+            </div>
+
+            {/* Desktop Tab content (fixed height) */}
+            <div className="h-[340px] overflow-y-auto">
+              {dataTab === 'trades' && <TradesList />}
+              {dataTab === 'holders' && <HoldersTable />}
+              {dataTab === 'markets' && <MarketsTable />}
+              {dataTab === 'orders' && <OrdersEmpty />}
+            </div>
+          </div>
+        </div>
+
+        {/* -- Mobile: Trade Form (order-3) ------------------------------------ */}
+        <div className="order-3 lg:hidden bg-zinc-950 p-4 border-b border-zinc-800">
+          {/* Buy/Sell toggle */}
+          <div className="mb-3 flex rounded-sm overflow-hidden">
+            <button
+              onClick={() => setTradeTab('buy')}
+              className={`flex-1 py-2 text-xs font-semibold uppercase tracking-wider transition-colors ${
+                tradeTab === 'buy'
+                  ? 'bg-green-500/15 text-green-400 border border-green-500/30'
+                  : 'bg-zinc-900 text-zinc-500 border border-zinc-800 hover:text-zinc-300'
+              }`}
+            >
+              Buy
+            </button>
+            <button
+              onClick={() => setTradeTab('sell')}
+              className={`flex-1 py-2 text-xs font-semibold uppercase tracking-wider transition-colors ${
+                tradeTab === 'sell'
+                  ? 'bg-red-500/15 text-red-400 border border-red-500/30'
+                  : 'bg-zinc-900 text-zinc-500 border border-zinc-800 hover:text-zinc-300'
+              }`}
+            >
+              Sell
+            </button>
+          </div>
+          <div className="space-y-2">
+            <div>
+              <label className="mb-1 block text-xs text-zinc-500">Price (XCP)</label>
+              <input
+                type="text"
+                value={priceInput}
+                onChange={(e) => setPriceInput(e.target.value)}
+                className="w-full rounded-sm border border-zinc-800 bg-zinc-900 px-3 py-1.5 text-xs text-zinc-200 outline-none focus:border-zinc-600 transition-colors font-mono"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-zinc-500">Amount (PEPECASH)</label>
+              <input
+                type="text"
+                value={amountInput}
+                onChange={(e) => setAmountInput(e.target.value)}
+                placeholder="0"
+                className="w-full rounded-sm border border-zinc-800 bg-zinc-900 px-3 py-1.5 text-xs text-zinc-200 placeholder-zinc-700 outline-none focus:border-zinc-600 transition-colors font-mono"
+              />
+            </div>
+            <div className="flex gap-1">
+              {['25%', '50%', '75%', '100%'].map((pct) => (
+                <button
+                  key={pct}
+                  className="flex-1 rounded-sm border border-zinc-800 bg-zinc-900 py-1 text-xs text-zinc-500 hover:border-zinc-700 hover:text-zinc-300 transition-colors"
+                >
+                  {pct}
+                </button>
+              ))}
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-zinc-500">Total (XCP)</label>
+              <div className="w-full rounded-sm border border-zinc-800 bg-zinc-900/50 px-3 py-1.5 text-xs text-zinc-400 font-mono">
+                {totalValue}
+              </div>
+            </div>
+            <div className="flex items-center justify-between pt-1 text-xs">
+              <span className="text-zinc-600">Fee</span>
+              <span className="text-zinc-500 font-mono">0.0001 BTC</span>
+            </div>
+            <button
+              className={`w-full rounded-sm py-2.5 text-xs font-semibold uppercase tracking-wider transition-colors ${
+                tradeTab === 'buy'
+                  ? 'bg-green-500 text-zinc-950 hover:bg-green-400'
+                  : 'bg-red-500 text-zinc-950 hover:bg-red-400'
+              }`}
+            >
+              Connect Wallet
+            </button>
+          </div>
+        </div>
+
+        {/* -- Mobile Tab Bar (order-4) ---------------------------------------- */}
+        <div className="order-4 lg:hidden bg-zinc-950 flex border-b border-zinc-800">
+          {(['trades', 'holders', 'markets', 'orders'] as const).map((tab) => {
+            const labels = { trades: 'Trades', holders: 'Holders', markets: 'Markets', orders: 'Orders' }
+            return (
+              <button
+                key={tab}
+                onClick={() => setMobileDataTab(tab)}
+                className={`flex-1 py-2.5 text-xs font-semibold uppercase tracking-wider transition-colors ${
+                  mobileDataTab === tab
+                    ? 'text-zinc-100 border-b-2 border-green-500'
+                    : 'text-zinc-500 border-b-2 border-transparent'
+                }`}
+              >
+                {labels[tab]}
+              </button>
+            )
+          })}
+        </div>
+
+        {/* -- Mobile Tab Content (order-5) ------------------------------------ */}
+        <div className="order-5 lg:hidden bg-zinc-950 h-[300px] overflow-y-auto">
+          {mobileDataTab === 'trades' && <TradesList />}
+          {mobileDataTab === 'holders' && <HoldersTable />}
+          {mobileDataTab === 'markets' && <MarketsTable />}
+          {mobileDataTab === 'orders' && <OrdersEmpty />}
+        </div>
+      </div>
+    </div>
+  )
+}

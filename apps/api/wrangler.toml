@@ -1,0 +1,15 @@
+name = "xcpdex-api"
+main = "src/index.ts"
+compatibility_date = "2025-01-01"
+
+[triggers]
+crons = ["*/10 * * * *"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "xcpdex"
+database_id = "02897310-a6ba-441c-bd17-bd84bbb25363"
+migrations_dir = "migrations"
+
+[vars]
+CP_API_BASE = "https://api.counterparty.io:4000/v2"
