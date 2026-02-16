@@ -23,9 +23,9 @@ export async function handleDispenserStatsList(
   const hiddenFilter = includeHidden ? "" : " AND ds.hidden = 0";
   const hiddenFilterCount = includeHidden ? "" : " AND hidden = 0";
   const tfParam = url.searchParams.get("timeframe");
-  const tf = tfParam === "7d" || tfParam === "30d" ? tfParam : "24h";
-  const activityFilter = ` AND ds.dispense_count_${tf} > 0`;
-  const activityFilterCount = ` AND dispense_count_${tf} > 0`;
+  const tf = tfParam === "7d" || tfParam === "30d" || tfParam === "all" ? tfParam : "24h";
+  const activityFilter = tf === "all" ? "" : ` AND ds.dispense_count_${tf} > 0`;
+  const activityFilterCount = tf === "all" ? "" : ` AND dispense_count_${tf} > 0`;
 
   const [countResult, rows, summaryResult] = await db.batch([
     db.prepare(
