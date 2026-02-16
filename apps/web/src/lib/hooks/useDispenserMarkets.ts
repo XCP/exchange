@@ -19,11 +19,18 @@ export interface DispenserMarketEntry {
   updated_at: string | null
 }
 
+interface DispenserMarketsSummary {
+  total_dispensers: number
+  total_dispenses: number
+  total_btc_volume: number
+}
+
 interface DispenserMarketsResponse {
   dispenser_markets: DispenserMarketEntry[]
   total: number
   limit: number
   offset: number
+  summary: DispenserMarketsSummary
 }
 
 export function useDispenserMarkets(sort: string = 'active_dispensers') {
@@ -36,6 +43,7 @@ export function useDispenserMarkets(sort: string = 'active_dispensers') {
   return {
     markets: data?.dispenser_markets ?? [],
     total: data?.total ?? 0,
+    summary: data?.summary ?? null,
     error,
     isLoading,
   }

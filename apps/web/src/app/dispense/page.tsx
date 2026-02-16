@@ -15,7 +15,7 @@ type Tab = 'markets' | 'dispensers' | 'dispenses'
 
 export default function DispensersPage() {
   const [activeTab, setActiveTab] = useState<Tab>('markets')
-  const { markets, isLoading: marketsLoading } = useDispenserMarkets()
+  const { markets, summary, isLoading: marketsLoading } = useDispenserMarkets()
   const { dispensers, isLoading: dispensersLoading } = useGlobalDispensers(50)
   const { dispenses, isLoading: dispensesLoading } = useGlobalDispenses(50)
 
@@ -26,6 +26,23 @@ export default function DispensersPage() {
           <h1 className="text-lg font-semibold text-zinc-100 mb-1">Dispensers</h1>
           <p className="text-xs text-zinc-500">Vending machines for Counterparty assets — send BTC, receive tokens</p>
         </div>
+
+        {summary && (
+          <div className="flex gap-6 mb-4 text-xs">
+            <div>
+              <span className="text-zinc-500">Open Dispensers</span>{' '}
+              <span className="text-zinc-300 font-mono">{summary.total_dispensers.toLocaleString()}</span>
+            </div>
+            <div>
+              <span className="text-zinc-500">Total Dispenses</span>{' '}
+              <span className="text-zinc-300 font-mono">{summary.total_dispenses.toLocaleString()}</span>
+            </div>
+            <div>
+              <span className="text-zinc-500">BTC Volume</span>{' '}
+              <span className="text-zinc-300 font-mono">{formatPrice(summary.total_btc_volume)}</span>
+            </div>
+          </div>
+        )}
 
         {/* Tab bar */}
         <div className="flex gap-1 mb-4">

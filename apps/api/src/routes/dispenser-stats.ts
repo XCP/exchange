@@ -19,7 +19,7 @@ export async function handleDispenserStatsList(
   );
   const offset = parseInt(url.searchParams.get("offset") ?? "0", 10);
 
-  const [countResult, rows] = await db.batch([
+  const [countResult, rows, summaryResult] = await db.batch([
     db.prepare(
       `SELECT COUNT(*) as total FROM dispenser_stats WHERE active_dispensers > 0`
     ),
@@ -36,10 +36,21 @@ export async function handleDispenserStatsList(
        ORDER BY ds.${sort} DESC
        LIMIT ? OFFSET ?`
     ).bind(limit, offset),
+    db.prepare(
+      `SELECT
+         (SELECT COUNT(*) FROM dispensers WHERE status < 10) AS total_dispensers,
+         (SELECT COUNT(*) FROM dispenses) AS total_dispenses,
+         (SELECT COALESCE(SUM(btc_amount), 0) FROM dispenses) AS total_btc_volume`
+    ),
   ]);
 
   const total =
     (countResult.results[0] as { total: number } | undefined)?.total ?? 0;
+  const summary = summaryResult.results[0] as {
+    total_dispensers: number;
+    total_dispenses: number;
+    total_btc_volume: number;
+  } | undefined;
 
   return Response.json(
     {
@@ -47,6 +58,11 @@ export async function handleDispenserStatsList(
       total,
       limit,
       offset,
+      summary: {
+        total_dispensers: summary?.total_dispensers ?? 0,
+        total_dispenses: summary?.total_dispenses ?? 0,
+        total_btc_volume: summary?.total_btc_volume ?? 0,
+      },
     },
     { headers: { "Cache-Control": "public, max-age=60" } }
   );
