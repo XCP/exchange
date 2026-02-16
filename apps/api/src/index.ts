@@ -110,7 +110,7 @@ export default {
 
       // Route: GET /trade-summary
       if (path === "/trade-summary") {
-        return await withCors(await handleTradeSummary(env.DB));
+        return await withCors(await handleTradeSummary(request, env.DB));
       }
 
       // Route: GET /markets

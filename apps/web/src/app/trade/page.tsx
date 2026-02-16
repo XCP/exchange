@@ -65,7 +65,7 @@ export default function OrdersPage() {
   const [page, setPage] = useState(1)
   const { orders, isLoading: ordersLoading } = useGlobalOrders(50)
   const { trades, isLoading: tradesLoading } = useGlobalTrades(50)
-  const { data: summary } = useTradeSummary()
+  const { data: summary } = useTradeSummary(!hideLowQuality)
 
   const apiSort = pairSortCol(sortId, timeframe)
   const { pairs, total, totalPages, isLoading: pairsLoading } = usePairMarkets(apiSort, !hideLowQuality, timeframe, sortDesc ? 'desc' : 'asc', page)

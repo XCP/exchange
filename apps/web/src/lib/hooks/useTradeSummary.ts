@@ -9,9 +9,10 @@ export interface TradeSummary {
   total_trades: number
 }
 
-export function useTradeSummary() {
+export function useTradeSummary(includeHidden: boolean = false) {
+  const params = includeHidden ? '?include_hidden=1' : ''
   const { data, error, isLoading } = useSWR<TradeSummary>(
-    dexUrl('/trade-summary'),
+    dexUrl(`/trade-summary${params}`),
     fetcher,
     { refreshInterval: 60_000 }
   )
