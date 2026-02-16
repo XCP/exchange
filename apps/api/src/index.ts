@@ -426,28 +426,17 @@ export default {
               const statsStart = Date.now();
               let statsTotal = 0;
               let allStatsDone = false;
-              // 40 items × 7 queries = ~280 per batch; shared budget of 3 batches
-              // across both phases to stay under the 1000 queries/invocation limit
-              const MAX_TOTAL_BATCHES = 3;
-              let batchesUsed = 0;
 
-              // Phase 1: pair stats
-              let pairsDone = false;
-              while (batchesUsed < MAX_TOTAL_BATCHES) {
-                const r = await runCatchupStats(env.DB);
-                batchesUsed++;
-                statsTotal += r.processed;
-                if (r.done) { pairsDone = true; break; }
-              }
+              // Bulk SQL: each call processes up to 7000 items using ~450-525
+              // D1 queries (6-7 per 95-item chunk). Both can fit if pair stats
+              // finishes early in this tick.
+              const pr = await runCatchupStats(env.DB);
+              statsTotal += pr.processed;
 
-              // Phase 2: dispenser stats (shared budget with pair stats)
-              if (pairsDone) {
-                while (batchesUsed < MAX_TOTAL_BATCHES) {
-                  const r = await runCatchupDispenserStats(env.DB);
-                  batchesUsed++;
-                  statsTotal += r.processed;
-                  if (r.done) { allStatsDone = true; break; }
-                }
+              if (pr.done) {
+                const dr = await runCatchupDispenserStats(env.DB);
+                statsTotal += dr.processed;
+                allStatsDone = dr.done;
               }
 
               console.log(`Cron: stats refresh — processed=${statsTotal}, done=${allStatsDone}, elapsed=${Date.now() - statsStart}ms`);

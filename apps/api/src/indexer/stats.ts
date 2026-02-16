@@ -1,5 +1,188 @@
 import { batchExec } from "../lib/batch";
 
+/** Max items per SQL chunk — constrained by D1's 100 bound params per statement */
+const BULK_CHUNK = 95;
+
+/**
+ * Bulk-update pair_stats for many pairs at once using set-based SQL.
+ * Uses 6 queries per chunk of 95 pairs (5 reads batched + 1 JSON write)
+ * instead of 7 queries per individual pair — ~100x fewer D1 queries.
+ * Skips unique_traders (computed during per-pair updates in FOLLOWING mode).
+ */
+export async function bulkUpdatePairStats(
+  db: D1Database,
+  pairRows: { pair: string; base_asset: string; quote_asset: string }[]
+): Promise<void> {
+  if (pairRows.length === 0) return;
+
+  const now = Math.floor(Date.now() / 1000);
+  const t24h = now - 86400;
+  const t7d = now - 604800;
+  const t30d = now - 2592000;
+
+  for (let ci = 0; ci < pairRows.length; ci += BULK_CHUNK) {
+    const chunk = pairRows.slice(ci, ci + BULK_CHUNK);
+    const pairs = chunk.map((p) => p.pair);
+    const n = pairs.length;
+    const phFrom = (start: number) =>
+      pairs.map((_, i) => `?${start + i}`).join(",");
+
+    // Batch 5 read queries in one round trip
+    const [statsRes, lastTradeRes, p24Res, p7Res, p30Res] = await db.batch([
+      // Q1: Windowed + all-time stats (?1=t24h, ?2=t7d, ?3=t30d, ?4..=pairs)
+      db
+        .prepare(
+          `SELECT pair,
+            SUM(volume) as total_vol, COUNT(*) as total_cnt,
+            MAX(price) as ath, MIN(price) as atl,
+            COALESCE(SUM(CASE WHEN block_time >= ?1 THEN volume END), 0) as vol_24h,
+            COALESCE(SUM(CASE WHEN block_time >= ?2 THEN volume END), 0) as vol_7d,
+            COALESCE(SUM(CASE WHEN block_time >= ?3 THEN volume END), 0) as vol_30d,
+            SUM(CASE WHEN block_time >= ?1 THEN 1 ELSE 0 END) as cnt_24h,
+            SUM(CASE WHEN block_time >= ?2 THEN 1 ELSE 0 END) as cnt_7d,
+            SUM(CASE WHEN block_time >= ?3 THEN 1 ELSE 0 END) as cnt_30d,
+            MAX(CASE WHEN block_time >= ?1 THEN price END) as hi_24h,
+            MIN(CASE WHEN block_time >= ?1 THEN price END) as lo_24h,
+            MAX(CASE WHEN block_time >= ?2 THEN price END) as hi_7d,
+            MIN(CASE WHEN block_time >= ?2 THEN price END) as lo_7d,
+            MAX(CASE WHEN block_time >= ?3 THEN price END) as hi_30d,
+            MIN(CASE WHEN block_time >= ?3 THEN price END) as lo_30d
+          FROM trades WHERE pair IN (${phFrom(4)})
+          GROUP BY pair`
+        )
+        .bind(t24h, t7d, t30d, ...pairs),
+
+      // Q2: Last trade + first trade time (window functions)
+      db
+        .prepare(
+          `SELECT pair, last_price, last_trade_time, last_side, first_trade_time
+          FROM (
+            SELECT pair, price as last_price, block_time as last_trade_time,
+              side as last_side,
+              MIN(block_time) OVER (PARTITION BY pair) as first_trade_time,
+              ROW_NUMBER() OVER (PARTITION BY pair ORDER BY block_time DESC, rowid DESC) as rn
+            FROM trades WHERE pair IN (${phFrom(1)})
+          ) WHERE rn = 1`
+        )
+        .bind(...pairs),
+
+      // Q3: Price 24h ago
+      db
+        .prepare(
+          `SELECT pair, price as price_ago FROM (
+            SELECT pair, price,
+              ROW_NUMBER() OVER (PARTITION BY pair ORDER BY block_time DESC) as rn
+            FROM trades WHERE pair IN (${phFrom(1)}) AND block_time <= ?${n + 1}
+          ) WHERE rn = 1`
+        )
+        .bind(...pairs, t24h),
+
+      // Q4: Price 7d ago
+      db
+        .prepare(
+          `SELECT pair, price as price_ago FROM (
+            SELECT pair, price,
+              ROW_NUMBER() OVER (PARTITION BY pair ORDER BY block_time DESC) as rn
+            FROM trades WHERE pair IN (${phFrom(1)}) AND block_time <= ?${n + 1}
+          ) WHERE rn = 1`
+        )
+        .bind(...pairs, t7d),
+
+      // Q5: Price 30d ago
+      db
+        .prepare(
+          `SELECT pair, price as price_ago FROM (
+            SELECT pair, price,
+              ROW_NUMBER() OVER (PARTITION BY pair ORDER BY block_time DESC) as rn
+            FROM trades WHERE pair IN (${phFrom(1)}) AND block_time <= ?${n + 1}
+          ) WHERE rn = 1`
+        )
+        .bind(...pairs, t30d),
+    ]);
+
+    // Build lookup maps
+    type AnyRow = Record<string, any>;
+    const toMap = (res: D1Result) => {
+      const m = new Map<string, AnyRow>();
+      for (const r of res.results as AnyRow[]) m.set(r.pair, r);
+      return m;
+    };
+    const statsMap = toMap(statsRes);
+    const ltMap = toMap(lastTradeRes);
+    const p24Map = toMap(p24Res);
+    const p7Map = toMap(p7Res);
+    const p30Map = toMap(p30Res);
+
+    // Compute price changes and build JSON for bulk write
+    const updates = chunk.map((row) => {
+      const s = statsMap.get(row.pair);
+      const lt = ltMap.get(row.pair);
+      const p24 = p24Map.get(row.pair);
+      const p7 = p7Map.get(row.pair);
+      const p30 = p30Map.get(row.pair);
+
+      const lp = lt?.last_price ?? null;
+      const pa24 = p24?.price_ago ?? 0;
+      const pa7 = p7?.price_ago ?? 0;
+      const pa30 = p30?.price_ago ?? 0;
+      const pc24 = lp && pa24 > 0 ? ((lp - pa24) / pa24) * 100 : 0;
+      const pc7 = lp && pa7 > 0 ? ((lp - pa7) / pa7) * 100 : 0;
+      const pc30 = lp && pa30 > 0 ? ((lp - pa30) / pa30) * 100 : 0;
+
+      return {
+        p: row.pair,
+        lp,
+        lt: lt?.last_trade_time ?? null,
+        ls: lt?.last_side ?? null,
+        ft: lt?.first_trade_time ?? null,
+        pc24, pc7, pc30,
+        v24: s?.vol_24h ?? 0, v7: s?.vol_7d ?? 0, v30: s?.vol_30d ?? 0,
+        h24: s?.hi_24h ?? null, l24: s?.lo_24h ?? null,
+        h7: s?.hi_7d ?? null, l7: s?.lo_7d ?? null,
+        h30: s?.hi_30d ?? null, l30: s?.lo_30d ?? null,
+        c24: s?.cnt_24h ?? 0, c7: s?.cnt_7d ?? 0, c30: s?.cnt_30d ?? 0,
+        tv: s?.total_vol ?? 0, tc: s?.total_cnt ?? 0,
+        ath: s?.ath ?? null, atl: s?.atl ?? null,
+        ua: now,
+      };
+    });
+
+    // Single JSON UPDATE...FROM — 1 query for all pairs in the chunk
+    await db
+      .prepare(
+        `UPDATE pair_stats SET
+          last_price = json_extract(j.value, '$.lp'),
+          last_trade_time = json_extract(j.value, '$.lt'),
+          last_side = json_extract(j.value, '$.ls'),
+          first_trade_time = json_extract(j.value, '$.ft'),
+          price_change_24h = json_extract(j.value, '$.pc24'),
+          price_change_7d = json_extract(j.value, '$.pc7'),
+          price_change_30d = json_extract(j.value, '$.pc30'),
+          volume_24h = json_extract(j.value, '$.v24'),
+          volume_7d = json_extract(j.value, '$.v7'),
+          volume_30d = json_extract(j.value, '$.v30'),
+          high_24h = json_extract(j.value, '$.h24'),
+          low_24h = json_extract(j.value, '$.l24'),
+          high_7d = json_extract(j.value, '$.h7'),
+          low_7d = json_extract(j.value, '$.l7'),
+          high_30d = json_extract(j.value, '$.h30'),
+          low_30d = json_extract(j.value, '$.l30'),
+          trade_count_24h = json_extract(j.value, '$.c24'),
+          trade_count_7d = json_extract(j.value, '$.c7'),
+          trade_count_30d = json_extract(j.value, '$.c30'),
+          total_volume = json_extract(j.value, '$.tv'),
+          total_trade_count = json_extract(j.value, '$.tc'),
+          all_time_high = json_extract(j.value, '$.ath'),
+          all_time_low = json_extract(j.value, '$.atl'),
+          updated_at = json_extract(j.value, '$.ua')
+        FROM json_each(?) AS j
+        WHERE pair_stats.pair = json_extract(j.value, '$.p')`
+      )
+      .bind(JSON.stringify(updates))
+      .run();
+  }
+}
+
 export async function updatePairStats(
   db: D1Database,
   pair: string,
