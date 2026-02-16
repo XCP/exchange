@@ -37,10 +37,12 @@ export async function handleDispenserStatsList(
               ds.volume_24h, ds.volume_7d, ds.volume_30d,
               ds.high_24h, ds.low_24h, ds.high_7d, ds.low_7d, ds.high_30d, ds.low_30d,
               ds.dispense_count_24h, ds.dispense_count_7d, ds.dispense_count_30d,
-              ds.active_dispensers, ds.total_available, ds.cheapest_price,
+              ds.active_dispensers, ds.total_available,
               ds.first_dispense_time, ds.updated_at,
               ds.total_btc_spent, ds.total_dispensed, ds.total_dispense_count,
               ds.unique_buyers, ds.unique_sellers, ds.total_dispensers_created, ds.avg_dispense_btc,
+              (SELECT MIN(price) FROM dispensers
+               WHERE asset = ds.asset AND status < 10 AND price > 0 AND give_remaining > 0) AS cheapest_price,
               (SELECT SUM(price * give_remaining) / SUM(give_remaining) FROM dispensers
                WHERE asset = ds.asset AND status < 10 AND price > 0 AND give_remaining > 0) AS avg_price
        FROM dispenser_stats ds
@@ -89,16 +91,18 @@ export async function handleDispenserStats(
 ): Promise<Response> {
   const row = await db
     .prepare(
-      `SELECT asset, last_dispense_price, last_dispense_time,
-              price_change_24h, price_change_7d, price_change_30d,
-              volume_24h, volume_7d, volume_30d,
-              high_24h, low_24h, high_7d, low_7d, high_30d, low_30d,
-              dispense_count_24h, dispense_count_7d, dispense_count_30d,
-              active_dispensers, total_available, cheapest_price,
-              first_dispense_time, updated_at,
-              total_btc_spent, total_dispensed, total_dispense_count,
-              unique_buyers, unique_sellers, total_dispensers_created, avg_dispense_btc
-       FROM dispenser_stats WHERE asset = ?`
+      `SELECT ds.asset, ds.last_dispense_price, ds.last_dispense_time,
+              ds.price_change_24h, ds.price_change_7d, ds.price_change_30d,
+              ds.volume_24h, ds.volume_7d, ds.volume_30d,
+              ds.high_24h, ds.low_24h, ds.high_7d, ds.low_7d, ds.high_30d, ds.low_30d,
+              ds.dispense_count_24h, ds.dispense_count_7d, ds.dispense_count_30d,
+              ds.active_dispensers, ds.total_available,
+              (SELECT MIN(price) FROM dispensers
+               WHERE asset = ds.asset AND status < 10 AND price > 0 AND give_remaining > 0) AS cheapest_price,
+              ds.first_dispense_time, ds.updated_at,
+              ds.total_btc_spent, ds.total_dispensed, ds.total_dispense_count,
+              ds.unique_buyers, ds.unique_sellers, ds.total_dispensers_created, ds.avg_dispense_btc
+       FROM dispenser_stats ds WHERE ds.asset = ?`
     )
     .bind(asset)
     .first();

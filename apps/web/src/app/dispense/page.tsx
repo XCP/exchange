@@ -128,7 +128,7 @@ export default function DispensersPage() {
                 <tr className="text-zinc-500 border-b border-zinc-800 bg-zinc-900/50">
                   <th className="text-left font-normal px-3 py-2.5 sticky left-0 bg-zinc-900/50 z-10">Asset</th>
                   <th className="text-right font-normal px-3 py-2.5">Price</th>
-                  <th className="text-right font-normal px-3 py-2.5">Last</th>
+                  <th className="text-right font-normal px-3 py-2.5">Last Price</th>
                   {rolling ? (
                     <>
                       <th className="text-right font-normal px-3 py-2.5">{timeframe} %</th>
@@ -144,7 +144,7 @@ export default function DispensersPage() {
                   )}
                   <th className="text-right font-normal px-3 py-2.5">Dispensers</th>
                   <th className="text-right font-normal px-3 py-2.5">Depth</th>
-                  <th className="text-right font-normal px-3 py-2.5">Age</th>
+                  <th className="text-right font-normal px-3 py-2.5">Last</th>
                 </tr>
               </thead>
               <tbody>
@@ -193,7 +193,7 @@ export default function DispensersPage() {
                       )}
                       <td className="text-right text-zinc-400 font-mono px-3 py-2">{m.active_dispensers}</td>
                       <td className="text-right text-zinc-400 font-mono px-3 py-2">{m.total_available != null && m.total_available > 0 ? formatAmount(m.total_available) : '—'}</td>
-                      <td className="text-right text-zinc-600 font-mono px-3 py-2">{m.first_dispense_time ? formatTimeAgo(m.first_dispense_time) : '—'}</td>
+                      <td className="text-right text-zinc-600 font-mono px-3 py-2">{m.last_dispense_time ? formatTimeAgo(m.last_dispense_time) : '—'}</td>
                     </tr>
                   ))
                 )}
