@@ -10,7 +10,7 @@ import { handleAsset } from "./routes/asset";
 import { handlePortfolioBids, handlePortfolioDispensers, handlePortfolioOrders } from "./routes/portfolio";
 import { handleDispenserStats, handleDispenserStatsList } from "./routes/dispenser-stats";
 import { syncBlocks } from "./indexer/sync-block";
-import { runCatchupAggregation, runCatchupStats, runCatchupDispenserStats, aggregateCandlesForPair, rebuildCalendarCandles } from "./indexer/aggregate";
+import { runCatchupAggregation, runCatchupStats, runCatchupDispenserStats, aggregateCandlesForPair } from "./indexer/aggregate";
 import { backfillTrades, backfillDispenses } from "./indexer/backfill";
 import { syncOrders, syncDispensers, runSnapshotStep } from "./indexer/snapshot";
 import { getMode, setMode, deleteState } from "./indexer/state";
@@ -452,15 +452,6 @@ export default {
                   `dispensers=+${sync.dispensers_upserted}/~${sync.dispensers_updated} ` +
                   `dispenses=${sync.dispenses_inserted}`
                 );
-              }
-
-              // Background calendar candle rebuild (1m/1y) if cursor exists
-              const rebuildCursor = await env.DB
-                .prepare(`SELECT value FROM indexer_state WHERE key = 'candle_rebuild_cursor'`)
-                .first<{ value: string }>();
-              if (rebuildCursor) {
-                const rb = await rebuildCalendarCandles(env.DB);
-                console.log(`Candle rebuild: processed=${rb.processed}, done=${rb.done}`);
               }
 
               // Periodic stats refresh: recalculate stale 24h/7d windows every 6 hours
