@@ -454,18 +454,19 @@ export async function refreshStaleDispenserStats(
   const t7d = now - 604800;
   const t30d = now - 2592000;
 
-  // Find assets where any rolling window has non-zero metrics but last dispense
-  // has moved outside that window
+  // Refresh all assets that had any dispense in the last 30 days or have
+  // non-zero rolling stats — ensures updated_at stays current
   const staleAssets = await db
     .prepare(
       `SELECT asset FROM dispenser_stats
        WHERE last_dispense_time IS NOT NULL AND (
-         ((dispense_count_24h > 0 OR volume_24h > 0) AND last_dispense_time < ?1)
-         OR ((dispense_count_7d > 0 OR volume_7d > 0) AND last_dispense_time < ?2)
-         OR ((dispense_count_30d > 0 OR volume_30d > 0) AND last_dispense_time < ?3)
+         last_dispense_time >= ?1
+         OR dispense_count_24h > 0 OR volume_24h > 0
+         OR dispense_count_7d > 0 OR volume_7d > 0
+         OR dispense_count_30d > 0 OR volume_30d > 0
        )`
     )
-    .bind(t24h, t7d, t30d)
+    .bind(t30d)
     .all<{ asset: string }>();
 
   if (staleAssets.results.length > 0) {

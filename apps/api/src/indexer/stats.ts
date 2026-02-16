@@ -491,18 +491,19 @@ export async function refreshStalePairStats(
   const t7d = now - 604800;
   const t30d = now - 2592000;
 
-  // Find pairs where any rolling window has non-zero metrics but last trade
-  // has moved outside that window (each window checked independently)
+  // Refresh all pairs that had any trade in the last 30 days or have
+  // non-zero rolling stats — ensures updated_at stays current
   const stalePairs = await db
     .prepare(
       `SELECT pair, base_asset, quote_asset FROM pair_stats
        WHERE last_trade_time IS NOT NULL AND (
-         ((trade_count_24h > 0 OR volume_24h > 0) AND last_trade_time < ?1)
-         OR ((trade_count_7d > 0 OR volume_7d > 0) AND last_trade_time < ?2)
-         OR ((trade_count_30d > 0 OR volume_30d > 0) AND last_trade_time < ?3)
+         last_trade_time >= ?1
+         OR trade_count_24h > 0 OR volume_24h > 0
+         OR trade_count_7d > 0 OR volume_7d > 0
+         OR trade_count_30d > 0 OR volume_30d > 0
        )`
     )
-    .bind(t24h, t7d, t30d)
+    .bind(t30d)
     .all<{ pair: string; base_asset: string; quote_asset: string }>();
 
   if (stalePairs.results.length > 0) {
