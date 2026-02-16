@@ -1,4 +1,4 @@
-const VALID_SORTS = new Set(["volume_24h", "trade_count_24h", "last_trade_time", "total_volume"]);
+const VALID_SORTS = new Set(["volume_24h", "trade_count_24h", "last_trade_time", "total_volume", "total_trade_count", "unique_traders"]);
 
 export async function handlePair(
   db: D1Database,
@@ -11,7 +11,8 @@ export async function handlePair(
               volume_24h, volume_7d, volume_30d,
               high_24h, low_24h, high_7d, low_7d, high_30d, low_30d,
               trade_count_24h, trade_count_7d, trade_count_30d,
-              first_trade_time,
+              first_trade_time, open_orders, bid_count, ask_count,
+              best_bid, best_ask, spread, updated_at,
               total_volume, total_base_volume, total_trade_count, unique_traders, all_time_high, all_time_low,
               base_volume_24h, base_volume_7d, base_volume_30d
        FROM pair_stats WHERE pair = ?`
@@ -53,7 +54,8 @@ export async function handlePairs(
                       volume_24h, volume_7d, volume_30d,
                       high_24h, low_24h, high_7d, low_7d, high_30d, low_30d,
                       trade_count_24h, trade_count_7d, trade_count_30d,
-                      first_trade_time,
+                      first_trade_time, open_orders, bid_count, ask_count,
+                      best_bid, best_ask, spread, updated_at,
                       total_volume, total_base_volume, total_trade_count, unique_traders, all_time_high, all_time_low,
                       base_volume_24h, base_volume_7d, base_volume_30d
                FROM pair_stats`;

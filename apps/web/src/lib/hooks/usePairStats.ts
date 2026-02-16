@@ -24,6 +24,13 @@ export interface PairStats {
   trade_count_7d: number | null
   trade_count_30d: number | null
   first_trade_time: number | null
+  open_orders: number | null
+  bid_count: number | null
+  ask_count: number | null
+  best_bid: number | null
+  best_ask: number | null
+  spread: number | null
+  updated_at: number | null
   total_volume: number | null
   total_base_volume: number | null
   base_volume_24h: number | null

@@ -13,6 +13,21 @@ import { XCP_IMG_BASE } from '@/utils/constants'
 
 type Tab = 'markets' | 'dispensers' | 'dispenses'
 
+function pctColor(v: number | null) {
+  if (v == null) return 'text-zinc-600'
+  return v >= 0 ? 'text-green-400' : 'text-red-400'
+}
+
+function fmtPct(v: number | null) {
+  if (v == null) return '—'
+  return `${v >= 0 ? '+' : ''}${v.toFixed(1)}%`
+}
+
+function fmtVol(v: number | null) {
+  if (v == null || v <= 0) return '—'
+  return formatAmount(v)
+}
+
 export default function DispensersPage() {
   const [activeTab, setActiveTab] = useState<Tab>('markets')
   const [includeHidden, setIncludeHidden] = useState(false)
@@ -81,37 +96,58 @@ export default function DispensersPage() {
 
         {activeTab === 'markets' && (
           <div className="border border-zinc-800 rounded-sm overflow-x-auto">
-            <table className="w-full text-xs">
+            <table className="text-xs whitespace-nowrap">
               <thead>
                 <tr className="text-zinc-500 border-b border-zinc-800 bg-zinc-900/50">
-                  <th className="text-left font-normal px-3 py-2.5">Asset</th>
-                  <th className="text-right font-normal px-3 py-2.5">Lowest Price</th>
-                  <th className="text-right font-normal px-3 py-2.5 max-sm:hidden">Avg Price</th>
+                  <th className="text-left font-normal px-3 py-2.5 sticky left-0 bg-zinc-900/50 z-10">Asset</th>
+                  <th className="text-right font-normal px-3 py-2.5">Lowest</th>
+                  <th className="text-right font-normal px-3 py-2.5">Avg</th>
+                  <th className="text-right font-normal px-3 py-2.5">Last</th>
                   <th className="text-right font-normal px-3 py-2.5">24h %</th>
-                  <th className="text-right font-normal px-3 py-2.5 max-sm:hidden">24h Vol</th>
-                  <th className="text-right font-normal px-3 py-2.5 max-sm:hidden">Depth</th>
-                  <th className="text-right font-normal px-3 py-2.5 max-sm:hidden">Dispensers</th>
-                  <th className="text-right font-normal px-3 py-2.5 max-sm:hidden">Total BTC</th>
-                  <th className="text-right font-normal px-3 py-2.5">24h Dispenses</th>
+                  <th className="text-right font-normal px-3 py-2.5">7d %</th>
+                  <th className="text-right font-normal px-3 py-2.5">30d %</th>
+                  <th className="text-right font-normal px-3 py-2.5">Vol 24h</th>
+                  <th className="text-right font-normal px-3 py-2.5">Vol 7d</th>
+                  <th className="text-right font-normal px-3 py-2.5">Vol 30d</th>
+                  <th className="text-right font-normal px-3 py-2.5">H 24h</th>
+                  <th className="text-right font-normal px-3 py-2.5">L 24h</th>
+                  <th className="text-right font-normal px-3 py-2.5">H 7d</th>
+                  <th className="text-right font-normal px-3 py-2.5">L 7d</th>
+                  <th className="text-right font-normal px-3 py-2.5">H 30d</th>
+                  <th className="text-right font-normal px-3 py-2.5">L 30d</th>
+                  <th className="text-right font-normal px-3 py-2.5">Disp 24h</th>
+                  <th className="text-right font-normal px-3 py-2.5">Disp 7d</th>
+                  <th className="text-right font-normal px-3 py-2.5">Disp 30d</th>
+                  <th className="text-right font-normal px-3 py-2.5">Dispensers</th>
+                  <th className="text-right font-normal px-3 py-2.5">Depth</th>
+                  <th className="text-right font-normal px-3 py-2.5">Total BTC</th>
+                  <th className="text-right font-normal px-3 py-2.5">Total Dispensed</th>
+                  <th className="text-right font-normal px-3 py-2.5">Total Disp#</th>
+                  <th className="text-right font-normal px-3 py-2.5">Buyers</th>
+                  <th className="text-right font-normal px-3 py-2.5">Sellers</th>
+                  <th className="text-right font-normal px-3 py-2.5">Created</th>
+                  <th className="text-right font-normal px-3 py-2.5">Avg BTC</th>
+                  <th className="text-right font-normal px-3 py-2.5">First</th>
+                  <th className="text-right font-normal px-3 py-2.5">Updated</th>
                 </tr>
               </thead>
               <tbody>
                 {marketsLoading ? (
                   <tr>
-                    <td colSpan={9} className="text-center py-20 text-sm text-zinc-500">
+                    <td colSpan={30} className="text-center py-20 text-sm text-zinc-500">
                       Loading dispenser markets...
                     </td>
                   </tr>
                 ) : markets.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="text-center py-20 text-sm text-zinc-600">
+                    <td colSpan={30} className="text-center py-20 text-sm text-zinc-600">
                       No active dispenser markets found
                     </td>
                   </tr>
                 ) : (
                   markets.map((m) => (
                     <tr key={m.asset} className="hover:bg-zinc-900 transition-colors border-b border-zinc-800/50 last:border-0">
-                      <td className="px-3 py-2">
+                      <td className="px-3 py-2 sticky left-0 bg-zinc-950 z-10">
                         <Link href={`/dispense/${m.asset}`} className="flex items-center gap-2">
                           <Image
                             src={`${XCP_IMG_BASE}/icon/${m.asset}`}
@@ -121,41 +157,38 @@ export default function DispensersPage() {
                             className="rounded-sm"
                             unoptimized
                           />
-                          <span className="text-zinc-200 font-medium truncate hover:underline">{m.asset_longname ?? m.asset}</span>
+                          <span className="text-zinc-200 font-medium hover:underline">{m.asset_longname ?? m.asset}</span>
                         </Link>
                       </td>
-                      <td className="text-right text-zinc-300 font-mono px-3 py-2">
-                        {m.cheapest_price != null ? formatPrice(m.cheapest_price) : '—'}
-                      </td>
-                      <td className="text-right text-zinc-400 font-mono px-3 py-2 max-sm:hidden">
-                        {m.avg_price != null ? formatPrice(m.avg_price) : '—'}
-                      </td>
-                      <td className={`text-right font-mono px-3 py-2 ${
-                        m.price_change_24h == null
-                          ? 'text-zinc-600'
-                          : m.price_change_24h >= 0
-                            ? 'text-green-400'
-                            : 'text-red-400'
-                      }`}>
-                        {m.price_change_24h != null
-                          ? `${m.price_change_24h >= 0 ? '+' : ''}${m.price_change_24h.toFixed(1)}%`
-                          : '—'}
-                      </td>
-                      <td className="text-right text-zinc-400 font-mono px-3 py-2 max-sm:hidden">
-                        {m.volume_24h != null && m.volume_24h > 0 ? formatAmount(m.volume_24h) : '—'}
-                      </td>
-                      <td className="text-right text-zinc-400 font-mono px-3 py-2 max-sm:hidden">
-                        {m.total_available != null && m.total_available > 0 ? formatAmount(m.total_available) : '—'}
-                      </td>
-                      <td className="text-right text-zinc-400 font-mono px-3 py-2 max-sm:hidden">
-                        {m.active_dispensers}
-                      </td>
-                      <td className="text-right text-zinc-400 font-mono px-3 py-2 max-sm:hidden">
-                        {m.total_btc_spent != null && m.total_btc_spent > 0 ? formatPrice(m.total_btc_spent) : '—'}
-                      </td>
-                      <td className="text-right text-zinc-400 font-mono px-3 py-2">
-                        {m.dispense_count_24h ?? 0}
-                      </td>
+                      <td className="text-right text-zinc-300 font-mono px-3 py-2">{m.cheapest_price != null ? formatPrice(m.cheapest_price) : '—'}</td>
+                      <td className="text-right text-zinc-400 font-mono px-3 py-2">{m.avg_price != null ? formatPrice(m.avg_price) : '—'}</td>
+                      <td className="text-right text-zinc-400 font-mono px-3 py-2">{m.last_dispense_price != null ? formatPrice(m.last_dispense_price) : '—'}</td>
+                      <td className={`text-right font-mono px-3 py-2 ${pctColor(m.price_change_24h)}`}>{fmtPct(m.price_change_24h)}</td>
+                      <td className={`text-right font-mono px-3 py-2 ${pctColor(m.price_change_7d)}`}>{fmtPct(m.price_change_7d)}</td>
+                      <td className={`text-right font-mono px-3 py-2 ${pctColor(m.price_change_30d)}`}>{fmtPct(m.price_change_30d)}</td>
+                      <td className="text-right text-zinc-400 font-mono px-3 py-2">{fmtVol(m.volume_24h)}</td>
+                      <td className="text-right text-zinc-400 font-mono px-3 py-2">{fmtVol(m.volume_7d)}</td>
+                      <td className="text-right text-zinc-400 font-mono px-3 py-2">{fmtVol(m.volume_30d)}</td>
+                      <td className="text-right text-zinc-400 font-mono px-3 py-2">{m.high_24h != null ? formatPrice(m.high_24h) : '—'}</td>
+                      <td className="text-right text-zinc-400 font-mono px-3 py-2">{m.low_24h != null ? formatPrice(m.low_24h) : '—'}</td>
+                      <td className="text-right text-zinc-400 font-mono px-3 py-2">{m.high_7d != null ? formatPrice(m.high_7d) : '—'}</td>
+                      <td className="text-right text-zinc-400 font-mono px-3 py-2">{m.low_7d != null ? formatPrice(m.low_7d) : '—'}</td>
+                      <td className="text-right text-zinc-400 font-mono px-3 py-2">{m.high_30d != null ? formatPrice(m.high_30d) : '—'}</td>
+                      <td className="text-right text-zinc-400 font-mono px-3 py-2">{m.low_30d != null ? formatPrice(m.low_30d) : '—'}</td>
+                      <td className="text-right text-zinc-400 font-mono px-3 py-2">{m.dispense_count_24h ?? 0}</td>
+                      <td className="text-right text-zinc-400 font-mono px-3 py-2">{m.dispense_count_7d ?? 0}</td>
+                      <td className="text-right text-zinc-400 font-mono px-3 py-2">{m.dispense_count_30d ?? 0}</td>
+                      <td className="text-right text-zinc-400 font-mono px-3 py-2">{m.active_dispensers}</td>
+                      <td className="text-right text-zinc-400 font-mono px-3 py-2">{m.total_available != null && m.total_available > 0 ? formatAmount(m.total_available) : '—'}</td>
+                      <td className="text-right text-zinc-400 font-mono px-3 py-2">{m.total_btc_spent != null && m.total_btc_spent > 0 ? formatPrice(m.total_btc_spent) : '—'}</td>
+                      <td className="text-right text-zinc-400 font-mono px-3 py-2">{m.total_dispensed != null && m.total_dispensed > 0 ? formatAmount(m.total_dispensed) : '—'}</td>
+                      <td className="text-right text-zinc-400 font-mono px-3 py-2">{m.total_dispense_count ?? 0}</td>
+                      <td className="text-right text-zinc-400 font-mono px-3 py-2">{m.unique_buyers ?? 0}</td>
+                      <td className="text-right text-zinc-400 font-mono px-3 py-2">{m.unique_sellers ?? 0}</td>
+                      <td className="text-right text-zinc-400 font-mono px-3 py-2">{m.total_dispensers_created ?? 0}</td>
+                      <td className="text-right text-zinc-400 font-mono px-3 py-2">{m.avg_dispense_btc != null && m.avg_dispense_btc > 0 ? formatPrice(m.avg_dispense_btc) : '—'}</td>
+                      <td className="text-right text-zinc-600 font-mono px-3 py-2">{m.first_dispense_time ? formatTimeAgo(m.first_dispense_time) : '—'}</td>
+                      <td className="text-right text-zinc-600 font-mono px-3 py-2">{m.updated_at ? formatTimeAgo(Number(m.updated_at)) : '—'}</td>
                     </tr>
                   ))
                 )}

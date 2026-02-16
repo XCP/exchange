@@ -12,14 +12,31 @@ import { getTradingDirection, getTradingPairSlug, getTradingPairString, calculat
 import { XCP_IMG_BASE } from '@/utils/constants'
 import { useTradeSummary } from '@/lib/hooks/useTradeSummary'
 import { formatAmount } from '@/utils/format-amount'
+import { usePairMarkets } from '@/lib/hooks/usePairMarkets'
 
-type Tab = 'open' | 'matches'
+type Tab = 'markets' | 'open' | 'matches'
+
+function pctColor(v: number | null) {
+  if (v == null) return 'text-zinc-600'
+  return v >= 0 ? 'text-green-400' : 'text-red-400'
+}
+
+function fmtPct(v: number | null) {
+  if (v == null) return '—'
+  return `${v >= 0 ? '+' : ''}${v.toFixed(1)}%`
+}
+
+function fmtVol(v: number | null) {
+  if (v == null || v <= 0) return '—'
+  return formatAmount(v)
+}
 
 export default function OrdersPage() {
-  const [activeTab, setActiveTab] = useState<Tab>('open')
+  const [activeTab, setActiveTab] = useState<Tab>('markets')
   const { orders, isLoading: ordersLoading } = useGlobalOrders(50)
   const { trades, isLoading: tradesLoading } = useGlobalTrades(50)
   const { data: summary } = useTradeSummary()
+  const { pairs, isLoading: pairsLoading } = usePairMarkets()
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
@@ -56,7 +73,11 @@ export default function OrdersPage() {
 
         {/* Tab bar */}
         <div className="flex gap-1 mb-4">
-          {(['open', 'matches'] as const).map((tab) => (
+          {([
+            ['markets', 'Markets'],
+            ['open', 'Open Orders'],
+            ['matches', 'Recent Matches'],
+          ] as const).map(([tab, label]) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -66,10 +87,123 @@ export default function OrdersPage() {
                   : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900'
               }`}
             >
-              {tab === 'open' ? 'Open Orders' : 'Recent Matches'}
+              {label}
             </button>
           ))}
         </div>
+
+        {activeTab === 'markets' && (
+          <div className="border border-zinc-800 rounded-sm overflow-x-auto">
+            <table className="text-xs whitespace-nowrap">
+              <thead>
+                <tr className="text-zinc-500 border-b border-zinc-800 bg-zinc-900/50">
+                  <th className="text-left font-normal px-3 py-2.5 sticky left-0 bg-zinc-900/50 z-10">Pair</th>
+                  <th className="text-right font-normal px-3 py-2.5">Last</th>
+                  <th className="text-right font-normal px-3 py-2.5">Side</th>
+                  <th className="text-right font-normal px-3 py-2.5">24h %</th>
+                  <th className="text-right font-normal px-3 py-2.5">7d %</th>
+                  <th className="text-right font-normal px-3 py-2.5">30d %</th>
+                  <th className="text-right font-normal px-3 py-2.5">Vol 24h</th>
+                  <th className="text-right font-normal px-3 py-2.5">Vol 7d</th>
+                  <th className="text-right font-normal px-3 py-2.5">Vol 30d</th>
+                  <th className="text-right font-normal px-3 py-2.5">Base Vol 24h</th>
+                  <th className="text-right font-normal px-3 py-2.5">Base Vol 7d</th>
+                  <th className="text-right font-normal px-3 py-2.5">Base Vol 30d</th>
+                  <th className="text-right font-normal px-3 py-2.5">H 24h</th>
+                  <th className="text-right font-normal px-3 py-2.5">L 24h</th>
+                  <th className="text-right font-normal px-3 py-2.5">H 7d</th>
+                  <th className="text-right font-normal px-3 py-2.5">L 7d</th>
+                  <th className="text-right font-normal px-3 py-2.5">H 30d</th>
+                  <th className="text-right font-normal px-3 py-2.5">L 30d</th>
+                  <th className="text-right font-normal px-3 py-2.5">Trades 24h</th>
+                  <th className="text-right font-normal px-3 py-2.5">Trades 7d</th>
+                  <th className="text-right font-normal px-3 py-2.5">Trades 30d</th>
+                  <th className="text-right font-normal px-3 py-2.5">Open Orders</th>
+                  <th className="text-right font-normal px-3 py-2.5">Bids</th>
+                  <th className="text-right font-normal px-3 py-2.5">Asks</th>
+                  <th className="text-right font-normal px-3 py-2.5">Best Bid</th>
+                  <th className="text-right font-normal px-3 py-2.5">Best Ask</th>
+                  <th className="text-right font-normal px-3 py-2.5">Spread</th>
+                  <th className="text-right font-normal px-3 py-2.5">Total Vol</th>
+                  <th className="text-right font-normal px-3 py-2.5">Total Base Vol</th>
+                  <th className="text-right font-normal px-3 py-2.5">Total Trades</th>
+                  <th className="text-right font-normal px-3 py-2.5">Traders</th>
+                  <th className="text-right font-normal px-3 py-2.5">ATH</th>
+                  <th className="text-right font-normal px-3 py-2.5">ATL</th>
+                  <th className="text-right font-normal px-3 py-2.5">First Trade</th>
+                  <th className="text-right font-normal px-3 py-2.5">Updated</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pairsLoading ? (
+                  <tr>
+                    <td colSpan={35} className="text-center py-20 text-sm text-zinc-500">
+                      Loading markets...
+                    </td>
+                  </tr>
+                ) : pairs.length === 0 ? (
+                  <tr>
+                    <td colSpan={35} className="text-center py-20 text-sm text-zinc-600">
+                      No trading pairs found
+                    </td>
+                  </tr>
+                ) : (
+                  pairs.map((p) => (
+                    <tr key={p.pair} className="hover:bg-zinc-900 transition-colors border-b border-zinc-800/50 last:border-0">
+                      <td className="px-3 py-2 sticky left-0 bg-zinc-950 z-10">
+                        <Link href={`/trade/${p.pair}`} className="flex items-center gap-2">
+                          <Image
+                            src={`${XCP_IMG_BASE}/icon/${p.base_asset}`}
+                            alt=""
+                            width={16}
+                            height={16}
+                            className="rounded-sm"
+                            unoptimized
+                          />
+                          <span className="text-zinc-200 font-medium hover:underline">{p.pair.replace('_', '/')}</span>
+                        </Link>
+                      </td>
+                      <td className="text-right text-zinc-300 font-mono px-3 py-2">{p.last_price != null ? formatPrice(p.last_price) : '—'}</td>
+                      <td className={`text-right font-mono px-3 py-2 ${p.last_side === 'buy' ? 'text-green-400' : p.last_side === 'sell' ? 'text-red-400' : 'text-zinc-600'}`}>{p.last_side ?? '—'}</td>
+                      <td className={`text-right font-mono px-3 py-2 ${pctColor(p.price_change_24h)}`}>{fmtPct(p.price_change_24h)}</td>
+                      <td className={`text-right font-mono px-3 py-2 ${pctColor(p.price_change_7d)}`}>{fmtPct(p.price_change_7d)}</td>
+                      <td className={`text-right font-mono px-3 py-2 ${pctColor(p.price_change_30d)}`}>{fmtPct(p.price_change_30d)}</td>
+                      <td className="text-right text-zinc-400 font-mono px-3 py-2">{fmtVol(p.volume_24h)}</td>
+                      <td className="text-right text-zinc-400 font-mono px-3 py-2">{fmtVol(p.volume_7d)}</td>
+                      <td className="text-right text-zinc-400 font-mono px-3 py-2">{fmtVol(p.volume_30d)}</td>
+                      <td className="text-right text-zinc-400 font-mono px-3 py-2">{fmtVol(p.base_volume_24h)}</td>
+                      <td className="text-right text-zinc-400 font-mono px-3 py-2">{fmtVol(p.base_volume_7d)}</td>
+                      <td className="text-right text-zinc-400 font-mono px-3 py-2">{fmtVol(p.base_volume_30d)}</td>
+                      <td className="text-right text-zinc-400 font-mono px-3 py-2">{p.high_24h != null ? formatPrice(p.high_24h) : '—'}</td>
+                      <td className="text-right text-zinc-400 font-mono px-3 py-2">{p.low_24h != null ? formatPrice(p.low_24h) : '—'}</td>
+                      <td className="text-right text-zinc-400 font-mono px-3 py-2">{p.high_7d != null ? formatPrice(p.high_7d) : '—'}</td>
+                      <td className="text-right text-zinc-400 font-mono px-3 py-2">{p.low_7d != null ? formatPrice(p.low_7d) : '—'}</td>
+                      <td className="text-right text-zinc-400 font-mono px-3 py-2">{p.high_30d != null ? formatPrice(p.high_30d) : '—'}</td>
+                      <td className="text-right text-zinc-400 font-mono px-3 py-2">{p.low_30d != null ? formatPrice(p.low_30d) : '—'}</td>
+                      <td className="text-right text-zinc-400 font-mono px-3 py-2">{p.trade_count_24h ?? 0}</td>
+                      <td className="text-right text-zinc-400 font-mono px-3 py-2">{p.trade_count_7d ?? 0}</td>
+                      <td className="text-right text-zinc-400 font-mono px-3 py-2">{p.trade_count_30d ?? 0}</td>
+                      <td className="text-right text-zinc-400 font-mono px-3 py-2">{p.open_orders ?? 0}</td>
+                      <td className="text-right text-zinc-400 font-mono px-3 py-2">{p.bid_count ?? 0}</td>
+                      <td className="text-right text-zinc-400 font-mono px-3 py-2">{p.ask_count ?? 0}</td>
+                      <td className="text-right text-zinc-400 font-mono px-3 py-2">{p.best_bid != null ? formatPrice(p.best_bid) : '—'}</td>
+                      <td className="text-right text-zinc-400 font-mono px-3 py-2">{p.best_ask != null ? formatPrice(p.best_ask) : '—'}</td>
+                      <td className="text-right text-zinc-400 font-mono px-3 py-2">{p.spread != null ? formatPrice(p.spread) : '—'}</td>
+                      <td className="text-right text-zinc-400 font-mono px-3 py-2">{fmtVol(p.total_volume)}</td>
+                      <td className="text-right text-zinc-400 font-mono px-3 py-2">{fmtVol(p.total_base_volume)}</td>
+                      <td className="text-right text-zinc-400 font-mono px-3 py-2">{p.total_trade_count ?? 0}</td>
+                      <td className="text-right text-zinc-400 font-mono px-3 py-2">{p.unique_traders ?? 0}</td>
+                      <td className="text-right text-zinc-400 font-mono px-3 py-2">{p.all_time_high != null ? formatPrice(p.all_time_high) : '—'}</td>
+                      <td className="text-right text-zinc-400 font-mono px-3 py-2">{p.all_time_low != null ? formatPrice(p.all_time_low) : '—'}</td>
+                      <td className="text-right text-zinc-600 font-mono px-3 py-2">{p.first_trade_time ? formatTimeAgo(p.first_trade_time) : '—'}</td>
+                      <td className="text-right text-zinc-600 font-mono px-3 py-2">{p.updated_at ? formatTimeAgo(Number(p.updated_at)) : '—'}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
 
         {activeTab === 'open' ? (
           <div className="border border-zinc-800 rounded-sm overflow-hidden">
