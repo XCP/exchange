@@ -122,7 +122,7 @@ export default function OrdersPage() {
 
         {activeTab === 'markets' && (
           <div className="border border-zinc-800 rounded-sm overflow-x-auto">
-            <table className="text-xs whitespace-nowrap">
+            <table className="w-full text-xs whitespace-nowrap">
               <thead>
                 <tr className="text-zinc-500 border-b border-zinc-800 bg-zinc-900/50">
                   <th className="text-left font-normal px-3 py-2.5 sticky left-0 bg-zinc-900/50 z-10">Pair</th>
