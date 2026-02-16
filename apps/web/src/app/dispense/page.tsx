@@ -61,7 +61,7 @@ export default function DispensersPage() {
   const [sortDesc, setSortDesc] = useState(true)
 
   const apiSort = dispSortCol(sortId, timeframe)
-  const { markets, summary, isLoading: marketsLoading } = useDispenserMarkets(apiSort, !hideLowQuality, timeframe)
+  const { markets, summary, isLoading: marketsLoading } = useDispenserMarkets(apiSort, !hideLowQuality, timeframe, sortDesc ? 'desc' : 'asc')
   const { dispensers, isLoading: dispensersLoading } = useGlobalDispensers(50)
   const { dispenses, isLoading: dispensesLoading } = useGlobalDispenses(50)
 

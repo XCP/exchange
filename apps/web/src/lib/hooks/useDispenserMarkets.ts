@@ -51,9 +51,11 @@ interface DispenserMarketsResponse {
   summary: DispenserMarketsSummary
 }
 
-export function useDispenserMarkets(sort: string = 'total_btc_spent', includeHidden: boolean = false, timeframe: string = '24h') {
+export function useDispenserMarkets(sort: string = 'total_btc_spent', includeHidden: boolean = false, timeframe: string = '24h', order: 'asc' | 'desc' = 'desc') {
+  const params = new URLSearchParams({ sort, limit: '50', timeframe, order })
+  if (includeHidden) params.set('include_hidden', '1')
   const { data, error, isLoading } = useSWR<DispenserMarketsResponse>(
-    dexUrl(`/dispenser-stats?sort=${sort}&limit=50${includeHidden ? '&include_hidden=1' : ''}&timeframe=${timeframe}`),
+    dexUrl(`/dispenser-stats?${params}`),
     fetcher,
     { refreshInterval: 60_000 }
   )

@@ -52,6 +52,7 @@ export async function handlePairs(
   const tfParam = url.searchParams.get("timeframe");
   const tf = tfParam === "7d" || tfParam === "30d" || tfParam === "all" ? tfParam : "24h";
   const includeHidden = url.searchParams.get("include_hidden") === "1";
+  const order = url.searchParams.get("order") === "asc" ? "ASC" : "DESC";
   const offset = Math.max(
     parseInt(url.searchParams.get("offset") ?? "0", 10) || 0,
     0
@@ -89,7 +90,7 @@ export async function handlePairs(
   }
 
   // D1 doesn't support parameterized ORDER BY, but sort is validated above
-  query += ` ORDER BY ${sort} DESC LIMIT ? OFFSET ?`;
+  query += ` ORDER BY ${sort} ${order} LIMIT ? OFFSET ?`;
   binds.push(limit, offset);
 
   // Count query (same conditions, no LIMIT/OFFSET)

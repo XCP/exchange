@@ -20,6 +20,7 @@ export async function handleDispenserStatsList(
   const includeHidden = url.searchParams.get("include_hidden") === "1";
   const hiddenFilter = includeHidden ? "" : " AND ds.hidden = 0";
   const hiddenFilterCount = includeHidden ? "" : " AND hidden = 0";
+  const order = url.searchParams.get("order") === "asc" ? "ASC" : "DESC";
   const tfParam = url.searchParams.get("timeframe");
   const tf = tfParam === "7d" || tfParam === "30d" || tfParam === "all" ? tfParam : "24h";
   const activityFilter = tf === "all" ? "" : ` AND ds.dispense_count_${tf} > 0`;
@@ -45,7 +46,7 @@ export async function handleDispenserStatsList(
                WHERE asset = ds.asset AND status < 10 AND price > 0 AND give_remaining > 0) AS avg_price
        FROM dispenser_stats ds
        WHERE ds.active_dispensers > 0${hiddenFilter}${activityFilter}
-       ORDER BY ${sort} DESC
+       ORDER BY ${sort} ${order}
        LIMIT ? OFFSET ?`
     ).bind(limit, offset),
     db.prepare(

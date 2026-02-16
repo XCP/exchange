@@ -67,7 +67,7 @@ export default function OrdersPage() {
   const { data: summary } = useTradeSummary()
 
   const apiSort = pairSortCol(sortId, timeframe)
-  const { pairs, isLoading: pairsLoading } = usePairMarkets(apiSort, !hideLowQuality, timeframe)
+  const { pairs, isLoading: pairsLoading } = usePairMarkets(apiSort, !hideLowQuality, timeframe, sortDesc ? 'desc' : 'asc')
 
   const rolling = timeframe !== 'all'
 
