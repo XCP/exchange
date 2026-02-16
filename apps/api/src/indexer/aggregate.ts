@@ -1,6 +1,7 @@
 import { INTERVAL_SECONDS, ALL_INTERVALS } from "../lib/constants";
 import { D1_BATCH_LIMIT, batchExec } from "../lib/batch";
 import { updatePairStats } from "./stats";
+import { updateDispenserStats } from "./dispenser-stats";
 import { getMode } from "./state";
 
 const CATCHUP_BATCH_SIZE = 200;
@@ -309,13 +310,13 @@ export async function runCatchupAggregation(
   return { done: false, processed: pairs.results.length, cursor };
 }
 
-const STATS_BATCH_SIZE = 50;
+const STATS_BATCH_SIZE = 40;
 
 /**
  * Catch-up stats: compute rolling-window pair stats for all pairs.
  * Runs after BUILD_AGGREGATES to populate 24h/7d/30d volume, price
  * changes, etc. before entering FOLLOWING mode.
- * Each pair costs 5 D1 queries, so 50 pairs = ~253 queries per batch.
+ * Each pair costs 7 D1 queries, so 40 pairs = ~283 queries per batch.
  */
 export async function runCatchupStats(
   db: D1Database
@@ -338,11 +339,11 @@ export async function runCatchupStats(
     .all<{ pair: string; base_asset: string; quote_asset: string }>();
 
   if (!pairs.results.length) {
-    // All pairs done — transition to FOLLOWING
+    // Pair stats done — seed dispenser stats cursor for next phase
     await db.batch([
       db.prepare(`DELETE FROM indexer_state WHERE key = 'stats_cursor'`),
       db.prepare(
-        `INSERT INTO indexer_state (key, value) VALUES ('indexer_mode', 'FOLLOWING')
+        `INSERT INTO indexer_state (key, value) VALUES ('dispenser_stats_cursor', '')
          ON CONFLICT (key) DO UPDATE SET value = excluded.value`
       ),
     ]);
@@ -363,4 +364,58 @@ export async function runCatchupStats(
     .run();
 
   return { done: false, processed: pairs.results.length, cursor: lastPair };
+}
+
+const DISPENSER_STATS_BATCH_SIZE = 40;
+
+/**
+ * Catch-up dispenser stats: compute all-time metrics for all assets.
+ * Runs after pair stats are done, then transitions to FOLLOWING.
+ * Each asset costs 7 D1 queries, so 40 assets = ~283 queries per batch.
+ */
+export async function runCatchupDispenserStats(
+  db: D1Database
+): Promise<{ done: boolean; processed: number; cursor: string }> {
+  const cursorRow = await db
+    .prepare(`SELECT value FROM indexer_state WHERE key = 'dispenser_stats_cursor'`)
+    .first<{ value: string }>();
+
+  if (!cursorRow) return { done: true, processed: 0, cursor: "" };
+
+  const cursor = cursorRow.value;
+  const assets = await db
+    .prepare(
+      `SELECT asset FROM dispenser_stats
+       WHERE asset > ?
+       ORDER BY asset LIMIT ?`
+    )
+    .bind(cursor, DISPENSER_STATS_BATCH_SIZE)
+    .all<{ asset: string }>();
+
+  if (!assets.results.length) {
+    // All assets done — transition to FOLLOWING
+    await db.batch([
+      db.prepare(`DELETE FROM indexer_state WHERE key = 'dispenser_stats_cursor'`),
+      db.prepare(
+        `INSERT INTO indexer_state (key, value) VALUES ('indexer_mode', 'FOLLOWING')
+         ON CONFLICT (key) DO UPDATE SET value = excluded.value`
+      ),
+    ]);
+    return { done: true, processed: 0, cursor };
+  }
+
+  for (const a of assets.results) {
+    await updateDispenserStats(db, a.asset);
+  }
+
+  const lastAsset = assets.results[assets.results.length - 1].asset;
+  await db
+    .prepare(
+      `INSERT INTO indexer_state (key, value) VALUES ('dispenser_stats_cursor', ?)
+       ON CONFLICT (key) DO UPDATE SET value = excluded.value`
+    )
+    .bind(lastAsset)
+    .run();
+
+  return { done: false, processed: assets.results.length, cursor: lastAsset };
 }

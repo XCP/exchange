@@ -54,7 +54,7 @@ export async function updatePairStats(
     }>();
 
   // Price change lookups + all-time totals (run in parallel)
-  const [price24hAgo, price7dAgo, price30dAgo, allTime] = await Promise.all([
+  const [price24hAgo, price7dAgo, price30dAgo, allTime, traderCount] = await Promise.all([
     db
       .prepare(
         `SELECT price FROM trades
@@ -80,13 +80,23 @@ export async function updatePairStats(
       .prepare(
         `SELECT COALESCE(SUM(volume), 0) as total_volume,
                 COUNT(*) as total_count,
-                COUNT(DISTINCT maker) + COUNT(DISTINCT taker) as unique_traders,
                 MAX(price) as ath,
                 MIN(price) as atl
          FROM trades WHERE pair = ?`
       )
       .bind(pair)
-      .first<{ total_volume: number; total_count: number; unique_traders: number; ath: number | null; atl: number | null }>(),
+      .first<{ total_volume: number; total_count: number; ath: number | null; atl: number | null }>(),
+    // UNION deduplicates addresses that appear as both maker and taker
+    db
+      .prepare(
+        `SELECT COUNT(*) as unique_traders FROM (
+           SELECT maker as addr FROM trades WHERE pair = ?
+           UNION
+           SELECT taker FROM trades WHERE pair = ?
+         )`
+      )
+      .bind(pair, pair)
+      .first<{ unique_traders: number }>(),
   ]);
 
   const lastPrice = stats?.last_price ?? null;
@@ -166,7 +176,7 @@ export async function updatePairStats(
       stats?.first_trade_time ?? null,
       allTime?.total_volume ?? 0,
       allTime?.total_count ?? 0,
-      allTime?.unique_traders ?? 0,
+      traderCount?.unique_traders ?? 0,
       allTime?.ath ?? null,
       allTime?.atl ?? null,
       now

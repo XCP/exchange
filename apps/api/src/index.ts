@@ -10,7 +10,7 @@ import { handleAsset } from "./routes/asset";
 import { handlePortfolioBids, handlePortfolioDispensers, handlePortfolioOrders } from "./routes/portfolio";
 import { handleDispenserStats, handleDispenserStatsList } from "./routes/dispenser-stats";
 import { syncBlocks } from "./indexer/sync-block";
-import { runCatchupAggregation, runCatchupStats, aggregateCandlesForPair } from "./indexer/aggregate";
+import { runCatchupAggregation, runCatchupStats, runCatchupDispenserStats, aggregateCandlesForPair } from "./indexer/aggregate";
 import { backfillTrades, backfillDispenses } from "./indexer/backfill";
 import { syncOrders, syncDispensers, runSnapshotStep } from "./indexer/snapshot";
 import { getMode, setMode, deleteState } from "./indexer/state";
@@ -425,15 +425,32 @@ export default {
             case "REFRESH_STATS": {
               const statsStart = Date.now();
               let statsTotal = 0;
-              let statsDone = false;
-              // 50 pairs × 5 queries = 250 per batch; 3 batches = 750 queries
-              const MAX_STATS_BATCHES = 3;
-              for (let b = 0; b < MAX_STATS_BATCHES; b++) {
+              let allStatsDone = false;
+              // 40 items × 7 queries = ~280 per batch; shared budget of 3 batches
+              // across both phases to stay under the 1000 queries/invocation limit
+              const MAX_TOTAL_BATCHES = 3;
+              let batchesUsed = 0;
+
+              // Phase 1: pair stats
+              let pairsDone = false;
+              while (batchesUsed < MAX_TOTAL_BATCHES) {
                 const r = await runCatchupStats(env.DB);
+                batchesUsed++;
                 statsTotal += r.processed;
-                if (r.done) { statsDone = true; break; }
+                if (r.done) { pairsDone = true; break; }
               }
-              console.log(`Cron: stats refresh — processed=${statsTotal}, done=${statsDone}, elapsed=${Date.now() - statsStart}ms`);
+
+              // Phase 2: dispenser stats (shared budget with pair stats)
+              if (pairsDone) {
+                while (batchesUsed < MAX_TOTAL_BATCHES) {
+                  const r = await runCatchupDispenserStats(env.DB);
+                  batchesUsed++;
+                  statsTotal += r.processed;
+                  if (r.done) { allStatsDone = true; break; }
+                }
+              }
+
+              console.log(`Cron: stats refresh — processed=${statsTotal}, done=${allStatsDone}, elapsed=${Date.now() - statsStart}ms`);
               break;
             }
 
