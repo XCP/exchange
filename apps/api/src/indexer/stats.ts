@@ -465,8 +465,8 @@ export async function refreshStalePairStats(
     .bind(t24h, t7d, t30d)
     .all<{ pair: string; base_asset: string; quote_asset: string }>();
 
-  for (const p of stalePairs.results) {
-    await updatePairStats(db, p.pair, p.base_asset, p.quote_asset);
+  if (stalePairs.results.length > 0) {
+    await bulkUpdatePairStats(db, stalePairs.results);
   }
 
   return stalePairs.results.length;

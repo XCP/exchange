@@ -468,8 +468,8 @@ export async function refreshStaleDispenserStats(
     .bind(t24h, t7d, t30d)
     .all<{ asset: string }>();
 
-  for (const a of staleAssets.results) {
-    await updateDispenserStats(db, a.asset);
+  if (staleAssets.results.length > 0) {
+    await bulkUpdateDispenserStats(db, staleAssets.results.map((a) => a.asset));
   }
 
   return staleAssets.results.length;
