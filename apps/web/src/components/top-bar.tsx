@@ -20,7 +20,7 @@ export function TopBar() {
             { label: 'Trade', href: '/trade' },
             { label: 'Dispense', href: '/dispense' },
             { label: 'Swap', href: '#' },
-            { label: 'Top 100', href: '#' },
+            { label: 'Analytics', href: '/analytics' },
           ].map((link) => (
             <Link
               key={link.label}

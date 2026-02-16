@@ -10,6 +10,7 @@ import { handleAsset } from "./routes/asset";
 import { handlePortfolioBids, handlePortfolioDispensers, handlePortfolioOrders } from "./routes/portfolio";
 import { handleDispenserStats, handleDispenserStatsList } from "./routes/dispenser-stats";
 import { handleTradeSummary } from "./routes/trade-summary";
+import { handleAnalytics } from "./routes/analytics";
 import { syncBlocks } from "./indexer/sync-block";
 import { runCatchupAggregation, runCatchupStats, runCatchupDispenserStats, aggregateCandlesForPair } from "./indexer/aggregate";
 import { backfillTrades, backfillDispenses } from "./indexer/backfill";
@@ -176,6 +177,11 @@ export default {
       const dispenserStatsMatch = path.match(/^\/dispenser-stats\/([A-Za-z0-9._]+)$/);
       if (dispenserStatsMatch) {
         return await withCors(await handleDispenserStats(env.DB, dispenserStatsMatch[1]));
+      }
+
+      // Route: GET /analytics
+      if (path === "/analytics") {
+        return await withCors(await handleAnalytics(request, env.DB));
       }
 
       // Route: GET /status — mode, progress, table counts
