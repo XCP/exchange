@@ -53,8 +53,8 @@ export async function updatePairStats(
       lo_30d: number | null;
     }>();
 
-  // Price change lookups (need separate queries for the <= boundary)
-  const [price24hAgo, price7dAgo, price30dAgo] = await Promise.all([
+  // Price change lookups + all-time totals (run in parallel)
+  const [price24hAgo, price7dAgo, price30dAgo, allTime] = await Promise.all([
     db
       .prepare(
         `SELECT price FROM trades
@@ -76,6 +76,17 @@ export async function updatePairStats(
       )
       .bind(pair, t30d)
       .first<{ price: number }>(),
+    db
+      .prepare(
+        `SELECT COALESCE(SUM(volume), 0) as total_volume,
+                COUNT(*) as total_count,
+                COUNT(DISTINCT maker) + COUNT(DISTINCT taker) as unique_traders,
+                MAX(price) as ath,
+                MIN(price) as atl
+         FROM trades WHERE pair = ?`
+      )
+      .bind(pair)
+      .first<{ total_volume: number; total_count: number; unique_traders: number; ath: number | null; atl: number | null }>(),
   ]);
 
   const lastPrice = stats?.last_price ?? null;
@@ -99,8 +110,10 @@ export async function updatePairStats(
          volume_24h, volume_7d, volume_30d,
          high_24h, low_24h, high_7d, low_7d, high_30d, low_30d,
          trade_count_24h, trade_count_7d, trade_count_30d,
-         first_trade_time, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         first_trade_time,
+         total_volume, total_trade_count, unique_traders, all_time_high, all_time_low,
+         updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT (pair) DO UPDATE SET
          last_price = excluded.last_price,
          last_trade_time = excluded.last_trade_time,
@@ -121,6 +134,11 @@ export async function updatePairStats(
          trade_count_7d = excluded.trade_count_7d,
          trade_count_30d = excluded.trade_count_30d,
          first_trade_time = excluded.first_trade_time,
+         total_volume = excluded.total_volume,
+         total_trade_count = excluded.total_trade_count,
+         unique_traders = excluded.unique_traders,
+         all_time_high = excluded.all_time_high,
+         all_time_low = excluded.all_time_low,
          updated_at = excluded.updated_at`
     )
     .bind(
@@ -146,6 +164,11 @@ export async function updatePairStats(
       stats?.cnt_7d ?? 0,
       stats?.cnt_30d ?? 0,
       stats?.first_trade_time ?? null,
+      allTime?.total_volume ?? 0,
+      allTime?.total_count ?? 0,
+      allTime?.unique_traders ?? 0,
+      allTime?.ath ?? null,
+      allTime?.atl ?? null,
       now
     )
     .run();

@@ -99,8 +99,8 @@ export async function updateDispenserStats(
       lo_30d: number | null;
     }>();
 
-  // Price change lookups (need separate queries for the <= boundary)
-  const [price24hAgo, price7dAgo, price30dAgo] = await Promise.all([
+  // Price change lookups + all-time totals (run in parallel)
+  const [price24hAgo, price7dAgo, price30dAgo, allTime, dispenserTotals] = await Promise.all([
     db
       .prepare(
         `SELECT price FROM dispenses
@@ -122,6 +122,24 @@ export async function updateDispenserStats(
       )
       .bind(asset, t30d)
       .first<{ price: number }>(),
+    db
+      .prepare(
+        `SELECT COALESCE(SUM(btc_amount), 0) as total_btc,
+                COALESCE(SUM(dispense_quantity), 0) as total_qty,
+                COUNT(*) as total_cnt,
+                COUNT(DISTINCT destination) as buyers
+         FROM dispenses WHERE asset = ?`
+      )
+      .bind(asset)
+      .first<{ total_btc: number; total_qty: number; total_cnt: number; buyers: number }>(),
+    db
+      .prepare(
+        `SELECT COUNT(*) as total_created,
+                COUNT(DISTINCT source) as sellers
+         FROM dispensers WHERE asset = ?`
+      )
+      .bind(asset)
+      .first<{ total_created: number; sellers: number }>(),
   ]);
 
   const lastPrice = stats?.last_price ?? null;
@@ -138,6 +156,14 @@ export async function updateDispenserStats(
       ? ((lastPrice - price30dAgo.price) / price30dAgo.price) * 100
       : 0;
 
+  const totalBtc = allTime?.total_btc ?? 0;
+  const totalDispensed = allTime?.total_qty ?? 0;
+  const totalDispenseCount = allTime?.total_cnt ?? 0;
+  const uniqueBuyers = allTime?.buyers ?? 0;
+  const uniqueSellers = dispenserTotals?.sellers ?? 0;
+  const totalDispensersCreated = dispenserTotals?.total_created ?? 0;
+  const avgDispenseBtc = totalDispenseCount > 0 ? totalBtc / totalDispenseCount : 0;
+
   await db
     .prepare(
       `INSERT INTO dispenser_stats
@@ -146,8 +172,11 @@ export async function updateDispenserStats(
           volume_24h, volume_7d, volume_30d,
           high_24h, low_24h, high_7d, low_7d, high_30d, low_30d,
           dispense_count_24h, dispense_count_7d, dispense_count_30d,
-          first_dispense_time, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          first_dispense_time,
+          total_btc_spent, total_dispensed, total_dispense_count,
+          unique_buyers, unique_sellers, total_dispensers_created, avg_dispense_btc,
+          updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT (asset) DO UPDATE SET
          last_dispense_price = excluded.last_dispense_price,
          last_dispense_time = excluded.last_dispense_time,
@@ -167,6 +196,13 @@ export async function updateDispenserStats(
          dispense_count_7d = excluded.dispense_count_7d,
          dispense_count_30d = excluded.dispense_count_30d,
          first_dispense_time = excluded.first_dispense_time,
+         total_btc_spent = excluded.total_btc_spent,
+         total_dispensed = excluded.total_dispensed,
+         total_dispense_count = excluded.total_dispense_count,
+         unique_buyers = excluded.unique_buyers,
+         unique_sellers = excluded.unique_sellers,
+         total_dispensers_created = excluded.total_dispensers_created,
+         avg_dispense_btc = excluded.avg_dispense_btc,
          updated_at = excluded.updated_at`
     )
     .bind(
@@ -189,6 +225,13 @@ export async function updateDispenserStats(
       stats?.cnt_7d ?? 0,
       stats?.cnt_30d ?? 0,
       stats?.first_time ?? null,
+      totalBtc,
+      totalDispensed,
+      totalDispenseCount,
+      uniqueBuyers,
+      uniqueSellers,
+      totalDispensersCreated,
+      avgDispenseBtc,
       now
     )
     .run();
