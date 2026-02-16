@@ -26,7 +26,7 @@ interface DispenserMarketsResponse {
   offset: number
 }
 
-export function useDispenserMarkets(sort: string = 'volume_24h') {
+export function useDispenserMarkets(sort: string = 'active_dispensers') {
   const { data, error, isLoading } = useSWR<DispenserMarketsResponse>(
     dexUrl(`/dispenser-stats?sort=${sort}&limit=50`),
     fetcher,
