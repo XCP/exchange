@@ -22,10 +22,14 @@ export async function handleDispenserStatsList(
   const includeHidden = url.searchParams.get("include_hidden") === "1";
   const hiddenFilter = includeHidden ? "" : " AND ds.hidden = 0";
   const hiddenFilterCount = includeHidden ? "" : " AND hidden = 0";
+  const tfParam = url.searchParams.get("timeframe");
+  const tf = tfParam === "7d" || tfParam === "30d" ? tfParam : "24h";
+  const activityFilter = ` AND ds.dispense_count_${tf} > 0`;
+  const activityFilterCount = ` AND dispense_count_${tf} > 0`;
 
   const [countResult, rows, summaryResult] = await db.batch([
     db.prepare(
-      `SELECT COUNT(*) as total FROM dispenser_stats WHERE active_dispensers > 0${hiddenFilterCount}`
+      `SELECT COUNT(*) as total FROM dispenser_stats WHERE active_dispensers > 0${hiddenFilterCount}${activityFilterCount}`
     ),
     db.prepare(
       `SELECT ds.asset, ds.asset_longname, ds.last_dispense_price, ds.last_dispense_time,
@@ -40,7 +44,7 @@ export async function handleDispenserStatsList(
               (SELECT SUM(price * give_remaining) / SUM(give_remaining) FROM dispensers
                WHERE asset = ds.asset AND status < 10 AND price > 0 AND give_remaining > 0) AS avg_price
        FROM dispenser_stats ds
-       WHERE ds.active_dispensers > 0${hiddenFilter}
+       WHERE ds.active_dispensers > 0${hiddenFilter}${activityFilter}
        ORDER BY ds.${sort} DESC
        LIMIT ? OFFSET ?`
     ).bind(limit, offset),

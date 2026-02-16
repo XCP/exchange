@@ -13,8 +13,10 @@ import { XCP_IMG_BASE } from '@/utils/constants'
 import { useTradeSummary } from '@/lib/hooks/useTradeSummary'
 import { formatAmount } from '@/utils/format-amount'
 import { usePairMarkets } from '@/lib/hooks/usePairMarkets'
+import type { PairStats } from '@/lib/hooks/usePairStats'
 
 type Tab = 'markets' | 'open' | 'matches'
+type Timeframe = '24h' | '7d' | '30d'
 
 function pctColor(v: number | null) {
   if (v == null) return 'text-zinc-600'
@@ -31,12 +33,18 @@ function fmtVol(v: number | null) {
   return formatAmount(v)
 }
 
+function tfVal(p: PairStats, prefix: string, tf: Timeframe): number | null {
+  const key = `${prefix}_${tf}` as keyof PairStats
+  return (p[key] as number | null) ?? null
+}
+
 export default function OrdersPage() {
   const [activeTab, setActiveTab] = useState<Tab>('markets')
+  const [timeframe, setTimeframe] = useState<Timeframe>('24h')
   const { orders, isLoading: ordersLoading } = useGlobalOrders(50)
   const { trades, isLoading: tradesLoading } = useGlobalTrades(50)
   const { data: summary } = useTradeSummary()
-  const { pairs, isLoading: pairsLoading } = usePairMarkets()
+  const { pairs, isLoading: pairsLoading } = usePairMarkets('total_trade_count', timeframe)
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
@@ -71,8 +79,8 @@ export default function OrdersPage() {
           </div>
         )}
 
-        {/* Tab bar */}
-        <div className="flex gap-1 mb-4">
+        {/* Tab bar + timeframe selector */}
+        <div className="flex items-center gap-1 mb-4">
           {([
             ['markets', 'Markets'],
             ['open', 'Open Orders'],
@@ -90,6 +98,23 @@ export default function OrdersPage() {
               {label}
             </button>
           ))}
+          {activeTab === 'markets' && (
+            <div className="ml-auto flex gap-0.5">
+              {(['24h', '7d', '30d'] as const).map((tf) => (
+                <button
+                  key={tf}
+                  onClick={() => setTimeframe(tf)}
+                  className={`px-2 py-1 text-xs font-mono rounded-sm transition-colors ${
+                    timeframe === tf
+                      ? 'bg-zinc-700 text-zinc-100'
+                      : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900'
+                  }`}
+                >
+                  {tf}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {activeTab === 'markets' && (
@@ -100,24 +125,12 @@ export default function OrdersPage() {
                   <th className="text-left font-normal px-3 py-2.5 sticky left-0 bg-zinc-900/50 z-10">Pair</th>
                   <th className="text-right font-normal px-3 py-2.5">Last</th>
                   <th className="text-right font-normal px-3 py-2.5">Side</th>
-                  <th className="text-right font-normal px-3 py-2.5">24h %</th>
-                  <th className="text-right font-normal px-3 py-2.5">7d %</th>
-                  <th className="text-right font-normal px-3 py-2.5">30d %</th>
-                  <th className="text-right font-normal px-3 py-2.5">Vol 24h</th>
-                  <th className="text-right font-normal px-3 py-2.5">Vol 7d</th>
-                  <th className="text-right font-normal px-3 py-2.5">Vol 30d</th>
-                  <th className="text-right font-normal px-3 py-2.5">Base Vol 24h</th>
-                  <th className="text-right font-normal px-3 py-2.5">Base Vol 7d</th>
-                  <th className="text-right font-normal px-3 py-2.5">Base Vol 30d</th>
-                  <th className="text-right font-normal px-3 py-2.5">H 24h</th>
-                  <th className="text-right font-normal px-3 py-2.5">L 24h</th>
-                  <th className="text-right font-normal px-3 py-2.5">H 7d</th>
-                  <th className="text-right font-normal px-3 py-2.5">L 7d</th>
-                  <th className="text-right font-normal px-3 py-2.5">H 30d</th>
-                  <th className="text-right font-normal px-3 py-2.5">L 30d</th>
-                  <th className="text-right font-normal px-3 py-2.5">Trades 24h</th>
-                  <th className="text-right font-normal px-3 py-2.5">Trades 7d</th>
-                  <th className="text-right font-normal px-3 py-2.5">Trades 30d</th>
+                  <th className="text-right font-normal px-3 py-2.5">{timeframe} %</th>
+                  <th className="text-right font-normal px-3 py-2.5">{timeframe} Vol</th>
+                  <th className="text-right font-normal px-3 py-2.5">{timeframe} Base Vol</th>
+                  <th className="text-right font-normal px-3 py-2.5">{timeframe} High</th>
+                  <th className="text-right font-normal px-3 py-2.5">{timeframe} Low</th>
+                  <th className="text-right font-normal px-3 py-2.5">{timeframe} Trades</th>
                   <th className="text-right font-normal px-3 py-2.5">Open Orders</th>
                   <th className="text-right font-normal px-3 py-2.5">Bids</th>
                   <th className="text-right font-normal px-3 py-2.5">Asks</th>
@@ -137,13 +150,13 @@ export default function OrdersPage() {
               <tbody>
                 {pairsLoading ? (
                   <tr>
-                    <td colSpan={35} className="text-center py-20 text-sm text-zinc-500">
+                    <td colSpan={23} className="text-center py-20 text-sm text-zinc-500">
                       Loading markets...
                     </td>
                   </tr>
                 ) : pairs.length === 0 ? (
                   <tr>
-                    <td colSpan={35} className="text-center py-20 text-sm text-zinc-600">
+                    <td colSpan={23} className="text-center py-20 text-sm text-zinc-600">
                       No trading pairs found
                     </td>
                   </tr>
@@ -165,24 +178,12 @@ export default function OrdersPage() {
                       </td>
                       <td className="text-right text-zinc-300 font-mono px-3 py-2">{p.last_price != null ? formatPrice(p.last_price) : '—'}</td>
                       <td className={`text-right font-mono px-3 py-2 ${p.last_side === 'buy' ? 'text-green-400' : p.last_side === 'sell' ? 'text-red-400' : 'text-zinc-600'}`}>{p.last_side ?? '—'}</td>
-                      <td className={`text-right font-mono px-3 py-2 ${pctColor(p.price_change_24h)}`}>{fmtPct(p.price_change_24h)}</td>
-                      <td className={`text-right font-mono px-3 py-2 ${pctColor(p.price_change_7d)}`}>{fmtPct(p.price_change_7d)}</td>
-                      <td className={`text-right font-mono px-3 py-2 ${pctColor(p.price_change_30d)}`}>{fmtPct(p.price_change_30d)}</td>
-                      <td className="text-right text-zinc-400 font-mono px-3 py-2">{fmtVol(p.volume_24h)}</td>
-                      <td className="text-right text-zinc-400 font-mono px-3 py-2">{fmtVol(p.volume_7d)}</td>
-                      <td className="text-right text-zinc-400 font-mono px-3 py-2">{fmtVol(p.volume_30d)}</td>
-                      <td className="text-right text-zinc-400 font-mono px-3 py-2">{fmtVol(p.base_volume_24h)}</td>
-                      <td className="text-right text-zinc-400 font-mono px-3 py-2">{fmtVol(p.base_volume_7d)}</td>
-                      <td className="text-right text-zinc-400 font-mono px-3 py-2">{fmtVol(p.base_volume_30d)}</td>
-                      <td className="text-right text-zinc-400 font-mono px-3 py-2">{p.high_24h != null ? formatPrice(p.high_24h) : '—'}</td>
-                      <td className="text-right text-zinc-400 font-mono px-3 py-2">{p.low_24h != null ? formatPrice(p.low_24h) : '—'}</td>
-                      <td className="text-right text-zinc-400 font-mono px-3 py-2">{p.high_7d != null ? formatPrice(p.high_7d) : '—'}</td>
-                      <td className="text-right text-zinc-400 font-mono px-3 py-2">{p.low_7d != null ? formatPrice(p.low_7d) : '—'}</td>
-                      <td className="text-right text-zinc-400 font-mono px-3 py-2">{p.high_30d != null ? formatPrice(p.high_30d) : '—'}</td>
-                      <td className="text-right text-zinc-400 font-mono px-3 py-2">{p.low_30d != null ? formatPrice(p.low_30d) : '—'}</td>
-                      <td className="text-right text-zinc-400 font-mono px-3 py-2">{p.trade_count_24h ?? 0}</td>
-                      <td className="text-right text-zinc-400 font-mono px-3 py-2">{p.trade_count_7d ?? 0}</td>
-                      <td className="text-right text-zinc-400 font-mono px-3 py-2">{p.trade_count_30d ?? 0}</td>
+                      <td className={`text-right font-mono px-3 py-2 ${pctColor(tfVal(p, 'price_change', timeframe))}`}>{fmtPct(tfVal(p, 'price_change', timeframe))}</td>
+                      <td className="text-right text-zinc-400 font-mono px-3 py-2">{fmtVol(tfVal(p, 'volume', timeframe))}</td>
+                      <td className="text-right text-zinc-400 font-mono px-3 py-2">{fmtVol(tfVal(p, 'base_volume', timeframe))}</td>
+                      <td className="text-right text-zinc-400 font-mono px-3 py-2">{tfVal(p, 'high', timeframe) != null ? formatPrice(tfVal(p, 'high', timeframe)!) : '—'}</td>
+                      <td className="text-right text-zinc-400 font-mono px-3 py-2">{tfVal(p, 'low', timeframe) != null ? formatPrice(tfVal(p, 'low', timeframe)!) : '—'}</td>
+                      <td className="text-right text-zinc-400 font-mono px-3 py-2">{tfVal(p, 'trade_count', timeframe) ?? 0}</td>
                       <td className="text-right text-zinc-400 font-mono px-3 py-2">{p.open_orders ?? 0}</td>
                       <td className="text-right text-zinc-400 font-mono px-3 py-2">{p.bid_count ?? 0}</td>
                       <td className="text-right text-zinc-400 font-mono px-3 py-2">{p.ask_count ?? 0}</td>
@@ -205,7 +206,7 @@ export default function OrdersPage() {
           </div>
         )}
 
-        {activeTab === 'open' ? (
+        {activeTab === 'open' && (
           <div className="border border-zinc-800 rounded-sm overflow-hidden">
             <div className="grid grid-cols-7 gap-0 px-4 py-2.5 text-xs text-zinc-500 border-b border-zinc-800 bg-zinc-900/50 max-sm:grid-cols-4">
               <span>Pair</span>
@@ -270,7 +271,9 @@ export default function OrdersPage() {
               </div>
             )}
           </div>
-        ) : (
+        )}
+
+        {activeTab === 'matches' && (
           <div className="border border-zinc-800 rounded-sm overflow-hidden">
             <div className="grid grid-cols-6 gap-0 px-4 py-2.5 text-xs text-zinc-500 border-b border-zinc-800 bg-zinc-900/50 max-sm:grid-cols-3">
               <span>Pair</span>

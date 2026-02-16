@@ -9,9 +9,9 @@ interface PairMarketsResponse {
   offset: number
 }
 
-export function usePairMarkets(sort: string = 'total_trade_count') {
+export function usePairMarkets(sort: string = 'total_trade_count', timeframe: string = '24h') {
   const { data, error, isLoading } = useSWR<PairMarketsResponse>(
-    dexUrl(`/pairs?sort=${sort}&limit=50`),
+    dexUrl(`/pairs?sort=${sort}&limit=50&timeframe=${timeframe}`),
     fetcher,
     { refreshInterval: 60_000 }
   )

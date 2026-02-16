@@ -44,6 +44,8 @@ export async function handlePairs(
   );
 
   const base = url.searchParams.get("base");
+  const tfParam = url.searchParams.get("timeframe");
+  const tf = tfParam === "7d" || tfParam === "30d" ? tfParam : "24h";
   const offset = Math.max(
     parseInt(url.searchParams.get("offset") ?? "0", 10) || 0,
     0
@@ -62,6 +64,7 @@ export async function handlePairs(
   const binds: (string | number)[] = [];
   const conditions: string[] = [];
 
+  conditions.push(`trade_count_${tf} > 0`);
   if (quote) {
     conditions.push(`quote_asset = ?`);
     binds.push(quote);
