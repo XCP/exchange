@@ -304,7 +304,7 @@ export async function updateDispenserStats(
     }>();
 
   // Price change lookups + all-time totals (run in parallel)
-  const [price24hAgo, price7dAgo, price30dAgo, allTime, dispenserTotals] = await Promise.all([
+  const [price24hAgo, price7dAgo, price30dAgo, allTime, dispenserTotals, dispenserAvail] = await Promise.all([
     db
       .prepare(
         `SELECT price FROM dispenses
@@ -344,6 +344,15 @@ export async function updateDispenserStats(
       )
       .bind(asset)
       .first<{ total_created: number; sellers: number }>(),
+    db
+      .prepare(
+        `SELECT COUNT(*) as active_dispensers,
+                COALESCE(SUM(give_remaining), 0) as total_available,
+                MIN(CASE WHEN price > 0 THEN price END) as cheapest_price
+         FROM dispensers WHERE asset = ? AND status < 10`
+      )
+      .bind(asset)
+      .first<{ active_dispensers: number; total_available: number; cheapest_price: number | null }>(),
   ]);
 
   const lastPrice = stats?.last_price ?? null;
@@ -379,8 +388,9 @@ export async function updateDispenserStats(
           first_dispense_time,
           total_btc_spent, total_dispensed, total_dispense_count,
           unique_buyers, unique_sellers, total_dispensers_created, avg_dispense_btc,
+          active_dispensers, total_available, cheapest_price,
           updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT (asset) DO UPDATE SET
          last_dispense_price = excluded.last_dispense_price,
          last_dispense_time = excluded.last_dispense_time,
@@ -407,6 +417,9 @@ export async function updateDispenserStats(
          unique_sellers = excluded.unique_sellers,
          total_dispensers_created = excluded.total_dispensers_created,
          avg_dispense_btc = excluded.avg_dispense_btc,
+         active_dispensers = excluded.active_dispensers,
+         total_available = excluded.total_available,
+         cheapest_price = excluded.cheapest_price,
          updated_at = excluded.updated_at`
     )
     .bind(
@@ -436,6 +449,9 @@ export async function updateDispenserStats(
       uniqueSellers,
       totalDispensersCreated,
       avgDispenseBtc,
+      dispenserAvail?.active_dispensers ?? 0,
+      dispenserAvail?.total_available ?? 0,
+      dispenserAvail?.cheapest_price ?? null,
       now
     )
     .run();
