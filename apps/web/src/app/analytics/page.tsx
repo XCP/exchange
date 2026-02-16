@@ -352,7 +352,7 @@ function TopPairsTable({ pairs, tfLabel }: { pairs: AnalyticsTopPair[]; tfLabel:
                     className="rounded-sm"
                     unoptimized
                   />
-                  <span className="text-zinc-200">{p.base_asset}/{p.quote_asset}</span>
+                  <span className="text-zinc-200">{(p.base_asset_longname ?? p.base_asset)}/{p.quote_asset}</span>
                 </Link>
               </td>
               <td className="text-right text-zinc-400 font-mono px-3 py-1.5">{formatAmount(p.volume)}</td>
@@ -442,7 +442,7 @@ function TrendingTable({ trending }: { trending: AnalyticsTrending[] }) {
                     className="rounded-sm"
                     unoptimized
                   />
-                  <span className="text-zinc-200">{t.base_asset}/{t.quote_asset}</span>
+                  <span className="text-zinc-200">{(t.base_asset_longname ?? t.base_asset)}/{t.quote_asset}</span>
                 </Link>
               </td>
               <td className="text-right text-zinc-400 font-mono px-3 py-1.5">{t.trade_count_24h}</td>

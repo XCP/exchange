@@ -94,6 +94,14 @@ async function fetchBlockEvents(
   return events;
 }
 
+function extractAssetLongname(info: unknown): string | null {
+  if (info && typeof info === "object" && "asset_longname" in (info as Record<string, unknown>)) {
+    const ln = (info as Record<string, unknown>).asset_longname;
+    return typeof ln === "string" && ln.length > 0 ? ln : null;
+  }
+  return null;
+}
+
 function processOrderMatch(
   params: Record<string, unknown>,
   blockIndex: number,
@@ -103,6 +111,7 @@ function processOrderMatch(
   pair: string;
   base: string;
   quote: string;
+  baseLongname: string | null;
   earliestTime: number;
 } {
   const match: OrderMatch = {
@@ -124,10 +133,16 @@ function processOrderMatch(
 
   const t = normalizeOrderMatch(match);
 
+  // Extract longnames from verbose asset info
+  const fwdLongname = extractAssetLongname(params.forward_asset_info);
+  const bwdLongname = extractAssetLongname(params.backward_asset_info);
+  const baseLongname = t.base_asset === match.forward_asset ? fwdLongname : bwdLongname;
+
   return {
     pair: t.pair,
     base: t.base_asset,
     quote: t.quote_asset,
+    baseLongname,
     earliestTime: blockTime,
     stmt: (db) =>
       db
@@ -484,9 +499,9 @@ export async function syncBlocks(
   // Track affected pairs/assets for post-processing
   const affectedPairs = new Map<
     string,
-    { base: string; quote: string; earliestTime: number }
+    { base: string; quote: string; baseLongname: string | null; earliestTime: number }
   >();
-  const affectedDispenseAssets = new Set<string>();
+  const affectedDispenseAssets = new Map<string, string | null>();
 
   for (let blockIdx = lastBlock + 1; blockIdx <= targetBlock; blockIdx++) {
     const events = await fetchBlockEvents(apiBase, blockIdx);
@@ -515,8 +530,11 @@ export async function syncBlocks(
               affectedPairs.set(trade.pair, {
                 base: trade.base,
                 quote: trade.quote,
+                baseLongname: trade.baseLongname ?? existing?.baseLongname ?? null,
                 earliestTime: blockTime,
               });
+            } else if (trade.baseLongname && !existing.baseLongname) {
+              existing.baseLongname = trade.baseLongname;
             }
             break;
           }
@@ -563,7 +581,11 @@ export async function syncBlocks(
             if (dispenserStmt) {
               stmts.push(dispenserStmt);
               result.dispensers_upserted++;
-              affectedDispenseAssets.add(params.asset as string);
+              const asset = params.asset as string;
+              const longname = extractAssetLongname(params.asset_info);
+              if (!affectedDispenseAssets.has(asset) || longname) {
+                affectedDispenseAssets.set(asset, longname ?? affectedDispenseAssets.get(asset) ?? null);
+              }
             }
             break;
           }
@@ -571,14 +593,21 @@ export async function syncBlocks(
           case "DISPENSER_UPDATE": {
             stmts.push(processDispenserUpdate(params, now));
             result.dispensers_updated++;
-            affectedDispenseAssets.add(params.asset as string);
+            const asset = params.asset as string;
+            const longname = extractAssetLongname(params.asset_info);
+            if (!affectedDispenseAssets.has(asset) || longname) {
+              affectedDispenseAssets.set(asset, longname ?? affectedDispenseAssets.get(asset) ?? null);
+            }
             break;
           }
 
           case "DISPENSE": {
             const dispense = processDispense(params, blockIndex, blockTime);
             stmts.push(dispense.stmt);
-            affectedDispenseAssets.add(dispense.asset);
+            const longname = extractAssetLongname(params.asset_info);
+            if (!affectedDispenseAssets.has(dispense.asset) || longname) {
+              affectedDispenseAssets.set(dispense.asset, longname ?? affectedDispenseAssets.get(dispense.asset) ?? null);
+            }
             result.dispenses_inserted++;
             break;
           }
@@ -618,12 +647,12 @@ export async function syncBlocks(
   // Post-processing: aggregate candles + update stats for affected pairs
   for (const [pair, info] of affectedPairs) {
     await aggregateCandlesForPair(db, pair, info.earliestTime);
-    await updatePairStats(db, pair, info.base, info.quote);
+    await updatePairStats(db, pair, info.base, info.quote, info.baseLongname);
   }
 
   // Post-processing: update dispenser stats for affected assets
-  for (const asset of affectedDispenseAssets) {
-    await updateDispenserStats(db, asset);
+  for (const [asset, longname] of affectedDispenseAssets) {
+    await updateDispenserStats(db, asset, longname);
   }
 
   // Update order book stats for pairs with changed orders

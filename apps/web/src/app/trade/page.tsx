@@ -216,7 +216,7 @@ export default function OrdersPage() {
                             className="rounded-sm"
                             unoptimized
                           />
-                          <span className="text-zinc-200 font-medium hover:underline">{p.pair.replace('_', '/')}</span>
+                          <span className="text-zinc-200 font-medium hover:underline">{(p.base_asset_longname ?? p.base_asset) + '/' + p.quote_asset}</span>
                         </Link>
                       </td>
                       <td className="text-right font-mono px-3 py-2">

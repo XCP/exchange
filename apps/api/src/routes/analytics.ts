@@ -70,7 +70,7 @@ export async function handleAnalytics(
     ),
     // 5. Top 10 pairs by selected timeframe volume
     db.prepare(
-      `SELECT pair, base_asset, quote_asset, last_price,
+      `SELECT pair, base_asset, quote_asset, base_asset_longname, last_price,
               ${volCol} AS volume, ${tradeCountCol} AS trade_count,
               ${pctCol} AS price_change
        FROM pair_stats
@@ -91,7 +91,7 @@ export async function handleAnalytics(
     ),
     // 7. Top 100 active pairs for trending scoring
     db.prepare(
-      `SELECT pair, base_asset, quote_asset, last_price, last_trade_time,
+      `SELECT pair, base_asset, quote_asset, base_asset_longname, last_price, last_trade_time,
               price_change_24h, volume_24h, trade_count_24h
        FROM pair_stats
        WHERE trade_count_24h > 0${pairHidden}
@@ -105,6 +105,7 @@ export async function handleAnalytics(
     pair: string;
     base_asset: string;
     quote_asset: string;
+    base_asset_longname: string | null;
     last_price: number | null;
     last_trade_time: number | null;
     price_change_24h: number;

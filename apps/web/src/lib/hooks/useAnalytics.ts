@@ -37,6 +37,7 @@ export interface AnalyticsTopPair {
   pair: string
   base_asset: string
   quote_asset: string
+  base_asset_longname: string | null
   last_price: number | null
   volume: number
   trade_count: number
@@ -57,6 +58,7 @@ export interface AnalyticsTrending {
   pair: string
   base_asset: string
   quote_asset: string
+  base_asset_longname: string | null
   last_price: number | null
   last_trade_time: number | null
   price_change_24h: number

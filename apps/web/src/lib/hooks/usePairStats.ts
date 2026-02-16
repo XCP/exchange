@@ -5,6 +5,7 @@ export interface PairStats {
   pair: string
   base_asset: string
   quote_asset: string
+  base_asset_longname: string | null
   last_price: number | null
   last_trade_time: number | null
   last_side: string | null

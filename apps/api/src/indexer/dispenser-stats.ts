@@ -256,7 +256,8 @@ export async function upsertDispenserAggregates(
 
 export async function updateDispenserStats(
   db: D1Database,
-  asset: string
+  asset: string,
+  assetLongname?: string | null
 ): Promise<void> {
   const now = Math.floor(Date.now() / 1000);
   const t24h = now - 86400;
@@ -374,7 +375,7 @@ export async function updateDispenserStats(
   await db
     .prepare(
       `INSERT INTO dispenser_stats
-         (asset, last_dispense_price, last_dispense_time,
+         (asset, asset_longname, last_dispense_price, last_dispense_time,
           price_change_24h, price_change_7d, price_change_30d,
           volume_24h, volume_7d, volume_30d,
           high_24h, low_24h, high_7d, low_7d, high_30d, low_30d,
@@ -384,8 +385,9 @@ export async function updateDispenserStats(
           unique_buyers, unique_sellers, total_dispensers_created, avg_dispense_btc,
           active_dispensers, total_available, cheapest_price,
           updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT (asset) DO UPDATE SET
+         asset_longname = COALESCE(dispenser_stats.asset_longname, excluded.asset_longname),
          last_dispense_price = excluded.last_dispense_price,
          last_dispense_time = excluded.last_dispense_time,
          price_change_24h = excluded.price_change_24h,
@@ -418,6 +420,7 @@ export async function updateDispenserStats(
     )
     .bind(
       asset,
+      assetLongname ?? null,
       lastPrice,
       stats?.last_time ?? null,
       priceChange24h,

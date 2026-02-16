@@ -11,7 +11,7 @@ export async function handlePair(
 ): Promise<Response> {
   const row = await db
     .prepare(
-      `SELECT pair, base_asset, quote_asset, last_price, last_trade_time,
+      `SELECT pair, base_asset, quote_asset, base_asset_longname, last_price, last_trade_time,
               last_side, price_change_24h, price_change_7d, price_change_30d,
               volume_24h, volume_7d, volume_30d,
               high_24h, low_24h, high_7d, low_7d, high_30d, low_30d,
@@ -56,7 +56,7 @@ export async function handlePairs(
     0
   );
 
-  let query = `SELECT pair, base_asset, quote_asset, last_price, last_trade_time,
+  let query = `SELECT pair, base_asset, quote_asset, base_asset_longname, last_price, last_trade_time,
                       last_side, price_change_24h, price_change_7d, price_change_30d,
                       volume_24h, volume_7d, volume_30d,
                       high_24h, low_24h, high_7d, low_7d, high_30d, low_30d,
