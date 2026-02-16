@@ -10,7 +10,7 @@ import { handleAsset } from "./routes/asset";
 import { handlePortfolioBids, handlePortfolioDispensers, handlePortfolioOrders } from "./routes/portfolio";
 import { handleDispenserStats, handleDispenserStatsList } from "./routes/dispenser-stats";
 import { syncBlocks } from "./indexer/sync-block";
-import { runCatchupAggregation, aggregateCandlesForPair } from "./indexer/aggregate";
+import { runCatchupAggregation, runCatchupStats, aggregateCandlesForPair } from "./indexer/aggregate";
 import { backfillTrades, backfillDispenses } from "./indexer/backfill";
 import { syncOrders, syncDispensers, runSnapshotStep } from "./indexer/snapshot";
 import { getMode, setMode, deleteState } from "./indexer/state";
@@ -419,6 +419,21 @@ export default {
                 if (r.done) { aggDone = true; break; }
               }
               console.log(`Cron: aggregation — processed=${aggTotal}, done=${aggDone}, elapsed=${Date.now() - aggStart}ms`);
+              break;
+            }
+
+            case "REFRESH_STATS": {
+              const statsStart = Date.now();
+              let statsTotal = 0;
+              let statsDone = false;
+              // 50 pairs × 5 queries = 250 per batch; 3 batches = 750 queries
+              const MAX_STATS_BATCHES = 3;
+              for (let b = 0; b < MAX_STATS_BATCHES; b++) {
+                const r = await runCatchupStats(env.DB);
+                statsTotal += r.processed;
+                if (r.done) { statsDone = true; break; }
+              }
+              console.log(`Cron: stats refresh — processed=${statsTotal}, done=${statsDone}, elapsed=${Date.now() - statsStart}ms`);
               break;
             }
 

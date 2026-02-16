@@ -1,5 +1,6 @@
 import { INTERVAL_SECONDS, ALL_INTERVALS } from "../lib/constants";
 import { D1_BATCH_LIMIT, batchExec } from "../lib/batch";
+import { updatePairStats } from "./stats";
 import { getMode } from "./state";
 
 const CATCHUP_BATCH_SIZE = 200;
@@ -268,13 +269,22 @@ export async function runCatchupAggregation(
 
   if (!pairs.results.length) {
     // All pairs processed — clean up and transition
+    const mode = await getMode(db);
+    const nextMode = mode === "BUILD_AGGREGATES" ? "REFRESH_STATS" : "FOLLOWING";
     await db.batch([
       db.prepare(`DELETE FROM indexer_state WHERE key = 'aggregation_cursor'`),
-      ...(await getMode(db) === "BUILD_AGGREGATES"
-        ? [db.prepare(
-            `INSERT INTO indexer_state (key, value) VALUES ('indexer_mode', 'FOLLOWING')
-             ON CONFLICT (key) DO UPDATE SET value = excluded.value`
-          )]
+      ...(mode === "BUILD_AGGREGATES"
+        ? [
+            db.prepare(
+              `INSERT INTO indexer_state (key, value) VALUES ('indexer_mode', ?)
+               ON CONFLICT (key) DO UPDATE SET value = excluded.value`
+            ).bind(nextMode),
+            // Seed stats cursor at empty string so runCatchupStats starts from the beginning
+            db.prepare(
+              `INSERT INTO indexer_state (key, value) VALUES ('stats_cursor', '')
+               ON CONFLICT (key) DO UPDATE SET value = excluded.value`
+            ),
+          ]
         : []),
     ]);
 
@@ -297,4 +307,60 @@ export async function runCatchupAggregation(
     .run();
 
   return { done: false, processed: pairs.results.length, cursor };
+}
+
+const STATS_BATCH_SIZE = 50;
+
+/**
+ * Catch-up stats: compute rolling-window pair stats for all pairs.
+ * Runs after BUILD_AGGREGATES to populate 24h/7d/30d volume, price
+ * changes, etc. before entering FOLLOWING mode.
+ * Each pair costs 5 D1 queries, so 50 pairs = ~253 queries per batch.
+ */
+export async function runCatchupStats(
+  db: D1Database
+): Promise<{ done: boolean; processed: number; cursor: string }> {
+  const cursorRow = await db
+    .prepare(`SELECT value FROM indexer_state WHERE key = 'stats_cursor'`)
+    .first<{ value: string }>();
+
+  if (!cursorRow) return { done: true, processed: 0, cursor: "" };
+
+  const cursor = cursorRow.value;
+  const pairs = await db
+    .prepare(
+      `SELECT pair, base_asset, quote_asset
+       FROM pair_stats
+       WHERE pair > ?
+       ORDER BY pair LIMIT ?`
+    )
+    .bind(cursor, STATS_BATCH_SIZE)
+    .all<{ pair: string; base_asset: string; quote_asset: string }>();
+
+  if (!pairs.results.length) {
+    // All pairs done — transition to FOLLOWING
+    await db.batch([
+      db.prepare(`DELETE FROM indexer_state WHERE key = 'stats_cursor'`),
+      db.prepare(
+        `INSERT INTO indexer_state (key, value) VALUES ('indexer_mode', 'FOLLOWING')
+         ON CONFLICT (key) DO UPDATE SET value = excluded.value`
+      ),
+    ]);
+    return { done: true, processed: 0, cursor };
+  }
+
+  for (const p of pairs.results) {
+    await updatePairStats(db, p.pair, p.base_asset, p.quote_asset);
+  }
+
+  const lastPair = pairs.results[pairs.results.length - 1].pair;
+  await db
+    .prepare(
+      `INSERT INTO indexer_state (key, value) VALUES ('stats_cursor', ?)
+       ON CONFLICT (key) DO UPDATE SET value = excluded.value`
+    )
+    .bind(lastPair)
+    .run();
+
+  return { done: false, processed: pairs.results.length, cursor: lastPair };
 }

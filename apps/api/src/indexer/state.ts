@@ -4,6 +4,7 @@ export type IndexerMode =
   | "BACKFILL_DISPENSES"
   | "SNAPSHOT_SYNC"
   | "BUILD_AGGREGATES"
+  | "REFRESH_STATS"
   | "FOLLOWING";
 
 export async function getMode(db: D1Database): Promise<IndexerMode> {
