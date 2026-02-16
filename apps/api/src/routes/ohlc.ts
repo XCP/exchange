@@ -1,4 +1,4 @@
-import { INTERVAL_SECONDS } from "../lib/constants";
+import { INTERVAL_SECONDS, calendarBucket, nextBucket, walkBack } from "../lib/constants";
 
 const VALID_INTERVALS = new Set(Object.keys(INTERVAL_SECONDS));
 
@@ -28,7 +28,7 @@ function buildGrid(
   seedClose: number | null,
   windowStart: number,
   windowEnd: number,
-  step: number
+  interval: string
 ): Candle[] {
   const byTime = new Map<number, Candle>();
   for (const c of realCandles) {
@@ -38,7 +38,7 @@ function buildGrid(
   const grid: Candle[] = [];
   let lastClose = seedClose;
 
-  for (let ts = windowStart; ts <= windowEnd; ts += step) {
+  for (let ts = windowStart; ts <= windowEnd; ts = nextBucket(ts, interval)) {
     const real = byTime.get(ts);
     if (real) {
       grid.push(real);
@@ -74,7 +74,6 @@ export async function handleOhlc(
     );
   }
 
-  const step = INTERVAL_SECONDS[interval];
   const limit = Math.min(
     parseInt(url.searchParams.get("limit") ?? "300", 10) || 300,
     500
@@ -82,28 +81,28 @@ export async function handleOhlc(
   const fromParam = url.searchParams.get("from");
   const toParam = url.searchParams.get("to");
   const now = Math.floor(Date.now() / 1000);
-  const nowBucket = Math.floor(now / step) * step;
+  const nowBucket = calendarBucket(now, interval);
 
-  // Compute time window — output is always exactly `limit` buckets
+  // Compute time window
   let windowEnd: number;
   let windowStart: number;
 
   if (fromParam && toParam) {
-    windowStart = Math.floor(parseInt(fromParam, 10) / step) * step;
-    windowEnd = Math.floor(parseInt(toParam, 10) / step) * step;
-    // If range exceeds limit, keep the most recent buckets
-    const maxStart = windowEnd - (limit - 1) * step;
-    if (windowStart < maxStart) windowStart = maxStart;
+    windowEnd = calendarBucket(parseInt(toParam, 10), interval);
+    // Clamp start so we don't exceed `limit` buckets
+    const requestedStart = calendarBucket(parseInt(fromParam, 10), interval);
+    const maxStart = walkBack(windowEnd, interval, limit - 1);
+    windowStart = requestedStart < maxStart ? maxStart : requestedStart;
   } else if (fromParam) {
-    windowStart = Math.floor(parseInt(fromParam, 10) / step) * step;
-    windowEnd = Math.min(windowStart + (limit - 1) * step, nowBucket);
+    windowStart = calendarBucket(parseInt(fromParam, 10), interval);
+    windowEnd = nowBucket;
   } else if (toParam) {
-    windowEnd = Math.floor(parseInt(toParam, 10) / step) * step;
-    windowStart = windowEnd - (limit - 1) * step;
+    windowEnd = calendarBucket(parseInt(toParam, 10), interval);
+    windowStart = walkBack(windowEnd, interval, limit - 1);
   } else {
     // Default: last `limit` buckets up to now
     windowEnd = nowBucket;
-    windowStart = nowBucket - (limit - 1) * step;
+    windowStart = walkBack(nowBucket, interval, limit - 1);
   }
 
   // Two parallel queries:
@@ -148,7 +147,7 @@ export async function handleOhlc(
   }));
 
   const seedClose = seedResult?.close ?? null;
-  const candles = buildGrid(realCandles, seedClose, windowStart, windowEnd, step);
+  const candles = buildGrid(realCandles, seedClose, windowStart, windowEnd, interval);
 
   return Response.json(
     { pair, interval, candles },

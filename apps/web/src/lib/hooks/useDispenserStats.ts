@@ -24,6 +24,13 @@ export interface DispenserStats {
   total_available: number | null
   cheapest_price: number | null
   first_dispense_time: number | null
+  total_btc_spent: number | null
+  total_dispensed: number | null
+  total_dispense_count: number | null
+  unique_buyers: number | null
+  unique_sellers: number | null
+  total_dispensers_created: number | null
+  avg_dispense_btc: number | null
 }
 
 export function useDispenserStats(asset: string) {

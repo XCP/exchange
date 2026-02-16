@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { createChart, CandlestickSeries, HistogramSeries, PriceScaleMode, type IChartApi, type ISeriesApi, type CandlestickData, type HistogramData, type Time, ColorType } from 'lightweight-charts'
+import { createChart, CandlestickSeries, HistogramSeries, type IChartApi, type ISeriesApi, type CandlestickData, type HistogramData, type Time, ColorType } from 'lightweight-charts'
 import { useOhlc } from '@/lib/hooks/useOhlc'
 
 interface ChartProps {
@@ -15,12 +15,7 @@ const ALL_TIMEFRAMES = ['1H', '4H', '1D', '1W', '1M', '1Y'] as const
 const MIN_REAL_CANDLES = 3
 
 function fmtPrice(n: number): string {
-  if (n === 0) return '0'
-  const abs = Math.abs(n)
-  if (abs < 0.0001) return n.toFixed(8)
-  if (abs < 0.01) return n.toFixed(6)
-  if (abs < 1) return n.toFixed(4)
-  return n.toFixed(2)
+  return n.toFixed(8)
 }
 
 function fmtVol(n: number): string {
@@ -37,7 +32,6 @@ export function Chart({ pairSlug, pairLabel }: ChartProps) {
   const candleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null)
   const volumeSeriesRef = useRef<ISeriesApi<'Histogram'> | null>(null)
   const [activeTimeframe, setActiveTimeframe] = useState('1D')
-  const [logScale, setLogScale] = useState(false)
   const candlesRef = useRef<CandlestickData<Time>[]>([])
   const volumesRef = useRef<HistogramData<Time>[]>([])
   const prevCandleCount = useRef(0)
@@ -265,15 +259,6 @@ export function Chart({ pairSlug, pairLabel }: ChartProps) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rawCandles])
 
-  // Toggle log/linear price scale
-  useEffect(() => {
-    chartRef.current?.applyOptions({
-      rightPriceScale: {
-        mode: logScale ? PriceScaleMode.Logarithmic : PriceScaleMode.Normal,
-      },
-    })
-  }, [logScale])
-
   // Adjust time formatting based on timeframe
   useEffect(() => {
     if (!chartRef.current) return
@@ -297,10 +282,6 @@ export function Chart({ pairSlug, pairLabel }: ChartProps) {
     })
   }, [activeTimeframe])
 
-  const resetZoom = () => {
-    chartRef.current?.timeScale().fitContent()
-  }
-
   return (
     <div>
       {/* Toolbar */}
@@ -322,29 +303,11 @@ export function Chart({ pairSlug, pairLabel }: ChartProps) {
               </button>
             ))}
           </div>
-          <div className="flex items-center gap-0.5 border-l border-zinc-800 pl-2">
-            <button
-              onClick={() => setLogScale((s) => !s)}
-              title={logScale ? 'Switch to linear scale' : 'Switch to log scale'}
-              className={`px-2 py-0.5 text-xs rounded-sm transition-colors ${
-                logScale
-                  ? 'bg-zinc-800 text-zinc-100'
-                  : 'text-zinc-500 hover:text-zinc-300'
-              }`}
-            >
-              Log
-            </button>
-            <button
-              onClick={resetZoom}
-              title="Reset zoom"
-              className="px-2 py-0.5 text-xs rounded-sm text-zinc-500 hover:text-zinc-300 transition-colors"
-            >
-              Reset
-            </button>
-          </div>
         </div>
         {ohlcHeader && (
           <div className="flex items-center gap-2 max-sm:hidden">
+            <span className="text-xs text-zinc-600">Volume</span>
+            <span className="text-xs text-zinc-300 font-mono">{ohlcHeader.v}</span>
             <span className="text-xs text-zinc-600">O</span>
             <span className="text-xs text-zinc-300 font-mono">{ohlcHeader.o}</span>
             <span className="text-xs text-zinc-600">H</span>
@@ -355,8 +318,6 @@ export function Chart({ pairSlug, pairLabel }: ChartProps) {
             <span className={`text-xs font-mono ${ohlcHeader.green ? 'text-green-400' : 'text-red-400'}`}>
               {ohlcHeader.c}
             </span>
-            <span className="text-xs text-zinc-600">V</span>
-            <span className="text-xs text-zinc-300 font-mono">{ohlcHeader.v}</span>
           </div>
         )}
       </div>

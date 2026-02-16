@@ -1,4 +1,4 @@
-const VALID_SORTS = new Set(["volume_24h", "trade_count_24h", "last_trade_time"]);
+const VALID_SORTS = new Set(["volume_24h", "trade_count_24h", "last_trade_time", "total_volume"]);
 
 export async function handlePair(
   db: D1Database,
@@ -11,7 +11,8 @@ export async function handlePair(
               volume_24h, volume_7d, volume_30d,
               high_24h, low_24h, high_7d, low_7d, high_30d, low_30d,
               trade_count_24h, trade_count_7d, trade_count_30d,
-              first_trade_time
+              first_trade_time,
+              total_volume, total_trade_count, unique_traders, all_time_high, all_time_low
        FROM pair_stats WHERE pair = ?`
     )
     .bind(pair)
@@ -51,7 +52,8 @@ export async function handlePairs(
                       volume_24h, volume_7d, volume_30d,
                       high_24h, low_24h, high_7d, low_7d, high_30d, low_30d,
                       trade_count_24h, trade_count_7d, trade_count_30d,
-                      first_trade_time
+                      first_trade_time,
+                      total_volume, total_trade_count, unique_traders, all_time_high, all_time_low
                FROM pair_stats`;
   const binds: (string | number)[] = [];
   const conditions: string[] = [];

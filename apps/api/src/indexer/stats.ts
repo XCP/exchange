@@ -5,9 +5,8 @@ const BULK_CHUNK = 95;
 
 /**
  * Bulk-update pair_stats for many pairs at once using set-based SQL.
- * Uses 6 queries per chunk of 95 pairs (5 reads batched + 1 JSON write)
+ * Uses 7 queries per chunk of 95 pairs (6 reads batched + 1 JSON write)
  * instead of 7 queries per individual pair — ~100x fewer D1 queries.
- * Skips unique_traders (computed during per-pair updates in FOLLOWING mode).
  */
 export async function bulkUpdatePairStats(
   db: D1Database,
@@ -27,8 +26,8 @@ export async function bulkUpdatePairStats(
     const phFrom = (start: number) =>
       pairs.map((_, i) => `?${start + i}`).join(",");
 
-    // Batch 5 read queries in one round trip
-    const [statsRes, lastTradeRes, p24Res, p7Res, p30Res] = await db.batch([
+    // Batch 6 read queries in one round trip
+    const [statsRes, lastTradeRes, p24Res, p7Res, p30Res, tradersRes] = await db.batch([
       // Q1: Windowed + all-time stats (?1=t24h, ?2=t7d, ?3=t30d, ?4..=pairs)
       db
         .prepare(
@@ -98,6 +97,17 @@ export async function bulkUpdatePairStats(
           ) WHERE rn = 1`
         )
         .bind(...pairs, t30d),
+
+      // Q6: Unique traders per pair (UNION deduplicates maker/taker)
+      db
+        .prepare(
+          `SELECT pair, COUNT(DISTINCT addr) as unique_traders FROM (
+             SELECT pair, maker as addr FROM trades WHERE pair IN (${phFrom(1)})
+             UNION
+             SELECT pair, taker FROM trades WHERE pair IN (${phFrom(n + 1)})
+           ) GROUP BY pair`
+        )
+        .bind(...pairs, ...pairs),
     ]);
 
     // Build lookup maps
@@ -112,11 +122,13 @@ export async function bulkUpdatePairStats(
     const p24Map = toMap(p24Res);
     const p7Map = toMap(p7Res);
     const p30Map = toMap(p30Res);
+    const tradersMap = toMap(tradersRes);
 
     // Compute price changes and build JSON for bulk write
     const updates = chunk.map((row) => {
       const s = statsMap.get(row.pair);
       const lt = ltMap.get(row.pair);
+      const tr = tradersMap.get(row.pair);
       const p24 = p24Map.get(row.pair);
       const p7 = p7Map.get(row.pair);
       const p30 = p30Map.get(row.pair);
@@ -142,6 +154,7 @@ export async function bulkUpdatePairStats(
         h30: s?.hi_30d ?? null, l30: s?.lo_30d ?? null,
         c24: s?.cnt_24h ?? 0, c7: s?.cnt_7d ?? 0, c30: s?.cnt_30d ?? 0,
         tv: s?.total_vol ?? 0, tc: s?.total_cnt ?? 0,
+        ut: tr?.unique_traders ?? 0,
         ath: s?.ath ?? null, atl: s?.atl ?? null,
         ua: now,
       };
@@ -172,6 +185,7 @@ export async function bulkUpdatePairStats(
           trade_count_30d = json_extract(j.value, '$.c30'),
           total_volume = json_extract(j.value, '$.tv'),
           total_trade_count = json_extract(j.value, '$.tc'),
+          unique_traders = json_extract(j.value, '$.ut'),
           all_time_high = json_extract(j.value, '$.ath'),
           all_time_low = json_extract(j.value, '$.atl'),
           updated_at = json_extract(j.value, '$.ua')

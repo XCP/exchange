@@ -47,6 +47,42 @@ export function QuickStats({ pairData }: QuickStatsProps) {
             {pairData.volume_7d != null ? `${formatAmount(pairData.volume_7d)} ${pairData.quote_asset}` : 'N/A'}
           </div>
         </div>
+        <div>
+          <div className="text-xs text-zinc-600">All-Time Vol</div>
+          <div className="text-xs text-zinc-300 font-mono">
+            {pairData.total_volume != null ? `${formatAmount(pairData.total_volume)} ${pairData.quote_asset}` : '—'}
+          </div>
+        </div>
+        <div>
+          <div className="text-xs text-zinc-600">Total Trades</div>
+          <div className="text-xs text-zinc-300 font-mono">
+            {pairData.total_trade_count != null ? pairData.total_trade_count.toLocaleString() : '—'}
+          </div>
+        </div>
+        <div>
+          <div className="text-xs text-zinc-600">ATH</div>
+          <div className="text-xs text-zinc-300 font-mono">
+            {pairData.all_time_high != null ? `${formatAmount(pairData.all_time_high)} ${pairData.quote_asset}` : '—'}
+          </div>
+        </div>
+        <div>
+          <div className="text-xs text-zinc-600">ATL</div>
+          <div className="text-xs text-zinc-300 font-mono">
+            {pairData.all_time_low != null ? `${formatAmount(pairData.all_time_low)} ${pairData.quote_asset}` : '—'}
+          </div>
+        </div>
+        <div>
+          <div className="text-xs text-zinc-600">Unique Traders</div>
+          <div className="text-xs text-zinc-300 font-mono">
+            {pairData.unique_traders != null ? pairData.unique_traders.toLocaleString() : '—'}
+          </div>
+        </div>
+        <div>
+          <div className="text-xs text-zinc-600">First Trade</div>
+          <div className="text-xs text-zinc-300 font-mono">
+            {pairData.first_trade_time != null ? new Date(pairData.first_trade_time * 1000).toLocaleDateString() : '—'}
+          </div>
+        </div>
       </div>
     </div>
   )

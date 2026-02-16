@@ -17,12 +17,16 @@ export interface DispenserMarketEntry {
   low_24h: number | null
   avg_price: number | null
   updated_at: string | null
+  total_btc_spent: number | null
+  total_dispense_count: number | null
+  unique_buyers: number | null
 }
 
 interface DispenserMarketsSummary {
   total_dispensers: number
   total_dispenses: number
   total_btc_volume: number
+  unique_buyers: number
 }
 
 interface DispenserMarketsResponse {

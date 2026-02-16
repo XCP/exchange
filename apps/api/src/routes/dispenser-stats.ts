@@ -11,6 +11,7 @@ export async function handleDispenserStatsList(
     "dispense_count_24h",
     "cheapest_price",
     "total_available",
+    "total_btc_spent",
   ];
   const sort = allowedSorts.includes(sortCol) ? sortCol : "volume_24h";
   const limit = Math.min(
@@ -29,6 +30,7 @@ export async function handleDispenserStatsList(
               ds.dispense_count_24h, ds.dispense_count_7d,
               ds.active_dispensers, ds.total_available, ds.cheapest_price,
               ds.high_24h, ds.low_24h, ds.updated_at,
+              ds.total_btc_spent, ds.total_dispense_count, ds.unique_buyers,
               (SELECT SUM(price * give_remaining) / SUM(give_remaining) FROM dispensers
                WHERE asset = ds.asset AND status < 10 AND price > 0 AND give_remaining > 0) AS avg_price
        FROM dispenser_stats ds
@@ -40,7 +42,8 @@ export async function handleDispenserStatsList(
       `SELECT
          (SELECT COUNT(*) FROM dispensers WHERE status < 10) AS total_dispensers,
          (SELECT COUNT(*) FROM dispenses) AS total_dispenses,
-         (SELECT COALESCE(SUM(btc_amount), 0) FROM dispenses) AS total_btc_volume`
+         (SELECT COALESCE(SUM(btc_amount), 0) FROM dispenses) AS total_btc_volume,
+         (SELECT COUNT(DISTINCT destination) FROM dispenses) AS unique_buyers`
     ),
   ]);
 
@@ -50,6 +53,7 @@ export async function handleDispenserStatsList(
     total_dispensers: number;
     total_dispenses: number;
     total_btc_volume: number;
+    unique_buyers: number;
   } | undefined;
 
   return Response.json(
@@ -62,6 +66,7 @@ export async function handleDispenserStatsList(
         total_dispensers: summary?.total_dispensers ?? 0,
         total_dispenses: summary?.total_dispenses ?? 0,
         total_btc_volume: summary?.total_btc_volume ?? 0,
+        unique_buyers: summary?.unique_buyers ?? 0,
       },
     },
     { headers: { "Cache-Control": "public, max-age=60" } }
@@ -80,7 +85,9 @@ export async function handleDispenserStats(
               high_24h, low_24h, high_7d, low_7d, high_30d, low_30d,
               dispense_count_24h, dispense_count_7d, dispense_count_30d,
               active_dispensers, total_available, cheapest_price,
-              first_dispense_time, updated_at
+              first_dispense_time, updated_at,
+              total_btc_spent, total_dispensed, total_dispense_count,
+              unique_buyers, unique_sellers, total_dispensers_created, avg_dispense_btc
        FROM dispenser_stats WHERE asset = ?`
     )
     .bind(asset)
@@ -113,6 +120,13 @@ export async function handleDispenserStats(
         cheapest_price: null,
         first_dispense_time: null,
         updated_at: null,
+        total_btc_spent: null,
+        total_dispensed: null,
+        total_dispense_count: null,
+        unique_buyers: null,
+        unique_sellers: null,
+        total_dispensers_created: null,
+        avg_dispense_btc: null,
       },
       { headers: { "Cache-Control": "public, max-age=300" } }
     );

@@ -10,6 +10,7 @@ import { DispenserModal } from '@/components/dispenser-modal'
 import { DispenserDataTabs, DispensesTable } from '@/components/dispenser-data-tabs'
 import { DispenseForm } from '@/components/dispense-form'
 import { QuickStats } from '@/components/quick-stats'
+import { DispenserQuickStats } from '@/components/dispenser-quick-stats'
 import { AssetInfo } from '@/components/asset-info'
 import { HoldersTable } from '@/components/holders-table'
 import { MarketsTable } from '@/components/markets-table'
@@ -70,6 +71,7 @@ export default function AssetDispensersPage({ params }: { params: Promise<{ asse
             onSelectIndex={setSelectedIndex}
           />
           {pairData && <QuickStats pairData={pairData} />}
+          {dispenserStats && <DispenserQuickStats stats={dispenserStats} />}
           {pairData && <AssetInfo pairData={pairData} />}
         </div>
 

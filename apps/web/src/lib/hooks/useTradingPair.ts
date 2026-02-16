@@ -45,6 +45,11 @@ export interface TradingPairData {
   trade_count_7d: number | null
   trade_count_30d: number | null
   first_trade_time: number | null
+  total_volume: number | null
+  total_trade_count: number | null
+  unique_traders: number | null
+  all_time_high: number | null
+  all_time_low: number | null
   // From CP API /assets
   asset_info: CounterpartyAssetInfo | null
   holders_count: number | null

@@ -41,6 +41,10 @@ export default function DispensersPage() {
               <span className="text-zinc-500">BTC Volume</span>{' '}
               <span className="text-zinc-300 font-mono">{formatPrice(summary.total_btc_volume)}</span>
             </div>
+            <div>
+              <span className="text-zinc-500">Unique Buyers</span>{' '}
+              <span className="text-zinc-300 font-mono">{summary.unique_buyers?.toLocaleString() ?? '—'}</span>
+            </div>
           </div>
         )}
 
@@ -77,19 +81,20 @@ export default function DispensersPage() {
                   <th className="text-right font-normal px-3 py-2.5 max-sm:hidden">24h Vol</th>
                   <th className="text-right font-normal px-3 py-2.5 max-sm:hidden">Depth</th>
                   <th className="text-right font-normal px-3 py-2.5 max-sm:hidden">Dispensers</th>
+                  <th className="text-right font-normal px-3 py-2.5 max-sm:hidden">Total BTC</th>
                   <th className="text-right font-normal px-3 py-2.5">24h Dispenses</th>
                 </tr>
               </thead>
               <tbody>
                 {marketsLoading ? (
                   <tr>
-                    <td colSpan={8} className="text-center py-20 text-sm text-zinc-500">
+                    <td colSpan={9} className="text-center py-20 text-sm text-zinc-500">
                       Loading dispenser markets...
                     </td>
                   </tr>
                 ) : markets.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="text-center py-20 text-sm text-zinc-600">
+                    <td colSpan={9} className="text-center py-20 text-sm text-zinc-600">
                       No active dispenser markets found
                     </td>
                   </tr>
@@ -134,6 +139,9 @@ export default function DispensersPage() {
                       </td>
                       <td className="text-right text-zinc-400 font-mono px-3 py-2 max-sm:hidden">
                         {m.active_dispensers}
+                      </td>
+                      <td className="text-right text-zinc-400 font-mono px-3 py-2 max-sm:hidden">
+                        {m.total_btc_spent != null && m.total_btc_spent > 0 ? formatPrice(m.total_btc_spent) : '—'}
                       </td>
                       <td className="text-right text-zinc-400 font-mono px-3 py-2">
                         {m.dispense_count_24h ?? 0}
