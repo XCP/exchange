@@ -5,13 +5,11 @@ export async function handleDispenserStatsList(
   const url = new URL(request.url);
   const sortCol = url.searchParams.get("sort") ?? "volume_24h";
   const allowedSorts = [
-    "volume_24h",
-    "volume_7d",
-    "active_dispensers",
-    "dispense_count_24h",
-    "cheapest_price",
-    "total_available",
-    "total_btc_spent",
+    "volume_24h", "volume_7d", "volume_30d", "total_btc_spent",
+    "dispense_count_24h", "dispense_count_7d", "dispense_count_30d", "total_dispense_count",
+    "price_change_24h", "price_change_7d", "price_change_30d",
+    "active_dispensers", "cheapest_price", "total_available",
+    "last_dispense_time", "unique_buyers",
   ];
   const sort = allowedSorts.includes(sortCol) ? sortCol : "volume_24h";
   const limit = Math.min(

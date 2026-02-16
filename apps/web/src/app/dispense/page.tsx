@@ -15,13 +15,14 @@ type Tab = 'markets' | 'dispensers' | 'dispenses'
 type Timeframe = '24h' | '7d' | '30d' | 'all'
 
 function pctColor(v: number | null) {
-  if (v == null) return 'text-zinc-600'
-  return v >= 0 ? 'text-green-400' : 'text-red-400'
+  if (v == null || v === 0) return 'text-zinc-600'
+  return v > 0 ? 'text-green-400' : 'text-red-400'
 }
 
 function fmtPct(v: number | null) {
   if (v == null) return '—'
-  return `${v >= 0 ? '+' : ''}${v.toFixed(1)}%`
+  if (v === 0) return '0.0%'
+  return `${v > 0 ? '+' : ''}${v.toFixed(1)}%`
 }
 
 function fmtVol(v: number | null) {
@@ -35,16 +36,57 @@ function tfVal(m: DispenserMarketEntry, prefix: string, tf: Timeframe): number |
   return (m[key] as number | null) ?? null
 }
 
+function defaultDispSort(tf: Timeframe): string {
+  return tf === 'all' ? 'total_btc_spent' : `volume_${tf}`
+}
+
+function dispSortCol(id: string, tf: Timeframe): string {
+  switch (id) {
+    case 'price': return 'cheapest_price'
+    case 'pct': return tf === 'all' ? 'total_btc_spent' : `price_change_${tf}`
+    case 'vol': return tf === 'all' ? 'total_btc_spent' : `volume_${tf}`
+    case 'disp': return tf === 'all' ? 'total_dispense_count' : `dispense_count_${tf}`
+    case 'buyers': return 'unique_buyers'
+    case 'dispensers': return 'active_dispensers'
+    case 'depth': return 'total_available'
+    default: return defaultDispSort(tf)
+  }
+}
+
 export default function DispensersPage() {
   const [activeTab, setActiveTab] = useState<Tab>('markets')
   const [includeHidden, setIncludeHidden] = useState(false)
   const [timeframe, setTimeframe] = useState<Timeframe>('24h')
-  const dispenserSort = timeframe === 'all' ? 'total_btc_spent' : 'volume_24h'
-  const { markets, summary, isLoading: marketsLoading } = useDispenserMarkets(dispenserSort, includeHidden, timeframe)
+  const [sortId, setSortId] = useState('vol')
+  const [sortDesc, setSortDesc] = useState(true)
+
+  const apiSort = dispSortCol(sortId, timeframe)
+  const { markets, summary, isLoading: marketsLoading } = useDispenserMarkets(apiSort, includeHidden, timeframe)
   const { dispensers, isLoading: dispensersLoading } = useGlobalDispensers(50)
   const { dispenses, isLoading: dispensesLoading } = useGlobalDispenses(50)
 
   const rolling = timeframe !== 'all'
+
+  function handleSort(id: string) {
+    if (sortId === id) {
+      setSortDesc(!sortDesc)
+    } else {
+      setSortId(id)
+      setSortDesc(id !== 'price')
+    }
+  }
+
+  function SortHeader({ id, label, className }: { id: string; label: string; className?: string }) {
+    const active = sortId === id
+    return (
+      <th
+        className={`font-normal px-3 py-2.5 cursor-pointer select-none hover:text-zinc-300 transition-colors ${className ?? 'text-right'} ${active ? 'text-zinc-300' : 'text-zinc-500'}`}
+        onClick={() => handleSort(id)}
+      >
+        {label}{active ? (sortDesc ? ' ▾' : ' ▴') : ''}
+      </th>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
@@ -88,7 +130,7 @@ export default function DispensersPage() {
         <div className="flex items-center gap-1 mb-4">
           {([
             ['markets', 'Dispenser Markets'],
-            ['dispensers', 'Open Dispensers'],
+            ['dispensers', 'New Dispensers'],
             ['dispenses', 'Recent Dispenses'],
           ] as const).map(([tab, label]) => (
             <button
@@ -108,7 +150,7 @@ export default function DispensersPage() {
               {(['24h', '7d', '30d', 'all'] as const).map((tf) => (
                 <button
                   key={tf}
-                  onClick={() => setTimeframe(tf)}
+                  onClick={() => { setTimeframe(tf); setSortId('vol'); setSortDesc(true) }}
                   className={`px-2 py-1 text-xs font-mono rounded-sm transition-colors ${
                     timeframe === tf
                       ? 'bg-zinc-700 text-zinc-100'
@@ -128,23 +170,23 @@ export default function DispensersPage() {
               <thead>
                 <tr className="text-zinc-500 border-b border-zinc-800 bg-zinc-900/50">
                   <th className="text-left font-normal px-3 py-2.5 sticky left-0 bg-zinc-900/50 z-10">Asset</th>
-                  <th className="text-right font-normal px-3 py-2.5">Price</th>
+                  <SortHeader id="price" label="Price" />
                   <th className="text-right font-normal px-3 py-2.5">Last Price</th>
                   {rolling ? (
                     <>
-                      <th className="text-right font-normal px-3 py-2.5">{timeframe} %</th>
-                      <th className="text-right font-normal px-3 py-2.5">{timeframe} Vol</th>
-                      <th className="text-right font-normal px-3 py-2.5">{timeframe} Disp</th>
+                      <SortHeader id="pct" label={`${timeframe} %`} />
+                      <SortHeader id="vol" label={`${timeframe} Vol`} />
+                      <SortHeader id="disp" label={`${timeframe} Disp`} />
                     </>
                   ) : (
                     <>
-                      <th className="text-right font-normal px-3 py-2.5">Total BTC</th>
-                      <th className="text-right font-normal px-3 py-2.5">Dispenses</th>
-                      <th className="text-right font-normal px-3 py-2.5">Buyers</th>
+                      <SortHeader id="vol" label="Total BTC" />
+                      <SortHeader id="disp" label="Dispenses" />
+                      <SortHeader id="buyers" label="Buyers" />
                     </>
                   )}
-                  <th className="text-right font-normal px-3 py-2.5">Dispensers</th>
-                  <th className="text-right font-normal px-3 py-2.5">Depth</th>
+                  <SortHeader id="dispensers" label="Dispensers" />
+                  <SortHeader id="depth" label="Depth" />
                   <th className="text-right font-normal px-3 py-2.5">Last Disp</th>
                 </tr>
               </thead>

@@ -1,4 +1,9 @@
-const VALID_SORTS = new Set(["volume_24h", "trade_count_24h", "last_trade_time", "total_volume", "total_trade_count", "unique_traders"]);
+const VALID_SORTS = new Set([
+  "volume_24h", "volume_7d", "volume_30d", "total_volume",
+  "trade_count_24h", "trade_count_7d", "trade_count_30d", "total_trade_count",
+  "price_change_24h", "price_change_7d", "price_change_30d",
+  "open_orders", "first_trade_time", "last_trade_time", "unique_traders",
+]);
 
 export async function handlePair(
   db: D1Database,

@@ -19,13 +19,14 @@ type Tab = 'markets' | 'open' | 'matches'
 type Timeframe = '24h' | '7d' | '30d' | 'all'
 
 function pctColor(v: number | null) {
-  if (v == null) return 'text-zinc-600'
-  return v >= 0 ? 'text-green-400' : 'text-red-400'
+  if (v == null || v === 0) return 'text-zinc-600'
+  return v > 0 ? 'text-green-400' : 'text-red-400'
 }
 
 function fmtPct(v: number | null) {
   if (v == null) return '—'
-  return `${v >= 0 ? '+' : ''}${v.toFixed(1)}%`
+  if (v === 0) return '0.0%'
+  return `${v > 0 ? '+' : ''}${v.toFixed(1)}%`
 }
 
 function fmtVol(v: number | null) {
@@ -39,15 +40,56 @@ function tfVal(p: PairStats, prefix: string, tf: Timeframe): number | null {
   return (p[key] as number | null) ?? null
 }
 
+function defaultPairSort(tf: Timeframe): string {
+  return tf === 'all' ? 'total_trade_count' : `trade_count_${tf}`
+}
+
+function pairSortCol(id: string, tf: Timeframe): string {
+  switch (id) {
+    case 'pct': return tf === 'all' ? 'total_trade_count' : `price_change_${tf}`
+    case 'vol': return tf === 'all' ? 'total_volume' : `volume_${tf}`
+    case 'trades': return tf === 'all' ? 'total_trade_count' : `trade_count_${tf}`
+    case 'traders': return 'unique_traders'
+    case 'orders': return 'open_orders'
+    case 'age': return 'first_trade_time'
+    default: return defaultPairSort(tf)
+  }
+}
+
 export default function OrdersPage() {
   const [activeTab, setActiveTab] = useState<Tab>('markets')
   const [timeframe, setTimeframe] = useState<Timeframe>('24h')
+  const [sortId, setSortId] = useState('trades')
+  const [sortDesc, setSortDesc] = useState(true)
   const { orders, isLoading: ordersLoading } = useGlobalOrders(50)
   const { trades, isLoading: tradesLoading } = useGlobalTrades(50)
   const { data: summary } = useTradeSummary()
-  const { pairs, isLoading: pairsLoading } = usePairMarkets('total_trade_count', timeframe)
+
+  const apiSort = pairSortCol(sortId, timeframe)
+  const { pairs, isLoading: pairsLoading } = usePairMarkets(apiSort, timeframe)
 
   const rolling = timeframe !== 'all'
+
+  function handleSort(id: string) {
+    if (sortId === id) {
+      setSortDesc(!sortDesc)
+    } else {
+      setSortId(id)
+      setSortDesc(id !== 'age')
+    }
+  }
+
+  function SortHeader({ id, label, className }: { id: string; label: string; className?: string }) {
+    const active = sortId === id
+    return (
+      <th
+        className={`font-normal px-3 py-2.5 cursor-pointer select-none hover:text-zinc-300 transition-colors ${className ?? 'text-right'} ${active ? 'text-zinc-300' : 'text-zinc-500'}`}
+        onClick={() => handleSort(id)}
+      >
+        {label}{active ? (sortDesc ? ' ▾' : ' ▴') : ''}
+      </th>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
@@ -106,7 +148,7 @@ export default function OrdersPage() {
               {(['24h', '7d', '30d', 'all'] as const).map((tf) => (
                 <button
                   key={tf}
-                  onClick={() => setTimeframe(tf)}
+                  onClick={() => { setTimeframe(tf); setSortId('trades'); setSortDesc(true) }}
                   className={`px-2 py-1 text-xs font-mono rounded-sm transition-colors ${
                     timeframe === tf
                       ? 'bg-zinc-700 text-zinc-100'
@@ -129,23 +171,23 @@ export default function OrdersPage() {
                   <th className="text-right font-normal px-3 py-2.5">Price</th>
                   {rolling ? (
                     <>
-                      <th className="text-right font-normal px-3 py-2.5">{timeframe} %</th>
-                      <th className="text-right font-normal px-3 py-2.5">{timeframe} Vol</th>
-                      <th className="text-right font-normal px-3 py-2.5">{timeframe} Trades</th>
+                      <SortHeader id="pct" label={`${timeframe} %`} />
+                      <SortHeader id="vol" label={`${timeframe} Vol`} />
+                      <SortHeader id="trades" label={`${timeframe} Trades`} />
                     </>
                   ) : (
                     <>
-                      <th className="text-right font-normal px-3 py-2.5">Total Vol</th>
-                      <th className="text-right font-normal px-3 py-2.5">Trades</th>
-                      <th className="text-right font-normal px-3 py-2.5">Traders</th>
+                      <SortHeader id="vol" label="Total Vol" />
+                      <SortHeader id="trades" label="Trades" />
+                      <SortHeader id="traders" label="Traders" />
                       <th className="text-right font-normal px-3 py-2.5">ATH</th>
                       <th className="text-right font-normal px-3 py-2.5">ATL</th>
                     </>
                   )}
                   <th className="text-right font-normal px-3 py-2.5">Bid</th>
                   <th className="text-right font-normal px-3 py-2.5">Ask</th>
-                  <th className="text-right font-normal px-3 py-2.5">Orders</th>
-                  <th className="text-right font-normal px-3 py-2.5">Age</th>
+                  <SortHeader id="orders" label="Orders" />
+                  <SortHeader id="age" label="Age" />
                 </tr>
               </thead>
               <tbody>
