@@ -304,7 +304,7 @@ export async function updateDispenserStats(
     }>();
 
   // Price change lookups + all-time totals (run in parallel)
-  const [price24hAgo, price7dAgo, price30dAgo, allTime, dispenserTotals, dispenserAvail] = await Promise.all([
+  const [price24hAgo, price7dAgo, price30dAgo, allTime, dispenserInfo] = await Promise.all([
     db
       .prepare(
         `SELECT price FROM dispenses
@@ -339,20 +339,14 @@ export async function updateDispenserStats(
     db
       .prepare(
         `SELECT COUNT(*) as total_created,
-                COUNT(DISTINCT source) as sellers
+                COUNT(DISTINCT source) as unique_sellers,
+                SUM(CASE WHEN status < 10 THEN 1 ELSE 0 END) as active_dispensers,
+                COALESCE(SUM(CASE WHEN status < 10 THEN give_remaining ELSE 0 END), 0) as total_available,
+                MIN(CASE WHEN status < 10 AND price > 0 THEN price END) as cheapest_price
          FROM dispensers WHERE asset = ?`
       )
       .bind(asset)
-      .first<{ total_created: number; sellers: number }>(),
-    db
-      .prepare(
-        `SELECT COUNT(*) as active_dispensers,
-                COALESCE(SUM(give_remaining), 0) as total_available,
-                MIN(CASE WHEN price > 0 THEN price END) as cheapest_price
-         FROM dispensers WHERE asset = ? AND status < 10`
-      )
-      .bind(asset)
-      .first<{ active_dispensers: number; total_available: number; cheapest_price: number | null }>(),
+      .first<{ total_created: number; unique_sellers: number; active_dispensers: number; total_available: number; cheapest_price: number | null }>(),
   ]);
 
   const lastPrice = stats?.last_price ?? null;
@@ -373,8 +367,8 @@ export async function updateDispenserStats(
   const totalDispensed = allTime?.total_qty ?? 0;
   const totalDispenseCount = allTime?.total_cnt ?? 0;
   const uniqueBuyers = allTime?.buyers ?? 0;
-  const uniqueSellers = dispenserTotals?.sellers ?? 0;
-  const totalDispensersCreated = dispenserTotals?.total_created ?? 0;
+  const uniqueSellers = dispenserInfo?.unique_sellers ?? 0;
+  const totalDispensersCreated = dispenserInfo?.total_created ?? 0;
   const avgDispenseBtc = totalDispenseCount > 0 ? totalBtc / totalDispenseCount : 0;
 
   await db
@@ -449,9 +443,9 @@ export async function updateDispenserStats(
       uniqueSellers,
       totalDispensersCreated,
       avgDispenseBtc,
-      dispenserAvail?.active_dispensers ?? 0,
-      dispenserAvail?.total_available ?? 0,
-      dispenserAvail?.cheapest_price ?? null,
+      dispenserInfo?.active_dispensers ?? 0,
+      dispenserInfo?.total_available ?? 0,
+      dispenserInfo?.cheapest_price ?? null,
       now
     )
     .run();

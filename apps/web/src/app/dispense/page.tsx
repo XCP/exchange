@@ -39,7 +39,8 @@ export default function DispensersPage() {
   const [activeTab, setActiveTab] = useState<Tab>('markets')
   const [includeHidden, setIncludeHidden] = useState(false)
   const [timeframe, setTimeframe] = useState<Timeframe>('24h')
-  const { markets, summary, isLoading: marketsLoading } = useDispenserMarkets('volume_24h', includeHidden, timeframe)
+  const dispenserSort = timeframe === 'all' ? 'total_btc_spent' : 'volume_24h'
+  const { markets, summary, isLoading: marketsLoading } = useDispenserMarkets(dispenserSort, includeHidden, timeframe)
   const { dispensers, isLoading: dispensersLoading } = useGlobalDispensers(50)
   const { dispenses, isLoading: dispensesLoading } = useGlobalDispenses(50)
 
@@ -144,7 +145,7 @@ export default function DispensersPage() {
                   )}
                   <th className="text-right font-normal px-3 py-2.5">Dispensers</th>
                   <th className="text-right font-normal px-3 py-2.5">Depth</th>
-                  <th className="text-right font-normal px-3 py-2.5">Last</th>
+                  <th className="text-right font-normal px-3 py-2.5">Last Disp</th>
                 </tr>
               </thead>
               <tbody>

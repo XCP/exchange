@@ -47,7 +47,7 @@ export async function handleDispenserStatsList(
                WHERE asset = ds.asset AND status < 10 AND price > 0 AND give_remaining > 0) AS avg_price
        FROM dispenser_stats ds
        WHERE ds.active_dispensers > 0${hiddenFilter}${activityFilter}
-       ORDER BY ds.${sort} DESC
+       ORDER BY ${sort} DESC
        LIMIT ? OFFSET ?`
     ).bind(limit, offset),
     db.prepare(
@@ -101,7 +101,9 @@ export async function handleDispenserStats(
                WHERE asset = ds.asset AND status < 10 AND price > 0 AND give_remaining > 0) AS cheapest_price,
               ds.first_dispense_time, ds.updated_at,
               ds.total_btc_spent, ds.total_dispensed, ds.total_dispense_count,
-              ds.unique_buyers, ds.unique_sellers, ds.total_dispensers_created, ds.avg_dispense_btc
+              ds.unique_buyers, ds.unique_sellers, ds.total_dispensers_created, ds.avg_dispense_btc,
+              (SELECT SUM(price * give_remaining) / SUM(give_remaining) FROM dispensers
+               WHERE asset = ds.asset AND status < 10 AND price > 0 AND give_remaining > 0) AS avg_price
        FROM dispenser_stats ds WHERE ds.asset = ?`
     )
     .bind(asset)
