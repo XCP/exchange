@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 import {
@@ -13,6 +13,7 @@ import {
 } from 'lightweight-charts'
 import { useAnalytics } from '@/lib/hooks/useAnalytics'
 import type {
+  Timeframe,
   DailyTradeVolume,
   DailyDispenseVolume,
   AnalyticsTopPair,
@@ -43,6 +44,13 @@ function fmtPct(v: number | null): string {
 function pctColor(v: number | null): string {
   if (v == null || v === 0) return 'text-zinc-600'
   return v > 0 ? 'text-green-400' : 'text-red-400'
+}
+
+const TF_LABELS: Record<Timeframe, string> = {
+  '24h': '24h',
+  '7d': '7d',
+  '30d': '30d',
+  all: 'All',
 }
 
 // ── Shared chart options ────────────────────────────────────────────
@@ -317,16 +325,16 @@ function ActivityChart({
 
 // ── LeaderboardTable ────────────────────────────────────────────────
 
-function TopPairsTable({ pairs }: { pairs: AnalyticsTopPair[] }) {
+function TopPairsTable({ pairs, tfLabel }: { pairs: AnalyticsTopPair[]; tfLabel: string }) {
   return (
     <div className="bg-zinc-900/50 border border-zinc-800 rounded-sm">
-      <div className="px-3 py-2 text-xs text-zinc-500">Top Pairs (24h Volume)</div>
+      <div className="px-3 py-2 text-xs text-zinc-500">Top Pairs ({tfLabel} Volume)</div>
       <table className="w-full text-xs">
         <thead>
           <tr className="text-zinc-600 border-b border-zinc-800">
             <th className="text-left font-normal px-3 py-1.5">#</th>
             <th className="text-left font-normal px-3 py-1.5">Pair</th>
-            <th className="text-right font-normal px-3 py-1.5">Vol 24h</th>
+            <th className="text-right font-normal px-3 py-1.5">Volume</th>
             <th className="text-right font-normal px-3 py-1.5">Chg</th>
           </tr>
         </thead>
@@ -347,9 +355,9 @@ function TopPairsTable({ pairs }: { pairs: AnalyticsTopPair[] }) {
                   <span className="text-zinc-200">{p.base_asset}/{p.quote_asset}</span>
                 </Link>
               </td>
-              <td className="text-right text-zinc-400 font-mono px-3 py-1.5">{formatAmount(p.volume_24h)}</td>
-              <td className={`text-right font-mono px-3 py-1.5 ${pctColor(p.price_change_24h)}`}>
-                {fmtPct(p.price_change_24h)}
+              <td className="text-right text-zinc-400 font-mono px-3 py-1.5">{formatAmount(p.volume)}</td>
+              <td className={`text-right font-mono px-3 py-1.5 ${pctColor(p.price_change)}`}>
+                {fmtPct(p.price_change)}
               </td>
             </tr>
           ))}
@@ -362,16 +370,16 @@ function TopPairsTable({ pairs }: { pairs: AnalyticsTopPair[] }) {
   )
 }
 
-function TopDispensersTable({ dispensers }: { dispensers: AnalyticsTopDispenser[] }) {
+function TopDispensersTable({ dispensers, tfLabel }: { dispensers: AnalyticsTopDispenser[]; tfLabel: string }) {
   return (
     <div className="bg-zinc-900/50 border border-zinc-800 rounded-sm">
-      <div className="px-3 py-2 text-xs text-zinc-500">Top Dispensers (24h Volume)</div>
+      <div className="px-3 py-2 text-xs text-zinc-500">Top Dispensers ({tfLabel} Volume)</div>
       <table className="w-full text-xs">
         <thead>
           <tr className="text-zinc-600 border-b border-zinc-800">
             <th className="text-left font-normal px-3 py-1.5">#</th>
             <th className="text-left font-normal px-3 py-1.5">Asset</th>
-            <th className="text-right font-normal px-3 py-1.5">Vol 24h</th>
+            <th className="text-right font-normal px-3 py-1.5">Volume</th>
             <th className="text-right font-normal px-3 py-1.5">Chg</th>
           </tr>
         </thead>
@@ -392,9 +400,9 @@ function TopDispensersTable({ dispensers }: { dispensers: AnalyticsTopDispenser[
                   <span className="text-zinc-200">{d.asset_longname ?? d.asset}</span>
                 </Link>
               </td>
-              <td className="text-right text-zinc-400 font-mono px-3 py-1.5">{formatPrice(d.volume_24h)}</td>
-              <td className={`text-right font-mono px-3 py-1.5 ${pctColor(d.price_change_24h)}`}>
-                {fmtPct(d.price_change_24h)}
+              <td className="text-right text-zinc-400 font-mono px-3 py-1.5">{formatPrice(d.volume)}</td>
+              <td className={`text-right font-mono px-3 py-1.5 ${pctColor(d.price_change)}`}>
+                {fmtPct(d.price_change)}
               </td>
             </tr>
           ))}
@@ -455,6 +463,9 @@ function TrendingTable({ trending }: { trending: AnalyticsTrending[] }) {
 // ── Main Page ───────────────────────────────────────────────────────
 
 export default function AnalyticsPage() {
+  const [timeframe, setTimeframe] = useState<Timeframe>('24h')
+  const [hideLowQuality, setHideLowQuality] = useState(true)
+
   const {
     tradeSummary,
     dispenseSummary,
@@ -464,15 +475,46 @@ export default function AnalyticsPage() {
     topDispensers,
     trending,
     isLoading,
-  } = useAnalytics()
+  } = useAnalytics(timeframe, !hideLowQuality)
+
+  const tfLabel = TF_LABELS[timeframe]
+  const isAll = timeframe === 'all'
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
       <div className="max-w-6xl mx-auto px-4 py-8">
-        {/* Header */}
-        <div className="mb-6">
-          <h1 className="text-lg font-semibold text-zinc-100 mb-1">XCP DEX Analytics</h1>
-          <p className="text-xs text-zinc-500">Global exchange metrics, volume trends, and leaderboards</p>
+        {/* Header + Controls */}
+        <div className="flex items-start justify-between mb-6 gap-4 flex-wrap">
+          <div>
+            <h1 className="text-lg font-semibold text-zinc-100 mb-1">XCP DEX Analytics</h1>
+            <p className="text-xs text-zinc-500">Global exchange metrics, volume trends, and leaderboards</p>
+          </div>
+          <div className="flex items-center gap-3">
+            <label className="flex items-center gap-1.5 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={hideLowQuality}
+                onChange={(e) => setHideLowQuality(e.target.checked)}
+                className="accent-zinc-500 w-3 h-3"
+              />
+              <span className="text-xs text-zinc-500">Hide low quality</span>
+            </label>
+            <div className="flex gap-0.5">
+              {(['24h', '7d', '30d', 'all'] as const).map((tf) => (
+                <button
+                  key={tf}
+                  onClick={() => setTimeframe(tf)}
+                  className={`px-2 py-1 text-xs font-mono rounded-sm transition-colors ${
+                    timeframe === tf
+                      ? 'bg-zinc-700 text-zinc-100'
+                      : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900'
+                  }`}
+                >
+                  {TF_LABELS[tf]}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
 
         {isLoading ? (
@@ -486,30 +528,30 @@ export default function AnalyticsPage() {
               <CounterCard
                 label="Total Trade Volume"
                 value={tradeSummary ? fmtBig(tradeSummary.total_volume) + ' XCP' : '—'}
-                sub={tradeSummary ? `24h: ${fmtBig(tradeSummary.volume_24h)} XCP` : undefined}
+                sub={!isAll && tradeSummary ? `${tfLabel}: ${fmtBig(tradeSummary.tf_volume)} XCP` : undefined}
               />
               <CounterCard
                 label="Total Trades"
                 value={tradeSummary ? tradeSummary.total_trade_count.toLocaleString() : '—'}
-                sub={tradeSummary ? `24h: ${tradeSummary.trades_24h.toLocaleString()}` : undefined}
+                sub={!isAll && tradeSummary ? `${tfLabel}: ${tradeSummary.tf_trades.toLocaleString()}` : undefined}
               />
               <CounterCard
                 label="Trading Pairs"
                 value={tradeSummary ? tradeSummary.total_pairs.toLocaleString() : '—'}
               />
               <CounterCard
-                label="Active Pairs (24h)"
-                value={tradeSummary ? tradeSummary.active_pairs_24h.toLocaleString() : '—'}
+                label={`Active Pairs (${tfLabel})`}
+                value={tradeSummary ? tradeSummary.active_pairs.toLocaleString() : '—'}
               />
               <CounterCard
                 label="Dispense Volume"
                 value={dispenseSummary ? fmtBig(dispenseSummary.total_btc_spent) + ' BTC' : '—'}
-                sub={dispenseSummary ? `24h: ${fmtBig(dispenseSummary.dispense_vol_24h)} BTC` : undefined}
+                sub={!isAll && dispenseSummary ? `${tfLabel}: ${fmtBig(dispenseSummary.tf_volume)} BTC` : undefined}
               />
               <CounterCard
                 label="Total Dispenses"
                 value={dispenseSummary ? dispenseSummary.total_dispense_count.toLocaleString() : '—'}
-                sub={dispenseSummary ? `24h: ${dispenseSummary.dispenses_24h.toLocaleString()}` : undefined}
+                sub={!isAll && dispenseSummary ? `${tfLabel}: ${dispenseSummary.tf_dispenses.toLocaleString()}` : undefined}
               />
               <CounterCard
                 label="Open Dispensers"
@@ -555,8 +597,8 @@ export default function AnalyticsPage() {
 
             {/* Leaderboards */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-              <TopPairsTable pairs={topPairs} />
-              <TopDispensersTable dispensers={topDispensers} />
+              <TopPairsTable pairs={topPairs} tfLabel={tfLabel} />
+              <TopDispensersTable dispensers={topDispensers} tfLabel={tfLabel} />
               <TrendingTable trending={trending} />
             </div>
           </>

@@ -1,13 +1,15 @@
 import useSWR from 'swr'
 import { fetcher, dexUrl } from '@/lib/api/client'
 
+export type Timeframe = '24h' | '7d' | '30d' | 'all'
+
 export interface TradeSummary {
   total_volume: number
   total_trade_count: number
   total_pairs: number
-  active_pairs_24h: number
-  volume_24h: number
-  trades_24h: number
+  active_pairs: number
+  tf_volume: number
+  tf_trades: number
   open_orders: number
 }
 
@@ -15,8 +17,8 @@ export interface DispenseSummary {
   total_btc_spent: number
   total_dispense_count: number
   open_dispensers: number
-  dispense_vol_24h: number
-  dispenses_24h: number
+  tf_volume: number
+  tf_dispenses: number
 }
 
 export interface DailyTradeVolume {
@@ -36,18 +38,18 @@ export interface AnalyticsTopPair {
   base_asset: string
   quote_asset: string
   last_price: number | null
-  volume_24h: number
-  trade_count_24h: number
-  price_change_24h: number
+  volume: number
+  trade_count: number
+  price_change: number
 }
 
 export interface AnalyticsTopDispenser {
   asset: string
   asset_longname: string | null
-  volume_24h: number
-  dispense_count_24h: number
+  volume: number
+  dispense_count: number
   last_dispense_price: number | null
-  price_change_24h: number
+  price_change: number
   active_dispensers: number
 }
 
@@ -63,6 +65,7 @@ export interface AnalyticsTrending {
 }
 
 interface AnalyticsResponse {
+  timeframe: string
   trade_summary: TradeSummary
   dispense_summary: DispenseSummary
   daily_trade_volume: DailyTradeVolume[]
@@ -72,9 +75,13 @@ interface AnalyticsResponse {
   trending: AnalyticsTrending[]
 }
 
-export function useAnalytics() {
+export function useAnalytics(timeframe: Timeframe = '24h', includeHidden: boolean = false) {
+  const params = new URLSearchParams()
+  params.set('timeframe', timeframe)
+  if (includeHidden) params.set('include_hidden', '1')
+
   const { data, error, isLoading } = useSWR<AnalyticsResponse>(
-    dexUrl('/analytics'),
+    dexUrl(`/analytics?${params}`),
     fetcher,
     { refreshInterval: 300_000 }
   )

@@ -2,6 +2,22 @@ export async function handleAnalytics(
   request: Request,
   db: D1Database
 ): Promise<Response> {
+  const url = new URL(request.url);
+  const tfParam = url.searchParams.get("timeframe");
+  const tf = tfParam === "7d" || tfParam === "30d" || tfParam === "all" ? tfParam : "24h";
+  const includeHidden = url.searchParams.get("include_hidden") === "1";
+
+  const pairHidden = includeHidden ? "" : " AND hidden = 0";
+  const dispHidden = includeHidden ? "" : " AND ds.hidden = 0";
+
+  // Timeframe-aware column names
+  const volCol = tf === "all" ? "total_volume" : `volume_${tf}`;
+  const tradeCountCol = tf === "all" ? "total_trade_count" : `trade_count_${tf}`;
+  const pctCol = tf === "all" ? "0" : `price_change_${tf}`;
+  const dispVolCol = tf === "all" ? "total_btc_spent" : `volume_${tf}`;
+  const dispCountCol = tf === "all" ? "total_dispense_count" : `dispense_count_${tf}`;
+  const dispPctCol = tf === "all" ? "0" : `price_change_${tf}`;
+
   const [
     tradeSummary,
     dispenseSummary,
@@ -11,17 +27,18 @@ export async function handleAnalytics(
     topDispensers,
     trendingCandidates,
   ] = await db.batch([
-    // 1. Trade summary
+    // 1. Trade summary (always shows all-time totals + selected timeframe rolling)
     db.prepare(
       `SELECT
         COALESCE(SUM(total_volume), 0) AS total_volume,
         COALESCE(SUM(total_trade_count), 0) AS total_trade_count,
         COUNT(*) AS total_pairs,
-        SUM(CASE WHEN trade_count_24h > 0 THEN 1 ELSE 0 END) AS active_pairs_24h,
-        COALESCE(SUM(volume_24h), 0) AS volume_24h,
-        COALESCE(SUM(trade_count_24h), 0) AS trades_24h,
+        SUM(CASE WHEN ${tradeCountCol} > 0 THEN 1 ELSE 0 END) AS active_pairs,
+        COALESCE(SUM(${volCol}), 0) AS tf_volume,
+        COALESCE(SUM(${tradeCountCol}), 0) AS tf_trades,
         (SELECT COUNT(*) FROM orders WHERE status = 'open') AS open_orders
-       FROM pair_stats`
+       FROM pair_stats
+       WHERE 1=1${pairHidden}`
     ),
     // 2. Dispense summary
     db.prepare(
@@ -29,9 +46,10 @@ export async function handleAnalytics(
         COALESCE(SUM(total_btc_spent), 0) AS total_btc_spent,
         COALESCE(SUM(total_dispense_count), 0) AS total_dispense_count,
         (SELECT COUNT(*) FROM dispensers WHERE status < 10) AS open_dispensers,
-        COALESCE(SUM(volume_24h), 0) AS dispense_vol_24h,
-        COALESCE(SUM(dispense_count_24h), 0) AS dispenses_24h
-       FROM dispenser_stats`
+        COALESCE(SUM(${dispVolCol}), 0) AS tf_volume,
+        COALESCE(SUM(${dispCountCol}), 0) AS tf_dispenses
+       FROM dispenser_stats ds
+       WHERE 1=1${dispHidden}`
     ),
     // 3. Daily trade volume (from 1d candles)
     db.prepare(
@@ -50,22 +68,25 @@ export async function handleAnalytics(
        GROUP BY 1
        ORDER BY 1`
     ),
-    // 5. Top 10 pairs by 24h volume
+    // 5. Top 10 pairs by selected timeframe volume
     db.prepare(
-      `SELECT pair, base_asset, quote_asset, last_price, volume_24h,
-              trade_count_24h, price_change_24h
+      `SELECT pair, base_asset, quote_asset, last_price,
+              ${volCol} AS volume, ${tradeCountCol} AS trade_count,
+              ${pctCol} AS price_change
        FROM pair_stats
-       WHERE volume_24h > 0
-       ORDER BY volume_24h DESC
+       WHERE ${volCol} > 0${pairHidden}
+       ORDER BY ${volCol} DESC
        LIMIT 10`
     ),
-    // 6. Top 10 dispenser assets by 24h volume
+    // 6. Top 10 dispenser assets by selected timeframe volume
     db.prepare(
-      `SELECT ds.asset, ds.asset_longname, ds.volume_24h, ds.dispense_count_24h,
-              ds.last_dispense_price, ds.price_change_24h, ds.active_dispensers
+      `SELECT ds.asset, ds.asset_longname,
+              ds.${dispVolCol} AS volume, ds.${dispCountCol} AS dispense_count,
+              ds.last_dispense_price, ds.${dispPctCol} AS price_change,
+              ds.active_dispensers
        FROM dispenser_stats ds
-       WHERE ds.hidden = 0 AND ds.volume_24h > 0
-       ORDER BY ds.volume_24h DESC
+       WHERE ds.${dispVolCol} > 0${dispHidden}
+       ORDER BY ds.${dispVolCol} DESC
        LIMIT 10`
     ),
     // 7. Top 100 active pairs for trending scoring
@@ -73,7 +94,7 @@ export async function handleAnalytics(
       `SELECT pair, base_asset, quote_asset, last_price, last_trade_time,
               price_change_24h, volume_24h, trade_count_24h
        FROM pair_stats
-       WHERE trade_count_24h > 0
+       WHERE trade_count_24h > 0${pairHidden}
        ORDER BY trade_count_24h DESC
        LIMIT 100`
     ),
@@ -113,21 +134,22 @@ export async function handleAnalytics(
 
   return Response.json(
     {
+      timeframe: tf,
       trade_summary: {
         total_volume: trade?.total_volume ?? 0,
         total_trade_count: trade?.total_trade_count ?? 0,
         total_pairs: trade?.total_pairs ?? 0,
-        active_pairs_24h: trade?.active_pairs_24h ?? 0,
-        volume_24h: trade?.volume_24h ?? 0,
-        trades_24h: trade?.trades_24h ?? 0,
+        active_pairs: trade?.active_pairs ?? 0,
+        tf_volume: trade?.tf_volume ?? 0,
+        tf_trades: trade?.tf_trades ?? 0,
         open_orders: trade?.open_orders ?? 0,
       },
       dispense_summary: {
         total_btc_spent: dispense?.total_btc_spent ?? 0,
         total_dispense_count: dispense?.total_dispense_count ?? 0,
         open_dispensers: dispense?.open_dispensers ?? 0,
-        dispense_vol_24h: dispense?.dispense_vol_24h ?? 0,
-        dispenses_24h: dispense?.dispenses_24h ?? 0,
+        tf_volume: dispense?.tf_volume ?? 0,
+        tf_dispenses: dispense?.tf_dispenses ?? 0,
       },
       daily_trade_volume: dailyTradeVolume.results,
       daily_dispense_volume: dailyDispenseVolume.results,

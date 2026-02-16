@@ -1,0 +1,1 @@
+ALTER TABLE pair_stats ADD COLUMN hidden INTEGER DEFAULT 0;
