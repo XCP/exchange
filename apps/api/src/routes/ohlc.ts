@@ -1,13 +1,6 @@
-const VALID_INTERVALS = new Set(["1h", "4h", "1d", "1w", "1m", "1y"]);
+import { INTERVAL_SECONDS } from "../lib/constants";
 
-const INTERVAL_SECONDS: Record<string, number> = {
-  "1h": 3600,
-  "4h": 14400,
-  "1d": 86400,
-  "1w": 604800,
-  "1m": 2592000,
-  "1y": 31536000,
-};
+const VALID_INTERVALS = new Set(Object.keys(INTERVAL_SECONDS));
 
 interface Candle {
   t: number;

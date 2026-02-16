@@ -1,3 +1,7 @@
+import { API_TIMEOUT_MS } from "../lib/constants";
+
+const BALANCE_CACHE_TTL = 86400; // 1 day in seconds
+
 interface Balance {
   asset: string;
   quantity_normalized: string;
@@ -8,21 +12,34 @@ interface CounterpartyBalanceResponse {
   next_cursor: string | number | null;
 }
 
+/**
+ * Fetch all assets with a positive balance for an address.
+ * Results are cached at the edge for 1 day (balances change slowly).
+ */
 async function fetchBalances(
   apiBase: string,
   address: string
 ): Promise<string[]> {
+  // Check edge cache first
+  const cache = caches.default;
+  const cacheKey = `https://balance-cache/${address}`;
+  const cached = await cache.match(cacheKey);
+  if (cached) {
+    return await cached.json();
+  }
+
+  // Fetch from Counterparty API with full pagination
   const assets: string[] = [];
   let cursor: string | null = null;
 
-  // Safety limit: max 5 pages (1000 assets) to prevent infinite loops
-  for (let page = 0; page < 5; page++) {
+  for (let page = 0; page < 50; page++) {
     const url = new URL(`${apiBase}/addresses/${address}/balances`);
+    url.searchParams.set("verbose", "true");
     url.searchParams.set("limit", "200");
     if (cursor) url.searchParams.set("cursor", cursor);
 
     const res = await fetch(url.toString(), {
-      signal: AbortSignal.timeout(10_000),
+      signal: AbortSignal.timeout(API_TIMEOUT_MS),
     });
     if (!res.ok) throw new Error(`Counterparty API error: ${res.status}`);
 
@@ -36,10 +53,17 @@ async function fetchBalances(
       }
     }
 
-    // next_cursor can be string or number from CP API
     cursor = data.next_cursor != null ? String(data.next_cursor) : null;
     if (!cursor || data.result.length === 0) break;
   }
+
+  // Store in edge cache
+  await cache.put(
+    cacheKey,
+    new Response(JSON.stringify(assets), {
+      headers: { "Cache-Control": `public, max-age=${BALANCE_CACHE_TTL}` },
+    })
+  );
 
   return assets;
 }

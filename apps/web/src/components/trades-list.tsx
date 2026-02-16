@@ -2,8 +2,7 @@
 
 import { useCallback, useRef } from 'react'
 import { useTrades } from '@/lib/hooks/useTrades'
-import { formatAmountTrade } from '@/utils/format-amount-trade'
-import { formatTimeAgo } from '@/utils/format-time-ago'
+import { formatPrice } from '@/utils/format-price'
 import { formatAddress } from '@/utils/format-address'
 
 interface TradesListProps {
@@ -12,13 +11,22 @@ interface TradesListProps {
   quoteSymbol: string
 }
 
+function compactTime(ts: number): string {
+  const diff = Math.floor(Date.now() / 1000 - ts)
+  if (diff < 60) return `${diff}s`
+  if (diff < 3600) return `${Math.floor(diff / 60)}m`
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h`
+  if (diff < 2592000) return `${Math.floor(diff / 86400)}d`
+  if (diff < 31536000) return `${Math.floor(diff / 2592000)}mo`
+  return `${Math.floor(diff / 31536000)}y`
+}
+
 export function TradesList({ market, baseSymbol, quoteSymbol }: TradesListProps) {
   const { trades, isLoading, loadMore, loadingMore, hasMore } = useTrades(market, baseSymbol, quoteSymbol)
   const loadMoreRef = useRef(loadMore)
   loadMoreRef.current = loadMore
   const observerRef = useRef<IntersectionObserver | null>(null)
 
-  // Callback ref: fires when the sentinel DOM node mounts/unmounts
   const sentinelRef = useCallback((node: HTMLDivElement | null) => {
     if (observerRef.current) {
       observerRef.current.disconnect()
@@ -55,47 +63,72 @@ export function TradesList({ market, baseSymbol, quoteSymbol }: TradesListProps)
 
   return (
     <div>
-      <div className="grid grid-cols-3 sm:grid-cols-5 gap-0 px-3 py-1.5 text-xs text-zinc-600 sticky top-0 bg-zinc-950 z-10">
-        <span>Price ({quoteSymbol})</span>
-        <span className="text-right">Amount</span>
-        <span className="text-right max-sm:hidden">Maker</span>
-        <span className="text-right max-sm:hidden">Taker</span>
-        <span className="text-right">Time</span>
-      </div>
-      <div className="px-1">
-        {trades.map((trade) => (
-          <div
-            key={trade.id ?? `${trade.tx0}-${trade.tx1}`}
-            className="grid grid-cols-3 sm:grid-cols-5 gap-0 px-2 py-px text-xs hover:bg-zinc-900 cursor-default"
-          >
-            <span className={`font-mono ${trade.side === 'buy' ? 'text-green-400' : 'text-red-400'}`}>
-              {formatAmountTrade(trade.price)}
-            </span>
-            <span className="text-right text-zinc-400 font-mono">{formatAmountTrade(trade.amount)}</span>
-            <span className="text-right text-zinc-500 font-mono max-sm:hidden">
-              {formatAddress(trade.maker)}
-            </span>
-            <span className="text-right text-zinc-500 font-mono max-sm:hidden">
-              {formatAddress(trade.taker)}
-            </span>
-            <span className="text-right text-zinc-600 font-mono">
-              {trade.block_time ? formatTimeAgo(trade.block_time) : '—'}
-            </span>
-          </div>
-        ))}
-        {loadingMore && (
-          <div className="flex items-center justify-center py-2">
-            <span className="text-xs text-zinc-500">Loading more...</span>
-          </div>
-        )}
-        {!hasMore && trades.length > 50 && (
-          <div className="flex items-center justify-center py-2">
-            <span className="text-xs text-zinc-700">{trades.length} trades loaded</span>
-          </div>
-        )}
-        {/* Sentinel: callback ref sets up IntersectionObserver when this mounts */}
-        {hasMore && <div ref={sentinelRef} className="h-px" />}
-      </div>
+      <table className="w-full text-xs">
+        <thead className="sticky top-0 bg-zinc-950 z-10">
+          <tr className="text-zinc-600">
+            <th className="text-left font-normal px-2 py-1.5 w-10">Time</th>
+            <th className="text-left font-normal px-2 py-1.5 w-10">Type</th>
+            <th className="text-right font-normal px-2 py-1.5">Price</th>
+            <th className="text-right font-normal px-2 py-1.5">{baseSymbol}</th>
+            <th className="text-right font-normal px-2 py-1.5 max-sm:hidden">{quoteSymbol}</th>
+            <th className="text-right font-normal px-2 py-1.5 max-sm:hidden">Taker</th>
+            <th className="text-right font-normal px-2 py-1.5 max-sm:hidden">Maker</th>
+            <th className="font-normal px-2 py-1.5 w-6 max-sm:hidden"><span className="sr-only">Tx</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          {trades.map((trade) => (
+            <tr
+              key={trade.id ?? `${trade.tx0}-${trade.tx1}`}
+              className="hover:bg-zinc-900 cursor-default"
+            >
+              <td className="text-zinc-600 font-mono px-2 py-px">
+                {trade.block_time ? compactTime(trade.block_time) : '—'}
+              </td>
+              <td className={`font-medium px-2 py-px ${trade.side === 'buy' ? 'text-green-400' : 'text-red-400'}`}>
+                {trade.side === 'buy' ? 'Buy' : 'Sell'}
+              </td>
+              <td className="text-right text-zinc-300 font-mono px-2 py-px">
+                {formatPrice(trade.price)}
+              </td>
+              <td className="text-right text-zinc-400 font-mono px-2 py-px">
+                {formatPrice(trade.amount)}
+              </td>
+              <td className="text-right text-zinc-400 font-mono px-2 py-px max-sm:hidden">
+                {formatPrice(trade.volume)}
+              </td>
+              <td className="text-right text-zinc-500 font-mono px-2 py-px max-sm:hidden">
+                {formatAddress(trade.taker)}
+              </td>
+              <td className="text-right text-zinc-500 font-mono px-2 py-px max-sm:hidden">
+                {formatAddress(trade.maker)}
+              </td>
+              <td className="text-center px-2 py-px max-sm:hidden">
+                <a
+                  href={`https://xcp.io/tx/${trade.tx0}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-zinc-600 hover:text-zinc-300 transition-colors"
+                  title="View transaction"
+                >
+                  ↗
+                </a>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {loadingMore && (
+        <div className="flex items-center justify-center py-2">
+          <span className="text-xs text-zinc-500">Loading more...</span>
+        </div>
+      )}
+      {!hasMore && trades.length > 50 && (
+        <div className="flex items-center justify-center py-2">
+          <span className="text-xs text-zinc-700">{trades.length} trades loaded</span>
+        </div>
+      )}
+      {hasMore && <div ref={sentinelRef} className="h-px" />}
     </div>
   )
 }

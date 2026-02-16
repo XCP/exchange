@@ -57,18 +57,18 @@ export function usePortfolioDispensers(address: string | null) {
   return { dispensers: data?.dispensers ?? [], error, isLoading }
 }
 
-interface CpBalance {
+interface CounterpartyBalance {
   asset: string
   quantity: number
   quantity_normalized: string
 }
 
-interface CpBalancesResponse {
-  result: CpBalance[]
+interface CounterpartyBalancesResponse {
+  result: CounterpartyBalance[]
 }
 
 export function usePortfolioBalances(address: string | null) {
-  const { data, error, isLoading } = useSWR<CpBalancesResponse>(
+  const { data, error, isLoading } = useSWR<CounterpartyBalancesResponse>(
     address ? counterpartyUrl(`/addresses/${address}/balances?verbose=true&limit=200`) : null,
     fetcher,
     { refreshInterval: 60_000 }

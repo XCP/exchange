@@ -4,7 +4,7 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { useGlobalTrades } from '@/lib/hooks/useGlobalTrades'
 import { formatAddress } from '@/utils/format-address'
-import { formatAmountTrade } from '@/utils/format-amount-trade'
+import { formatPrice } from '@/utils/format-price'
 import { formatTimeAgo } from '@/utils/format-time-ago'
 import { assetsToTradingPairFromSymbols, getTradingPairSlugFromSymbols } from '@/utils/trading-pair'
 import { XCP_IMG_BASE } from '@/utils/constants'
@@ -66,10 +66,10 @@ export default function TradesPage() {
                       <span className="text-zinc-200 font-medium truncate">{pairLabel}</span>
                     </span>
                     <span className="text-right text-red-400 font-mono">
-                      {formatAmountTrade(trade.forward_quantity_normalized)} <span className="text-zinc-600">{fwdSymbol.length > 10 ? fwdSymbol.slice(0, 8) + '…' : fwdSymbol}</span>
+                      {formatPrice(trade.forward_quantity_normalized)} <span className="text-zinc-600">{fwdSymbol.length > 10 ? fwdSymbol.slice(0, 8) + '…' : fwdSymbol}</span>
                     </span>
                     <span className="text-right text-green-400 font-mono">
-                      {formatAmountTrade(trade.backward_quantity_normalized)} <span className="text-zinc-600">{bwdSymbol.length > 10 ? bwdSymbol.slice(0, 8) + '…' : bwdSymbol}</span>
+                      {formatPrice(trade.backward_quantity_normalized)} <span className="text-zinc-600">{bwdSymbol.length > 10 ? bwdSymbol.slice(0, 8) + '…' : bwdSymbol}</span>
                     </span>
                     <span className="text-right text-zinc-500 font-mono max-sm:hidden">
                       {formatAddress(trade.tx0_address)}

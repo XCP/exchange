@@ -2,6 +2,9 @@ name = "xcpdex-api"
 main = "src/index.ts"
 compatibility_date = "2025-01-01"
 
+[limits]
+cpu_ms = 300000
+
 [triggers]
 crons = ["*/10 * * * *"]
 

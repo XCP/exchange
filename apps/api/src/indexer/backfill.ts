@@ -1,6 +1,8 @@
 import { normalizeOrderMatch, NormalizedTrade, normalizeDispensePrice } from "./normalize";
-import { fetchDispenses } from "../lib/counterparty";
-import { getMode, setMode, getState, setState, deleteState } from "./state";
+import { fetchOrderMatches, fetchDispenses } from "../lib/counterparty";
+import { API_TIMEOUT_MS } from "../lib/constants";
+import { batchExec } from "../lib/batch";
+import { getState, setState } from "./state";
 
 const BATCH_SIZE = 200;
 const DEFAULT_MAX_PAGES = 20;
@@ -15,7 +17,7 @@ interface BackfillResult {
 }
 
 /**
- * Backfill trades from oldest → newest using offset/limit pagination.
+ * Backfill trades using cursor-based pagination.
  * When complete, transitions mode to BACKFILL_DISPENSES.
  */
 export async function backfillTrades(
@@ -23,69 +25,40 @@ export async function backfillTrades(
   apiBase: string,
   maxPages: number = DEFAULT_MAX_PAGES
 ): Promise<BackfillResult> {
-  const [totalStr, offsetStr] = await Promise.all([
-    getState(db, "backfill_total"),
-    getState(db, "backfill_offset"),
-  ]);
+  let cursor = await getState(db, "trade_backfill_cursor");
+  const totalStr = await getState(db, "trade_backfill_total");
 
   let total: number;
-  let offset: number;
-
-  if (totalStr != null && offsetStr != null) {
+  if (totalStr != null) {
     total = parseInt(totalStr, 10);
-    offset = parseInt(offsetStr, 10);
   } else {
-    // First run — probe for total count
+    // Probe for total count (for progress tracking)
     const probeUrl = new URL(`${apiBase}/order_matches`);
     probeUrl.searchParams.set("status", "completed");
     probeUrl.searchParams.set("limit", "1");
-
-    const probeRes = await fetch(probeUrl.toString());
+    const probeRes = await fetch(probeUrl.toString(), { signal: AbortSignal.timeout(API_TIMEOUT_MS) });
     if (!probeRes.ok) {
       throw new Error(`Counterparty API probe error: ${probeRes.status} ${probeRes.statusText}`);
     }
     const probeData: { result_count: number } = await probeRes.json();
     total = probeData.result_count;
-
-    // Start at the end (oldest trades)
-    offset = Math.max(total - BATCH_SIZE, 0);
-
-    await Promise.all([
-      setState(db, "backfill_total", String(total)),
-      setState(db, "backfill_offset", String(offset)),
-    ]);
-  }
-
-  // Already done
-  if (offset < 0) {
-    await finishTradeBackfill(db);
-    return { type: "trades", inserted: 0, pages: 0, done: true, total, progress: "100.0" };
+    await setState(db, "trade_backfill_total", String(total));
   }
 
   let totalInserted = 0;
   let pages = 0;
 
-  while (pages < maxPages && offset >= 0) {
-    // For the final page, fetch only the remaining items at offset 0
-    const fetchOffset = offset;
-    const fetchLimit = offset < BATCH_SIZE ? offset + BATCH_SIZE : BATCH_SIZE;
+  while (pages < maxPages) {
+    const { matches, nextCursor } = await fetchOrderMatches(
+      apiBase,
+      cursor,
+      BATCH_SIZE
+    );
 
-    const fetchUrl = new URL(`${apiBase}/order_matches`);
-    fetchUrl.searchParams.set("status", "completed");
-    fetchUrl.searchParams.set("verbose", "true");
-    fetchUrl.searchParams.set("limit", String(fetchLimit));
-    fetchUrl.searchParams.set("offset", String(fetchOffset));
-
-    const res = await fetch(fetchUrl.toString());
-    if (!res.ok) {
-      throw new Error(`Counterparty API error: ${res.status} ${res.statusText}`);
-    }
-    const data: { result: any[]; result_count: number } = await res.json();
-
-    if (data.result.length === 0) break;
+    if (matches.length === 0) break;
 
     const trades: NormalizedTrade[] = [];
-    for (const match of data.result) {
+    for (const match of matches) {
       try {
         trades.push(normalizeOrderMatch(match));
       } catch (e) {
@@ -109,29 +82,42 @@ export async function backfillTrades(
           )
       );
 
-      for (let i = 0; i < stmts.length; i += 50) {
-        const results = await db.batch(stmts.slice(i, i + 50));
-        for (const r of results) {
-          if (r.meta.changes > 0) totalInserted++;
-        }
+      const results = await batchExec(db, stmts);
+      for (const r of results) {
+        if (r.meta.changes > 0) totalInserted++;
       }
     }
 
+    cursor = nextCursor;
     pages++;
-    offset -= BATCH_SIZE;
 
-    // Clamp to -1 sentinel so we don't persist large negative values
-    if (offset < 0) offset = -1;
-    await setState(db, "backfill_offset", String(offset));
+    if (cursor) {
+      await setState(db, "trade_backfill_cursor", cursor);
+    } else {
+      break;
+    }
   }
 
-  const done = offset < 0;
+  const done = !cursor;
 
   if (done) {
-    await finishTradeBackfill(db);
+    await db.batch([
+      db.prepare(`DELETE FROM indexer_state WHERE key = 'trade_backfill_cursor'`),
+      db.prepare(`DELETE FROM indexer_state WHERE key = 'trade_backfill_total'`),
+      db.prepare(
+        `INSERT INTO indexer_state (key, value) VALUES ('indexer_mode', 'BACKFILL_DISPENSES')
+         ON CONFLICT (key) DO UPDATE SET value = excluded.value`
+      ),
+    ]);
   }
 
-  const progress = total > 0 ? ((total - Math.max(offset, 0)) / total) * 100 : 100;
+  // Estimate progress from inserted count
+  const insertedSoFar = await db
+    .prepare(`SELECT COUNT(*) as cnt FROM trades`)
+    .first<{ cnt: number }>();
+  const progress = total > 0
+    ? ((insertedSoFar?.cnt ?? 0) / total) * 100
+    : 100;
 
   return {
     type: "trades",
@@ -141,18 +127,6 @@ export async function backfillTrades(
     total,
     progress: progress.toFixed(1),
   };
-}
-
-async function finishTradeBackfill(db: D1Database): Promise<void> {
-  // Batch cleanup + mode transition to avoid partial state on crash
-  await db.batch([
-    db.prepare(`DELETE FROM indexer_state WHERE key = 'backfill_total'`),
-    db.prepare(`DELETE FROM indexer_state WHERE key = 'backfill_offset'`),
-    db.prepare(
-      `INSERT INTO indexer_state (key, value) VALUES ('indexer_mode', 'BACKFILL_DISPENSES')
-       ON CONFLICT (key) DO UPDATE SET value = excluded.value`
-    ),
-  ]);
 }
 
 /**
@@ -174,7 +148,7 @@ export async function backfillDispenses(
     // Probe for total count
     const probeUrl = new URL(`${apiBase}/dispenses`);
     probeUrl.searchParams.set("limit", "1");
-    const probeRes = await fetch(probeUrl.toString());
+    const probeRes = await fetch(probeUrl.toString(), { signal: AbortSignal.timeout(API_TIMEOUT_MS) });
     if (!probeRes.ok) {
       throw new Error(`Counterparty API probe error: ${probeRes.status} ${probeRes.statusText}`);
     }
@@ -217,11 +191,9 @@ export async function backfillDispenses(
           )
       );
 
-      for (let i = 0; i < stmts.length; i += 50) {
-        const results = await db.batch(stmts.slice(i, i + 50));
-        for (const r of results) {
-          if (r.meta.changes > 0) totalInserted++;
-        }
+      const results = await batchExec(db, stmts);
+      for (const r of results) {
+        if (r.meta.changes > 0) totalInserted++;
       }
     }
 
@@ -238,11 +210,14 @@ export async function backfillDispenses(
   const done = !cursor;
 
   if (done) {
-    await Promise.all([
-      deleteState(db, "dispense_backfill_cursor"),
-      deleteState(db, "dispense_backfill_total"),
+    await db.batch([
+      db.prepare(`DELETE FROM indexer_state WHERE key = 'dispense_backfill_cursor'`),
+      db.prepare(`DELETE FROM indexer_state WHERE key = 'dispense_backfill_total'`),
+      db.prepare(
+        `INSERT INTO indexer_state (key, value) VALUES ('indexer_mode', 'SNAPSHOT_SYNC')
+         ON CONFLICT (key) DO UPDATE SET value = excluded.value`
+      ),
     ]);
-    await setMode(db, "SNAPSHOT_SYNC");
   }
 
   // Estimate progress from inserted count

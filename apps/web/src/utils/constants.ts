@@ -22,3 +22,9 @@ export const BURN_ADDRESSES: string[] = [
 ]
 
 export const DEFAULT_MARKET = 'XCP'
+
+export const COMPOSE_STATUS_LABELS: Record<string, string> = {
+  composing: 'Composing transaction...',
+  signing: 'Waiting for signature...',
+  broadcasting: 'Broadcasting...',
+}

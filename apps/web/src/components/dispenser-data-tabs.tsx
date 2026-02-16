@@ -77,30 +77,32 @@ export function DispensesTable({ dispenses, isLoading }: { dispenses: Dispense[]
   }
 
   return (
-    <div>
-      <div className="grid grid-cols-5 gap-0 px-3 py-1.5 text-xs text-zinc-600 border-b border-zinc-800 max-sm:grid-cols-3">
-        <span>Qty</span>
-        <span className="text-right">BTC Paid</span>
-        <span className="text-right max-sm:hidden">Buyer</span>
-        <span className="text-right max-sm:hidden">Seller</span>
-        <span className="text-right">Time</span>
-      </div>
-      <div className="px-1">
+    <table className="w-full text-xs">
+      <thead className="sticky top-0 bg-zinc-950 z-10">
+        <tr className="text-zinc-600 border-b border-zinc-800">
+          <th className="text-left font-normal px-2 py-1.5">Qty</th>
+          <th className="text-right font-normal px-2 py-1.5">BTC Paid</th>
+          <th className="text-right font-normal px-2 py-1.5 max-sm:hidden">Buyer</th>
+          <th className="text-right font-normal px-2 py-1.5 max-sm:hidden">Seller</th>
+          <th className="text-right font-normal px-2 py-1.5">Time</th>
+        </tr>
+      </thead>
+      <tbody>
         {dispenses.map((d) => (
-          <div
+          <tr
             key={`${d.tx_hash}-${d.dispense_index}`}
-            className="grid grid-cols-5 gap-0 px-2 py-1 text-xs hover:bg-zinc-900 cursor-default max-sm:grid-cols-3"
+            className="hover:bg-zinc-900 cursor-default"
           >
-            <span className="text-green-400 font-mono">{d.dispense_quantity_normalized}</span>
-            <span className="text-right text-zinc-300 font-mono">{d.btc_amount_normalized}</span>
-            <span className="text-right text-zinc-500 font-mono max-sm:hidden">{formatAddress(d.destination)}</span>
-            <span className="text-right text-zinc-500 font-mono max-sm:hidden">{formatAddress(d.source)}</span>
-            <span className="text-right text-zinc-600 font-mono">
+            <td className="text-green-400 font-mono px-2 py-1">{d.dispense_quantity_normalized}</td>
+            <td className="text-right text-zinc-300 font-mono px-2 py-1">{d.btc_amount_normalized}</td>
+            <td className="text-right text-zinc-500 font-mono px-2 py-1 max-sm:hidden">{formatAddress(d.destination)}</td>
+            <td className="text-right text-zinc-500 font-mono px-2 py-1 max-sm:hidden">{formatAddress(d.source)}</td>
+            <td className="text-right text-zinc-600 font-mono px-2 py-1">
               {d.block_time ? formatTimeAgo(d.block_time) : '—'}
-            </span>
-          </div>
+            </td>
+          </tr>
         ))}
-      </div>
-    </div>
+      </tbody>
+    </table>
   )
 }

@@ -6,7 +6,7 @@ interface QuickStatsProps {
 }
 
 export function QuickStats({ pairData }: QuickStatsProps) {
-  const ai = pairData.asset_info
+  const info = pairData.asset_info
 
   return (
     <div className="p-3 border-b border-zinc-800">
@@ -14,23 +14,25 @@ export function QuickStats({ pairData }: QuickStatsProps) {
         <div>
           <div className="text-xs text-zinc-600">Supply</div>
           <div className="text-xs text-zinc-300 font-mono">
-            {ai?.supply != null ? formatAmount(ai.supply) : 'N/A'}
+            {info?.supply_normalized ? Number(info.supply_normalized).toLocaleString() : '—'}
           </div>
         </div>
         <div>
           <div className="text-xs text-zinc-600">Holders</div>
-          <div className="text-xs text-zinc-300 font-mono">—</div>
+          <div className="text-xs text-zinc-300 font-mono">
+            {pairData.holders_count != null ? pairData.holders_count.toLocaleString() : '—'}
+          </div>
         </div>
         <div>
           <div className="text-xs text-zinc-600">Divisible</div>
-          <div className={`text-xs font-mono ${ai?.divisible ? 'text-green-400' : 'text-zinc-400'}`}>
-            {ai ? (ai.divisible ? 'Yes' : 'No') : '—'}
+          <div className="text-xs text-zinc-300 font-mono">
+            {info ? (info.divisible ? 'Yes' : 'No') : '—'}
           </div>
         </div>
         <div>
           <div className="text-xs text-zinc-600">Locked</div>
-          <div className={`text-xs font-mono ${ai?.locked ? 'text-green-400' : 'text-zinc-400'}`}>
-            {ai ? (ai.locked ? 'Yes' : 'No') : '—'}
+          <div className={`text-xs font-medium ${info ? (info.locked ? 'text-emerald-400' : 'text-red-400') : 'text-zinc-500'}`}>
+            {info ? (info.locked ? 'Yes' : 'No') : '—'}
           </div>
         </div>
         <div>

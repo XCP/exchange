@@ -2,7 +2,7 @@ import useSWR from 'swr'
 import { fetcher } from '@/lib/api/client'
 import { holdersUrl } from '@/lib/api/counterparty'
 import { formatAddress } from '@/utils/format-address'
-import { formatAmountSimple } from '@/utils/format-amount-simple'
+import { formatCommas } from '@/utils/format-commas'
 import { BURN_ADDRESSES } from '@/utils/constants'
 import type { CounterpartyResponse } from '@/types/api'
 
@@ -28,7 +28,7 @@ function processHolders(balances: RawBalance[], totalSupply: number): ProcessedH
     return {
       address: b.address,
       addressShort: formatAddress(b.address),
-      balance: formatAmountSimple(b.quantity_normalized),
+      balance: formatCommas(b.quantity_normalized),
       balanceRaw: b.quantity,
       percentage: pct,
       tag: isBurn ? 'Burn' : '',

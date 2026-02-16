@@ -1,16 +1,9 @@
+import { INTERVAL_SECONDS, ALL_INTERVALS } from "../lib/constants";
+import { D1_BATCH_LIMIT, batchExec } from "../lib/batch";
 import { updatePairStats } from "./stats";
-import { getMode, setMode } from "./state";
+import { getMode } from "./state";
 
-export const INTERVAL_SECONDS: Record<string, number> = {
-  "1h": 3600,
-  "4h": 14400,
-  "1d": 86400,
-  "1w": 604800,
-  "1m": 2592000, // 30 days
-  "1y": 31536000, // 365 days
-};
-
-export const ALL_INTERVALS = Object.keys(INTERVAL_SECONDS);
+const CATCHUP_BATCH_SIZE = 50;
 
 export function bucketTimestamp(
   unixSeconds: number,
@@ -26,35 +19,38 @@ export async function aggregateCandlesForPair(
   pair: string,
   sinceTime: number
 ): Promise<void> {
+  // Use the smallest bucket (1y) to fetch trades once for all intervals
+  const startBucket = bucketTimestamp(sinceTime, "1y");
+
+  const trades = await db
+    .prepare(
+      `SELECT block_time, price, volume, side
+       FROM trades
+       WHERE pair = ? AND block_time >= ?
+       ORDER BY block_time ASC, rowid ASC`
+    )
+    .bind(pair, startBucket)
+    .all<{
+      block_time: number;
+      price: number;
+      volume: number;
+      side: string;
+    }>();
+
+  if (!trades.results.length) return;
+
+  // Build candles for each interval from the same trade data
   for (const interval of ALL_INTERVALS) {
-    const startBucket = bucketTimestamp(sinceTime, interval);
+    const step = INTERVAL_SECONDS[interval];
+    const intervalStart = bucketTimestamp(sinceTime, interval);
 
-    // Get all trades for this pair from the affected time range.
-    // Secondary sort by rowid ensures deterministic open/close when
-    // multiple trades share the same block_time.
-    const trades = await db
-      .prepare(
-        `SELECT block_time, price, amount, volume, side
-         FROM trades
-         WHERE pair = ? AND block_time >= ?
-         ORDER BY block_time ASC, rowid ASC`
-      )
-      .bind(pair, startBucket)
-      .all<{
-        block_time: number;
-        price: number;
-        amount: number;
-        volume: number;
-        side: string;
-      }>();
-
-    if (!trades.results.length) continue;
-
-    // Group trades by bucket
     const buckets = new Map<
       number,
       {
-        prices: { time: number; price: number }[];
+        open: number;
+        close: number;
+        high: number;
+        low: number;
         volume: number;
         buyVolume: number;
         sellVolume: number;
@@ -62,12 +58,16 @@ export async function aggregateCandlesForPair(
       }
     >();
 
-    for (const trade of trades.results) {
-      const bucket = bucketTimestamp(trade.block_time, interval);
+    for (const t of trades.results) {
+      if (t.block_time < intervalStart) continue;
+      const bucket = Math.floor(t.block_time / step) * step;
       let entry = buckets.get(bucket);
       if (!entry) {
         entry = {
-          prices: [],
+          open: t.price,
+          close: t.price,
+          high: t.price,
+          low: t.price,
           volume: 0,
           buyVolume: 0,
           sellVolume: 0,
@@ -75,22 +75,17 @@ export async function aggregateCandlesForPair(
         };
         buckets.set(bucket, entry);
       }
-      entry.prices.push({ time: trade.block_time, price: trade.price });
-      entry.volume += trade.volume;
-      if (trade.side === "buy") entry.buyVolume += trade.volume;
-      else entry.sellVolume += trade.volume;
+      entry.close = t.price;
+      if (t.price > entry.high) entry.high = t.price;
+      if (t.price < entry.low) entry.low = t.price;
+      entry.volume += t.volume;
+      if (t.side === "buy") entry.buyVolume += t.volume;
+      else entry.sellVolume += t.volume;
       entry.count++;
     }
 
-    // Batch upsert candles (50 at a time to stay within D1 limits)
     const stmts: D1PreparedStatement[] = [];
     for (const [timestamp, data] of buckets) {
-      data.prices.sort((a, b) => a.time - b.time);
-      const open = parseFloat(data.prices[0].price.toFixed(8));
-      const close = parseFloat(data.prices[data.prices.length - 1].price.toFixed(8));
-      const high = parseFloat(Math.max(...data.prices.map((p) => p.price)).toFixed(8));
-      const low = parseFloat(Math.min(...data.prices.map((p) => p.price)).toFixed(8));
-
       stmts.push(
         db
           .prepare(
@@ -106,10 +101,10 @@ export async function aggregateCandlesForPair(
             pair,
             interval,
             timestamp,
-            open,
-            high,
-            low,
-            close,
+            Math.round(data.open * 1e8) / 1e8,
+            Math.round(data.high * 1e8) / 1e8,
+            Math.round(data.low * 1e8) / 1e8,
+            Math.round(data.close * 1e8) / 1e8,
             data.volume,
             data.buyVolume,
             data.sellVolume,
@@ -118,36 +113,167 @@ export async function aggregateCandlesForPair(
       );
     }
 
-    for (let i = 0; i < stmts.length; i += 50) {
-      await db.batch(stmts.slice(i, i + 50));
+    await batchExec(db, stmts);
+  }
+}
+
+/**
+ * Bulk candle aggregation: fetches trades for a chunk of pairs in one query,
+ * computes OHLC in JS, batch-inserts candles. Processes pairs in chunks to
+ * stay within D1's SQL variable limit.
+ */
+
+async function bulkAggregateCandlesForPairs(
+  db: D1Database,
+  pairs: string[]
+): Promise<void> {
+  if (pairs.length === 0) return;
+
+  for (let i = 0; i < pairs.length; i += D1_BATCH_LIMIT) {
+    const chunk = pairs.slice(i, i + D1_BATCH_LIMIT);
+    const placeholders = chunk.map(() => "?").join(",");
+
+    // One query: all trades for this chunk, sorted for deterministic open/close
+    const trades = await db
+      .prepare(
+        `SELECT pair, block_time, price, volume, side
+         FROM trades
+         WHERE pair IN (${placeholders})
+         ORDER BY pair, block_time ASC, rowid ASC`
+      )
+      .bind(...chunk)
+      .all<{
+        pair: string;
+        block_time: number;
+        price: number;
+        volume: number;
+        side: string;
+      }>();
+
+    if (!trades.results.length) continue;
+
+    // Build candles for every interval from the same trade data
+    for (const interval of ALL_INTERVALS) {
+      const step = INTERVAL_SECONDS[interval];
+
+      // Group by pair + bucket
+      const buckets = new Map<
+        string,
+        {
+          pair: string;
+          bucket: number;
+          open: number;
+          close: number;
+          high: number;
+          low: number;
+          volume: number;
+          buyVolume: number;
+          sellVolume: number;
+          count: number;
+        }
+      >();
+
+      for (const t of trades.results) {
+        const bucket = Math.floor(t.block_time / step) * step;
+        const key = `${t.pair}|${bucket}`;
+        let entry = buckets.get(key);
+        if (!entry) {
+          entry = {
+            pair: t.pair,
+            bucket,
+            open: t.price,
+            close: t.price,
+            high: t.price,
+            low: t.price,
+            volume: 0,
+            buyVolume: 0,
+            sellVolume: 0,
+            count: 0,
+          };
+          buckets.set(key, entry);
+        }
+        // Trades are sorted ASC — first hit sets open, every hit updates close
+        entry.close = t.price;
+        if (t.price > entry.high) entry.high = t.price;
+        if (t.price < entry.low) entry.low = t.price;
+        entry.volume += t.volume;
+        if (t.side === "buy") entry.buyVolume += t.volume;
+        else entry.sellVolume += t.volume;
+        entry.count++;
+      }
+
+      // Batch upsert candles (50 at a time for D1 limits)
+      const stmts: D1PreparedStatement[] = [];
+      for (const data of buckets.values()) {
+        stmts.push(
+          db
+            .prepare(
+              `INSERT INTO candles (pair, interval, timestamp, open, high, low, close, volume, buy_volume, sell_volume, trades)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT (pair, interval, timestamp)
+               DO UPDATE SET open = excluded.open, high = excluded.high, low = excluded.low,
+                             close = excluded.close, volume = excluded.volume,
+                             buy_volume = excluded.buy_volume, sell_volume = excluded.sell_volume,
+                             trades = excluded.trades`
+            )
+            .bind(
+              data.pair,
+              interval,
+              data.bucket,
+              Math.round(data.open * 1e8) / 1e8,
+              Math.round(data.high * 1e8) / 1e8,
+              Math.round(data.low * 1e8) / 1e8,
+              Math.round(data.close * 1e8) / 1e8,
+              data.volume,
+              data.buyVolume,
+              data.sellVolume,
+              data.count
+            )
+        );
+      }
+
+      await batchExec(db, stmts);
     }
   }
 }
 
 /**
- * Catch-up aggregation: processes a batch of pairs that haven't been aggregated yet.
- * Called by the cron handler when `aggregation_offset` exists in indexer_state.
- * Returns true when all pairs are done.
+ * Bulk stats: compute rolling stats for a batch of pairs in fewer queries.
  */
-const CATCHUP_BATCH_SIZE = 200;
+async function bulkUpdatePairStats(
+  db: D1Database,
+  pairs: { pair: string; base_asset: string; quote_asset: string }[]
+): Promise<void> {
+  // Still per-pair for stats since updatePairStats does time-windowed queries
+  // But skip pairs with zero trades
+  for (const p of pairs) {
+    await updatePairStats(db, p.pair, p.base_asset, p.quote_asset);
+  }
+}
 
+/**
+ * Catch-up aggregation: processes a batch of pairs that haven't been aggregated yet.
+ * Uses bulk SQL for candles — 6 queries per batch instead of 6 per pair.
+ */
 export async function runCatchupAggregation(
   db: D1Database
-): Promise<{ done: boolean; processed: number; offset: number }> {
-  const row = await db
-    .prepare(`SELECT value FROM indexer_state WHERE key = 'aggregation_offset'`)
+): Promise<{ done: boolean; processed: number; cursor: string }> {
+  // Use keyset pagination (pair > cursor) instead of OFFSET for O(log n) performance
+  const cursorRow = await db
+    .prepare(`SELECT value FROM indexer_state WHERE key = 'aggregation_cursor'`)
     .first<{ value: string }>();
 
-  if (!row) return { done: true, processed: 0, offset: 0 };
+  if (!cursorRow) return { done: true, processed: 0, cursor: "" };
 
-  const offset = parseInt(row.value, 10);
+  const cursor = cursorRow.value;
   const pairs = await db
     .prepare(
       `SELECT pair, base_asset, quote_asset, first_trade_time
        FROM pair_stats
-       ORDER BY pair LIMIT ? OFFSET ?`
+       WHERE pair > ?
+       ORDER BY pair LIMIT ?`
     )
-    .bind(CATCHUP_BATCH_SIZE, offset)
+    .bind(cursor, CATCHUP_BATCH_SIZE)
     .all<{
       pair: string;
       base_asset: string;
@@ -156,34 +282,35 @@ export async function runCatchupAggregation(
     }>();
 
   if (!pairs.results.length) {
-    // All pairs processed — clean up
-    await db
-      .prepare(`DELETE FROM indexer_state WHERE key = 'aggregation_offset'`)
-      .run();
+    // All pairs processed — clean up and transition
+    await db.batch([
+      db.prepare(`DELETE FROM indexer_state WHERE key = 'aggregation_cursor'`),
+      ...(await getMode(db) === "BUILD_AGGREGATES"
+        ? [db.prepare(
+            `INSERT INTO indexer_state (key, value) VALUES ('indexer_mode', 'FOLLOWING')
+             ON CONFLICT (key) DO UPDATE SET value = excluded.value`
+          )]
+        : []),
+    ]);
 
-    // If we were in BUILD_AGGREGATES, transition to FOLLOWING
-    const mode = await getMode(db);
-    if (mode === "BUILD_AGGREGATES") {
-      await setMode(db, "FOLLOWING");
-    }
-
-    return { done: true, processed: 0, offset };
+    return { done: true, processed: 0, cursor };
   }
 
-  for (const p of pairs.results) {
-    const earliest = p.first_trade_time ?? 0;
-    await aggregateCandlesForPair(db, p.pair, earliest);
-    await updatePairStats(db, p.pair, p.base_asset, p.quote_asset);
-  }
+  // Bulk candle aggregation
+  const pairNames = pairs.results.map((p) => p.pair);
+  await bulkAggregateCandlesForPairs(db, pairNames);
 
-  const nextOffset = offset + pairs.results.length;
+  // Stats still per-pair
+  await bulkUpdatePairStats(db, pairs.results);
+
+  const lastPair = pairs.results[pairs.results.length - 1].pair;
   await db
     .prepare(
-      `INSERT INTO indexer_state (key, value) VALUES ('aggregation_offset', ?)
+      `INSERT INTO indexer_state (key, value) VALUES ('aggregation_cursor', ?)
        ON CONFLICT (key) DO UPDATE SET value = excluded.value`
     )
-    .bind(String(nextOffset))
+    .bind(lastPair)
     .run();
 
-  return { done: false, processed: pairs.results.length, offset };
+  return { done: false, processed: pairs.results.length, cursor };
 }

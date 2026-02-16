@@ -1,6 +1,6 @@
-import { formatAmountSimple } from '@/utils/format-amount-simple'
+import { formatCommas } from '@/utils/format-commas'
 
-export function formatAmountTrade(amount: string | number): string {
+export function formatPrice(amount: string | number): string {
   if (amount === null || amount === undefined) {
     return 'N/A'
   }
@@ -31,5 +31,5 @@ export function formatAmountTrade(amount: string | number): string {
     formattedNumber = num.toFixed(8)
   }
 
-  return formatAmountSimple(formattedNumber)
+  return formatCommas(formattedNumber)
 }

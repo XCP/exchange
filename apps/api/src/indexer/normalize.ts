@@ -195,3 +195,60 @@ export function normalizeDispenser(d: CounterpartyDispenser): NormalizedDispense
 export function normalizeDispensePrice(dispenseQty: number, btcAmount: number): number {
   return dispenseQty > 0 ? parseFloat((btcAmount / dispenseQty).toFixed(8)) : 0;
 }
+
+// ─── SQL Builders ───────────────────────────────────────────────────
+
+export function buildOrderUpsertStmt(
+  db: D1Database,
+  o: NormalizedOrder,
+  now: number
+): D1PreparedStatement {
+  return db
+    .prepare(
+      `INSERT INTO orders
+       (tx_hash, tx_index, pair, base_asset, quote_asset, source, side,
+        price, amount, give_remaining, get_remaining,
+        expiration, expire_index, block_index, block_time,
+        status, first_seen_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?)
+       ON CONFLICT (tx_hash) DO UPDATE SET
+         amount = excluded.amount,
+         give_remaining = excluded.give_remaining,
+         get_remaining = excluded.get_remaining,
+         status = 'open',
+         closed_at = NULL`
+    )
+    .bind(
+      o.tx_hash, o.tx_index, o.pair, o.base_asset, o.quote_asset,
+      o.source, o.side, o.price, o.amount, o.give_remaining,
+      o.get_remaining, o.expiration, o.expire_index,
+      o.block_index, o.block_time, now
+    );
+}
+
+export function buildDispenserUpsertStmt(
+  db: D1Database,
+  d: NormalizedDispenser,
+  now: number
+): D1PreparedStatement {
+  return db
+    .prepare(
+      `INSERT INTO dispensers
+       (tx_hash, tx_index, asset, source, give_quantity, escrow_quantity,
+        give_remaining, satoshi_price, price, dispense_count, status,
+        block_index, block_time, oracle_address, first_seen_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT (tx_hash) DO UPDATE SET
+         give_remaining = excluded.give_remaining,
+         escrow_quantity = excluded.escrow_quantity,
+         dispense_count = excluded.dispense_count,
+         status = excluded.status,
+         closed_at = NULL`
+    )
+    .bind(
+      d.tx_hash, d.tx_index, d.asset, d.source,
+      d.give_quantity, d.escrow_quantity, d.give_remaining,
+      d.satoshi_price, d.price, d.dispense_count, d.status,
+      d.block_index, d.block_time, d.oracle_address, now
+    );
+}

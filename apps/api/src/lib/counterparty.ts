@@ -1,3 +1,21 @@
+import { API_TIMEOUT_MS } from "./constants";
+
+async function fetchWithRetry(
+  url: string,
+  retries: number = 2,
+  backoffMs: number = 1000
+): Promise<Response> {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const res = await fetch(url, { signal: AbortSignal.timeout(API_TIMEOUT_MS) });
+    if (res.ok) return res;
+    if (res.status < 500 || attempt === retries) {
+      throw new Error(`Counterparty API error: ${res.status} ${res.statusText}`);
+    }
+    await new Promise((r) => setTimeout(r, backoffMs * (attempt + 1)));
+  }
+  throw new Error("Unreachable");
+}
+
 export interface OrderMatch {
   id: string;
   tx0_hash: string;
@@ -93,11 +111,7 @@ export async function fetchOrderMatches(
     url.searchParams.set("cursor", cursor);
   }
 
-  const res = await fetch(url.toString());
-  if (!res.ok) {
-    throw new Error(`Counterparty API error: ${res.status} ${res.statusText}`);
-  }
-
+  const res = await fetchWithRetry(url.toString());
   const data: CounterpartyApiResponse<OrderMatch> = await res.json();
   return {
     matches: data.result,
@@ -117,11 +131,7 @@ export async function fetchDispenses(
     url.searchParams.set("cursor", cursor);
   }
 
-  const res = await fetch(url.toString());
-  if (!res.ok) {
-    throw new Error(`Counterparty API error: ${res.status} ${res.statusText}`);
-  }
-
+  const res = await fetchWithRetry(url.toString());
   const data: CounterpartyApiResponse<CounterpartyDispense> = await res.json();
   return {
     dispenses: data.result,
@@ -143,11 +153,7 @@ export async function fetchDispensers(
     url.searchParams.set("cursor", cursor);
   }
 
-  const res = await fetch(url.toString());
-  if (!res.ok) {
-    throw new Error(`Counterparty API error: ${res.status} ${res.statusText}`);
-  }
-
+  const res = await fetchWithRetry(url.toString());
   const data: CounterpartyApiResponse<CounterpartyDispenser> = await res.json();
   return {
     dispensers: data.result,
@@ -169,11 +175,7 @@ export async function fetchOrders(
     url.searchParams.set("cursor", cursor);
   }
 
-  const res = await fetch(url.toString());
-  if (!res.ok) {
-    throw new Error(`Counterparty API error: ${res.status} ${res.statusText}`);
-  }
-
+  const res = await fetchWithRetry(url.toString());
   const data: CounterpartyApiResponse<Order> = await res.json();
   return {
     orders: data.result,

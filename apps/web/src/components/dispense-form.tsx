@@ -3,8 +3,11 @@
 import { useState } from 'react'
 import { useWallet } from '@/lib/wallet/wallet-context'
 import { useCompose } from '@/lib/wallet/useCompose'
+import { useBalance } from '@/lib/hooks/useBalance'
+import { useFeeRate } from '@/lib/hooks/useNetworkInfo'
 import { formatAddress } from '@/utils/format-address'
 import { formatAmount } from '@/utils/format-amount'
+import { COMPOSE_STATUS_LABELS } from '@/utils/constants'
 import type { Dispenser } from '@/types/trading'
 
 interface DispenseFormProps {
@@ -14,14 +17,10 @@ interface DispenseFormProps {
   onSelectIndex: (i: number) => void
 }
 
-const STATUS_LABELS: Record<string, string> = {
-  composing: 'Composing transaction...',
-  signing: 'Waiting for signature...',
-  broadcasting: 'Broadcasting...',
-}
-
 export function DispenseForm({ asset, sortedDispensers, selectedIndex, onSelectIndex }: DispenseFormProps) {
-  const { status: walletStatus, connect, connecting } = useWallet()
+  const { status: walletStatus, address, connect, connecting } = useWallet()
+  const { balance: assetBalance } = useBalance(address, asset)
+  const feeRate = useFeeRate()
   const { status: txStatus, txid, error: txError, composeDispense, composeDispenser, reset } = useCompose()
   const [tab, setTab] = useState<'buy' | 'sell'>('buy')
   const [quantity, setQuantity] = useState('1')
@@ -101,7 +100,7 @@ export function DispenseForm({ asset, sortedDispensers, selectedIndex, onSelectI
           : txStatus === 'error'
             ? 'Try Again'
             : isBusy
-              ? STATUS_LABELS[txStatus]
+              ? COMPOSE_STATUS_LABELS[txStatus]
               : label}
       </button>
     )
@@ -200,6 +199,19 @@ export function DispenseForm({ asset, sortedDispensers, selectedIndex, onSelectI
               placeholder="1"
               className="w-full rounded-sm border border-zinc-800 bg-zinc-900 px-3 py-1.5 text-xs text-zinc-200 placeholder-zinc-700 outline-none focus:border-zinc-600 transition-colors font-mono"
             />
+            {maxDispenses > 1 && (
+              <div className="flex gap-1 mt-1">
+                {[10, 25, 50, 100].map((pct) => (
+                  <button
+                    key={pct}
+                    onClick={() => setQuantity(String(Math.max(1, Math.floor(maxDispenses * pct / 100))))}
+                    className="flex-1 rounded-sm border border-zinc-800 bg-zinc-900 py-1 text-xs text-zinc-500 hover:border-zinc-700 hover:text-zinc-300 transition-colors"
+                  >
+                    {pct}%
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Tokens received */}
@@ -247,7 +259,17 @@ export function DispenseForm({ asset, sortedDispensers, selectedIndex, onSelectI
 
           {/* Total escrow */}
           <div>
-            <label className="mb-1 block text-xs text-zinc-500">Total {asset} to Escrow</label>
+            <div className="mb-1 flex items-center justify-between">
+              <label className="text-xs text-zinc-500">Total {asset} to Escrow</label>
+              {assetBalance > 0 && (
+                <button
+                  onClick={() => setSellEscrow(String(assetBalance))}
+                  className="text-[10px] font-medium text-red-400 hover:text-red-300 transition-colors"
+                >
+                  Max ({assetBalance})
+                </button>
+              )}
+            </div>
             <input
               type="text"
               value={sellEscrow}
@@ -255,6 +277,19 @@ export function DispenseForm({ asset, sortedDispensers, selectedIndex, onSelectI
               placeholder="0"
               className="w-full rounded-sm border border-zinc-800 bg-zinc-900 px-3 py-1.5 text-xs text-zinc-200 placeholder-zinc-700 outline-none focus:border-zinc-600 transition-colors font-mono"
             />
+            {assetBalance > 0 && (
+              <div className="flex gap-1 mt-1">
+                {[10, 25, 50, 100].map((pct) => (
+                  <button
+                    key={pct}
+                    onClick={() => setSellEscrow((assetBalance * pct / 100).toFixed(8).replace(/\.?0+$/, ''))}
+                    className="flex-1 rounded-sm border border-zinc-800 bg-zinc-900 py-1 text-xs text-zinc-500 hover:border-zinc-700 hover:text-zinc-300 transition-colors"
+                  >
+                    {pct}%
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* BTC per dispense (calculated) */}
@@ -268,7 +303,9 @@ export function DispenseForm({ asset, sortedDispensers, selectedIndex, onSelectI
           {/* Fee */}
           <div className="flex items-center justify-between pt-1 text-xs">
             <span className="text-zinc-600">Fee</span>
-            <span className="text-zinc-500 font-mono">Dynamic (mempool rate)</span>
+            <span className="text-zinc-500 font-mono">
+              {feeRate != null ? `~${feeRate} sat/vB` : '—'}
+            </span>
           </div>
 
           {actionButton('red', 'Create Dispenser', handleSell)}

@@ -1,7 +1,9 @@
 import { OrderMatch, Order, CounterpartyDispenser } from "../lib/counterparty";
-import { normalizeOrderMatch, normalizeOrder, normalizeDispenser, normalizeDispensePrice } from "./normalize";
+import { API_TIMEOUT_MS, LOCK_TIMEOUT_SECONDS } from "../lib/constants";
+import { batchExec } from "../lib/batch";
+import { normalizeOrderMatch, normalizeOrder, normalizeDispenser, normalizeDispensePrice, buildOrderUpsertStmt, buildDispenserUpsertStmt } from "./normalize";
 import { aggregateCandlesForPair, bucketTimestamp } from "./aggregate";
-import { updatePairStats } from "./stats";
+import { updatePairStats, updateOrderBookStats } from "./stats";
 import { updateDispenserStats } from "./dispenser-stats";
 import { getMode } from "./state";
 
@@ -40,12 +42,22 @@ interface SyncResult {
 
 async function fetchCurrentBlock(
   apiBase: string
-): Promise<{ block_index: number; block_time: number }> {
-  const res = await fetch(`${apiBase}/blocks/last`);
+): Promise<{ block_index: number; block_time: number; block_hash: string }> {
+  const res = await fetch(`${apiBase}/blocks/last`, { signal: AbortSignal.timeout(API_TIMEOUT_MS) });
   if (!res.ok) throw new Error(`Failed to fetch last block: ${res.status}`);
-  const data: { result: { block_index: number; block_time: number } } =
+  const data: { result: { block_index: number; block_time: number; block_hash: string } } =
     await res.json();
   return data.result;
+}
+
+async function fetchBlockHash(
+  apiBase: string,
+  blockIndex: number
+): Promise<string> {
+  const res = await fetch(`${apiBase}/blocks/${blockIndex}`, { signal: AbortSignal.timeout(API_TIMEOUT_MS) });
+  if (!res.ok) throw new Error(`Failed to fetch block ${blockIndex}: ${res.status}`);
+  const data: { result: { block_hash: string } } = await res.json();
+  return data.result.block_hash;
 }
 
 async function fetchBlockEvents(
@@ -65,7 +77,7 @@ async function fetchBlockEvents(
     url.searchParams.set("limit", "100");
     if (cursor) url.searchParams.set("cursor", cursor);
 
-    const res = await fetch(url.toString());
+    const res = await fetch(url.toString(), { signal: AbortSignal.timeout(API_TIMEOUT_MS) });
     if (!res.ok) throw new Error(`Failed to fetch events for block ${blockIndex}: ${res.status}`);
 
     const data: {
@@ -162,28 +174,7 @@ function processOpenOrder(
 
   const o = normalizeOrder(order);
 
-  return (db) =>
-    db
-      .prepare(
-        `INSERT INTO orders
-         (tx_hash, tx_index, pair, base_asset, quote_asset, source, side,
-          price, amount, give_remaining, get_remaining,
-          expiration, expire_index, block_index, block_time,
-          status, first_seen_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?)
-         ON CONFLICT (tx_hash) DO UPDATE SET
-           amount = excluded.amount,
-           give_remaining = excluded.give_remaining,
-           get_remaining = excluded.get_remaining,
-           status = 'open',
-           closed_at = NULL`
-      )
-      .bind(
-        o.tx_hash, o.tx_index, o.pair, o.base_asset, o.quote_asset,
-        o.source, o.side, o.price, o.amount, o.give_remaining,
-        o.get_remaining, o.expiration, o.expire_index,
-        o.block_index, o.block_time, now
-      );
+  return (db) => buildOrderUpsertStmt(db, o, now);
 }
 
 function processOrderPartialFill(
@@ -250,27 +241,7 @@ function processOpenDispenser(
   const d = normalizeDispenser(raw);
   if (!d) return null;
 
-  return (db) =>
-    db
-      .prepare(
-        `INSERT INTO dispensers
-         (tx_hash, tx_index, asset, source, give_quantity, escrow_quantity,
-          give_remaining, satoshi_price, price, dispense_count, status,
-          block_index, block_time, oracle_address, first_seen_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT (tx_hash) DO UPDATE SET
-           give_remaining = excluded.give_remaining,
-           escrow_quantity = excluded.escrow_quantity,
-           dispense_count = excluded.dispense_count,
-           status = excluded.status,
-           closed_at = NULL`
-      )
-      .bind(
-        d.tx_hash, d.tx_index, d.asset, d.source,
-        d.give_quantity, d.escrow_quantity, d.give_remaining,
-        d.satoshi_price, d.price, d.dispense_count, d.status,
-        d.block_index, d.block_time, d.oracle_address, now
-      );
+  return (db) => buildDispenserUpsertStmt(db, d, now);
 }
 
 function processDispenserUpdate(
@@ -376,22 +347,42 @@ export async function syncBlocks(
        ON CONFLICT (key) DO UPDATE SET value = excluded.value
        WHERE CAST(value AS INTEGER) < ?`
     )
-    .bind(String(now), now - 120)
+    .bind(String(now), now - LOCK_TIMEOUT_SECONDS)
     .run();
   if (lockResult.meta.changes === 0) return noopResult;
 
-  // Get our last processed block
-  const lastRow = await db
-    .prepare(`SELECT value FROM indexer_state WHERE key = 'last_block_index'`)
-    .first<{ value: string }>();
+  try {
+  // Get our last processed block + stored hash (for reorg detection)
+  const [lastRow, lastHashRow] = await Promise.all([
+    db.prepare(`SELECT value FROM indexer_state WHERE key = 'last_block_index'`).first<{ value: string }>(),
+    db.prepare(`SELECT value FROM indexer_state WHERE key = 'last_block_hash'`).first<{ value: string }>(),
+  ]);
 
   const currentBlock = await fetchCurrentBlock(apiBase);
   let lastBlock = lastRow ? parseInt(lastRow.value, 10) : currentBlock.block_index - 1;
 
-  // Reorg detection: if the chain tip is behind our checkpoint, roll back
+  // Reorg detection
+  let rollbackTo: number | null = null;
+
   if (currentBlock.block_index < lastBlock) {
-    console.log(`Reorg detected: chain tip ${currentBlock.block_index} < checkpoint ${lastBlock}, rolling back`);
-    const rollbackTo = currentBlock.block_index;
+    // Chain tip went backwards — obvious reorg
+    console.log(`Reorg detected: chain tip ${currentBlock.block_index} < checkpoint ${lastBlock}`);
+    rollbackTo = currentBlock.block_index;
+  } else if (lastHashRow) {
+    // Same-height reorg detection: verify our checkpoint block hash hasn't changed
+    const checkpointHash = currentBlock.block_index === lastBlock
+      ? currentBlock.block_hash
+      : await fetchBlockHash(apiBase, lastBlock);
+    if (checkpointHash !== lastHashRow.value) {
+      console.log(
+        `Reorg detected at block ${lastBlock}: hash mismatch ` +
+        `(stored=${lastHashRow.value.slice(0, 16)}… actual=${checkpointHash.slice(0, 16)}…)`
+      );
+      rollbackTo = lastBlock - 1;
+    }
+  }
+
+  if (rollbackTo !== null) {
 
     // Gather context BEFORE deleting any rows
 
@@ -459,9 +450,7 @@ export async function syncBlocks(
     ]);
 
     // Candle deletes in separate batches (one per pair, could exceed D1's 100-stmt limit)
-    for (let i = 0; i < candleDeletes.length; i += 50) {
-      await db.batch(candleDeletes.slice(i, i + 50));
-    }
+    await batchExec(db, candleDeletes);
 
     // Recalculate stats for affected pairs and assets
     for (const p of affectedReorgPairs.results) {
@@ -506,84 +495,88 @@ export async function syncBlocks(
 
     for (const event of events) {
       try {
-        const p = event.params;
+        const params = event.params;
         // block_index/block_time come from the event envelope; params as fallback
-        const evBlock = event.block_index ?? (p.block_index as number | undefined) ?? blockIdx;
-        const evTime = event.block_time ?? (p.block_time as number | undefined) ?? 0;
+        const blockIndex = event.block_index ?? (params.block_index as number | undefined) ?? blockIdx;
+        const blockTime = event.block_time ?? (params.block_time as number | undefined);
+        if (!blockTime) {
+          console.error(`Block ${blockIdx}: skipping ${event.event} — no block_time`);
+          continue;
+        }
 
         switch (event.event) {
           case "ORDER_MATCH": {
-            const trade = processOrderMatch(p, evBlock, evTime);
+            const trade = processOrderMatch(params, blockIndex, blockTime);
             stmts.push(trade.stmt);
             result.trades_inserted++;
 
             const existing = affectedPairs.get(trade.pair);
-            if (!existing || evTime < existing.earliestTime) {
+            if (!existing || blockTime < existing.earliestTime) {
               affectedPairs.set(trade.pair, {
                 base: trade.base,
                 quote: trade.quote,
-                earliestTime: evTime,
+                earliestTime: blockTime,
               });
             }
             break;
           }
 
           case "OPEN_ORDER": {
-            stmts.push(processOpenOrder(p, evBlock, evTime, now));
+            stmts.push(processOpenOrder(params, blockIndex, blockTime, now));
             result.orders_upserted++;
             break;
           }
 
           case "ORDER_UPDATE": {
-            const orderStatus = p.status as string;
+            const orderStatus = params.status as string;
             if (orderStatus === "open") {
-              stmts.push(processOrderPartialFill(p));
+              stmts.push(processOrderPartialFill(params));
               result.orders_upserted++;
             } else if (
               orderStatus === "expired" ||
               orderStatus === "filled" ||
               orderStatus === "cancelled"
             ) {
-              stmts.push(processOrderClose(p, now));
+              stmts.push(processOrderClose(params, now));
               result.orders_closed++;
             }
             break;
           }
 
           case "CANCEL_ORDER": {
-            const cancelStatus = p.status as string;
+            const cancelStatus = params.status as string;
             if (cancelStatus === "valid") {
-              stmts.push(processOrderClose(p, now));
+              stmts.push(processOrderClose(params, now));
               result.orders_closed++;
             }
             break;
           }
 
           case "ORDER_EXPIRATION": {
-            stmts.push(processOrderClose(p, now));
+            stmts.push(processOrderClose(params, now));
             result.orders_closed++;
             break;
           }
 
           case "OPEN_DISPENSER": {
-            const dispenserStmt = processOpenDispenser(p, evBlock, evTime, now);
+            const dispenserStmt = processOpenDispenser(params, blockIndex, blockTime, now);
             if (dispenserStmt) {
               stmts.push(dispenserStmt);
               result.dispensers_upserted++;
-              affectedDispenseAssets.add(p.asset as string);
+              affectedDispenseAssets.add(params.asset as string);
             }
             break;
           }
 
           case "DISPENSER_UPDATE": {
-            stmts.push(processDispenserUpdate(p, now));
+            stmts.push(processDispenserUpdate(params, now));
             result.dispensers_updated++;
-            affectedDispenseAssets.add(p.asset as string);
+            affectedDispenseAssets.add(params.asset as string);
             break;
           }
 
           case "DISPENSE": {
-            const dispense = processDispense(p, evBlock, evTime);
+            const dispense = processDispense(params, blockIndex, blockTime);
             stmts.push(dispense.stmt);
             affectedDispenseAssets.add(dispense.asset);
             result.dispenses_inserted++;
@@ -600,16 +593,12 @@ export async function syncBlocks(
 
     // Execute all statements for this block in batches
     if (stmts.length > 0) {
-      for (let i = 0; i < stmts.length; i += 50) {
-        try {
-          const batch = stmts.slice(i, i + 50).map((fn) => fn(db));
-          await db.batch(batch);
-        } catch (e) {
-          console.error(`Block ${blockIdx} batch ${i} error:`, e);
-          // Log event types in this batch for debugging
-          console.error(`Events in block: ${events.map((ev) => ev.event).join(",")}`);
-          throw e;
-        }
+      try {
+        await batchExec(db, stmts.map((fn) => fn(db)));
+      } catch (e) {
+        console.error(`Block ${blockIdx} batch error:`, e);
+        console.error(`Events in block: ${events.map((ev) => ev.event).join(",")}`);
+        throw e;
       }
     }
 
@@ -642,94 +631,28 @@ export async function syncBlocks(
     await updateOrderBookStats(db, now);
   }
 
-  // Save run time + release advisory lock
-  await db.batch([
-    db.prepare(
-      `INSERT INTO indexer_state (key, value) VALUES ('last_run_time', ?)
+  // Save run time
+  await db.prepare(
+    `INSERT INTO indexer_state (key, value) VALUES ('last_run_time', ?)
+     ON CONFLICT (key) DO UPDATE SET value = excluded.value`
+  ).bind(String(now)).run();
+
+  // Store block hash for same-height reorg detection on next run
+  if (result.blocks_processed > 0) {
+    const lastProcessedHash = lastBlock === currentBlock.block_index
+      ? currentBlock.block_hash
+      : await fetchBlockHash(apiBase, lastBlock);
+    await db.prepare(
+      `INSERT INTO indexer_state (key, value) VALUES ('last_block_hash', ?)
        ON CONFLICT (key) DO UPDATE SET value = excluded.value`
-    ).bind(String(now)),
-    db.prepare(`DELETE FROM indexer_state WHERE key = 'sync_lock'`),
-  ]);
+    ).bind(lastProcessedHash).run();
+  }
 
   result.last_block = lastBlock;
   return result;
-}
 
-/**
- * Update pair_stats with order book metrics.
- * Only recalculates for pairs that have open orders.
- */
-async function updateOrderBookStats(
-  db: D1Database,
-  now: number
-): Promise<void> {
-  const pairsWithOrders = await db
-    .prepare(
-      `SELECT pair, base_asset, quote_asset,
-              COUNT(*) as open_orders,
-              SUM(CASE WHEN side = 'bid' THEN 1 ELSE 0 END) as bid_count,
-              SUM(CASE WHEN side = 'ask' THEN 1 ELSE 0 END) as ask_count,
-              MAX(CASE WHEN side = 'bid' THEN price END) as best_bid,
-              MIN(CASE WHEN side = 'ask' THEN price END) as best_ask
-       FROM orders WHERE status = 'open'
-       GROUP BY pair`
-    )
-    .all<{
-      pair: string;
-      base_asset: string;
-      quote_asset: string;
-      open_orders: number;
-      bid_count: number;
-      ask_count: number;
-      best_bid: number | null;
-      best_ask: number | null;
-    }>();
-
-  for (let i = 0; i < pairsWithOrders.results.length; i += 50) {
-    const batch = pairsWithOrders.results.slice(i, i + 50);
-    const stmts = batch.map((p) => {
-      const spread =
-        p.best_bid && p.best_ask
-          ? Math.max(0, ((p.best_ask - p.best_bid) / p.best_ask) * 100)
-          : null;
-
-      return db
-        .prepare(
-          `INSERT INTO pair_stats (pair, base_asset, quote_asset, open_orders, bid_count, ask_count, best_bid, best_ask, spread, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-           ON CONFLICT (pair) DO UPDATE SET
-             open_orders = excluded.open_orders,
-             bid_count = excluded.bid_count,
-             ask_count = excluded.ask_count,
-             best_bid = excluded.best_bid,
-             best_ask = excluded.best_ask,
-             spread = excluded.spread,
-             updated_at = excluded.updated_at`
-        )
-        .bind(
-          p.pair,
-          p.base_asset,
-          p.quote_asset,
-          p.open_orders,
-          p.bid_count,
-          p.ask_count,
-          p.best_bid,
-          p.best_ask,
-          spread,
-          now
-        );
-    });
-    await db.batch(stmts);
+  } finally {
+    // Always release advisory lock, even on error
+    await db.prepare(`DELETE FROM indexer_state WHERE key = 'sync_lock'`).run();
   }
-
-  // Zero out stats for pairs that no longer have open orders
-  await db
-    .prepare(
-      `UPDATE pair_stats SET open_orders = 0, bid_count = 0, ask_count = 0,
-       best_bid = NULL, best_ask = NULL, spread = NULL
-       WHERE open_orders > 0 AND pair NOT IN (
-         SELECT DISTINCT pair FROM orders WHERE status = 'open'
-       )`
-    )
-    .run();
 }

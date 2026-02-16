@@ -31,38 +31,37 @@ export function HoldersTable({ asset, totalSupply }: HoldersTableProps) {
   const remainingPct = Math.max(0, 100 - topPct)
 
   return (
-    <div>
-      <div className="grid grid-cols-3 gap-0 px-3 py-1.5 text-xs text-zinc-600 border-b border-zinc-800">
-        <span>Address</span>
-        <span className="text-right">Balance</span>
-        <span className="text-right">% Supply</span>
-      </div>
-      <div className="px-1">
+    <table className="w-full text-xs">
+      <thead className="sticky top-0 bg-zinc-950 z-10">
+        <tr className="text-zinc-600 border-b border-zinc-800">
+          <th className="text-left font-normal px-2 py-1.5">Address</th>
+          <th className="text-right font-normal px-2 py-1.5">Balance</th>
+          <th className="text-right font-normal px-2 py-1.5">% Supply</th>
+        </tr>
+      </thead>
+      <tbody>
         {holders.map((holder) => (
-          <div
-            key={holder.address}
-            className="grid grid-cols-3 gap-0 px-2 py-1 text-xs hover:bg-zinc-900 cursor-default"
-          >
-            <span className="text-zinc-400 font-mono">
-              {holder.addressShort}
+          <tr key={holder.address} className="hover:bg-zinc-900 cursor-default">
+            <td className="text-zinc-400 font-mono px-2 py-1">
+              {holder.address}
               {holder.tag && (
                 <span className="ml-1.5 text-yellow-500/80">({holder.tag})</span>
               )}
-            </span>
-            <span className="text-right text-zinc-400 font-mono">{holder.balance}</span>
-            <span className="text-right text-zinc-500 font-mono">{holder.percentage.toFixed(2)}%</span>
-          </div>
+            </td>
+            <td className="text-right text-zinc-400 font-mono px-2 py-1">{holder.balance}</td>
+            <td className="text-right text-zinc-500 font-mono px-2 py-1">{holder.percentage.toFixed(2)}%</td>
+          </tr>
         ))}
         {remainingCount > 0 && (
-          <div className="grid grid-cols-3 gap-0 px-2 py-2 text-xs border-t border-zinc-800/50 mt-1">
-            <span className="text-zinc-600">
+          <tr className="border-t border-zinc-800/50">
+            <td className="text-zinc-600 px-2 py-2">
               And <span className="text-zinc-400">{remainingCount.toLocaleString()}</span> more holders
-            </span>
-            <span />
-            <span className="text-right text-zinc-600 font-mono">{remainingPct.toFixed(2)}%</span>
-          </div>
+            </td>
+            <td />
+            <td className="text-right text-zinc-600 font-mono px-2 py-2">{remainingPct.toFixed(2)}%</td>
+          </tr>
         )}
-      </div>
-    </div>
+      </tbody>
+    </table>
   )
 }

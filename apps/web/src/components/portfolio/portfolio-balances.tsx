@@ -4,13 +4,14 @@ import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { usePortfolioBalances, usePortfolioBids, type PortfolioBid } from '@/lib/hooks/usePortfolio'
 import { formatAmount } from '@/utils/format-amount'
-import { formatAddress } from '@/utils/format-address'
+import { getQuoteRank } from '@/utils/trading-pair'
 import { XCP_IMG_BASE } from '@/utils/constants'
 
 interface BidSummary {
   count: number
   bestPrice: number
   bestPriceFormatted: string
+  bestQuote: string
   bids: PortfolioBid[]
 }
 
@@ -20,7 +21,7 @@ export function PortfolioBalances({ address }: { address: string }) {
   const [showBidsOnly, setShowBidsOnly] = useState(false)
   const [expandedAsset, setExpandedAsset] = useState<string | null>(null)
 
-  // Group bids by base_asset
+  // Group bids by base_asset, track best bid by quote priority then price
   const bidsByAsset = useMemo(() => {
     const map = new Map<string, BidSummary>()
     for (const bid of bids) {
@@ -28,18 +29,30 @@ export function PortfolioBalances({ address }: { address: string }) {
       if (existing) {
         existing.count++
         existing.bids.push(bid)
-        if (bid.price > existing.bestPrice) {
+        // Best bid = highest quote priority, then highest price within that quote
+        const existingRank = getQuoteRank(existing.bestQuote)
+        const bidRank = getQuoteRank(bid.quote_asset)
+        if (bidRank < existingRank || (bidRank === existingRank && bid.price > existing.bestPrice)) {
           existing.bestPrice = bid.price
           existing.bestPriceFormatted = formatAmount(String(bid.price))
+          existing.bestQuote = bid.quote_asset
         }
       } else {
         map.set(bid.base_asset, {
           count: 1,
           bestPrice: bid.price,
           bestPriceFormatted: formatAmount(String(bid.price)),
+          bestQuote: bid.quote_asset,
           bids: [bid],
         })
       }
+    }
+    // Sort bids within each asset: by quote priority, then price desc
+    for (const summary of map.values()) {
+      summary.bids.sort((a, b) => {
+        const rankDiff = getQuoteRank(a.quote_asset) - getQuoteRank(b.quote_asset)
+        return rankDiff !== 0 ? rankDiff : b.price - a.price
+      })
     }
     return map
   }, [bids])
@@ -119,7 +132,7 @@ export function PortfolioBalances({ address }: { address: string }) {
                 </div>
                 <span className="text-right text-zinc-300 font-mono pl-4">{formatAmount(b.quantity_normalized)}</span>
                 {showBidsOnly && summary && (
-                  <span className="text-right text-green-400 font-mono pl-4">{summary.bestPriceFormatted}</span>
+                  <span className="text-right text-green-400 font-mono pl-4">{summary.bestPriceFormatted} {summary.bestQuote}</span>
                 )}
                 {showBidsOnly && !summary && (
                   <span className="text-right text-zinc-700 pl-4">—</span>
@@ -127,7 +140,7 @@ export function PortfolioBalances({ address }: { address: string }) {
                 <div className="text-right pl-4">
                   {showBidsOnly && summary ? (
                     <span className={`font-mono ${isExpanded ? 'text-zinc-200' : 'text-zinc-400'}`}>
-                      {summary.count} {isExpanded ? '▴' : '▾'}
+                      {summary.count} bid{summary.count !== 1 ? 's' : ''} {isExpanded ? '▴' : '▾'}
                     </span>
                   ) : (
                     <Link
@@ -144,21 +157,19 @@ export function PortfolioBalances({ address }: { address: string }) {
               {showBidsOnly && isExpanded && summary && (
                 <div className="bg-zinc-900/50 border-y border-zinc-800/50 mb-1">
                   <div className="grid grid-cols-[1fr_auto_auto_auto] gap-0 px-4 py-1 text-[10px] text-zinc-600 border-b border-zinc-800/30">
-                    <span>Bidder</span>
+                    <span>They want</span>
+                    <span className="text-right pl-4">They&apos;ll pay</span>
                     <span className="text-right pl-4">Price</span>
-                    <span className="text-right pl-4">Amount</span>
-                    <span className="text-right pl-4">Trade</span>
+                    <span className="text-right pl-4">Sell</span>
                   </div>
-                  {summary.bids
-                    .sort((a, b) => b.price - a.price)
-                    .map((bid) => (
+                  {summary.bids.map((bid, i) => (
                       <div
-                        key={bid.tx_hash}
+                        key={`${bid.tx_hash}_${i}`}
                         className="grid grid-cols-[1fr_auto_auto_auto] gap-0 px-4 py-1 text-xs hover:bg-zinc-800/30 transition-colors items-center"
                       >
-                        <span className="text-zinc-500 font-mono">{formatAddress(bid.source)}</span>
-                        <span className="text-right text-green-400/80 font-mono pl-4">{formatAmount(String(bid.price))}</span>
-                        <span className="text-right text-zinc-400 font-mono pl-4">{formatAmount(String(bid.amount))}</span>
+                        <span className="text-zinc-300 font-mono">{formatAmount(String(bid.amount))}</span>
+                        <span className="text-right text-green-400/80 font-mono pl-4">{formatAmount(String(bid.price * bid.amount))} {bid.quote_asset}</span>
+                        <span className="text-right text-zinc-400 font-mono pl-4">{formatAmount(String(bid.price))} {bid.quote_asset}/ea</span>
                         <div className="text-right pl-4">
                           <Link
                             href={`/trade/${bid.pair.replace('/', '_')}`}

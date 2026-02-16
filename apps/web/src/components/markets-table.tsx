@@ -30,37 +30,37 @@ export function MarketsTable({ asset, currentPair }: MarketsTableProps) {
   }
 
   return (
-    <div>
-      <div className="grid grid-cols-5 gap-0 px-3 py-1.5 text-xs text-zinc-600 border-b border-zinc-800 max-sm:grid-cols-3">
-        <span>Pair</span>
-        <span className="text-right">Price</span>
-        <span className="text-right max-sm:hidden">24h Vol</span>
-        <span className="text-right max-sm:hidden">Trades</span>
-        <span className="text-right">24h %</span>
-      </div>
-      <div className="px-1">
+    <table className="w-full text-xs">
+      <thead className="sticky top-0 bg-zinc-950 z-10">
+        <tr className="text-zinc-600 border-b border-zinc-800">
+          <th className="text-left font-normal px-2 py-1.5">Pair</th>
+          <th className="text-right font-normal px-2 py-1.5">Price</th>
+          <th className="text-right font-normal px-2 py-1.5 max-sm:hidden">24h Vol</th>
+          <th className="text-right font-normal px-2 py-1.5 max-sm:hidden">Trades</th>
+          <th className="text-right font-normal px-2 py-1.5">24h %</th>
+        </tr>
+      </thead>
+      <tbody>
         {pairs.map((p) => {
           const isCurrent = p.pair === currentPair
           const slug = p.pair.replace('/', '_')
           return (
-            <Link
-              key={p.pair}
-              href={`/trade/${slug}`}
-              className={`grid grid-cols-5 gap-0 px-2 py-1.5 text-xs hover:bg-zinc-900 transition-colors max-sm:grid-cols-3 ${
-                isCurrent ? 'bg-zinc-900/50' : ''
-              }`}
-            >
-              <span className="text-zinc-100 font-medium">{p.pair}</span>
-              <span className="text-right text-zinc-300 font-mono">
+            <tr key={p.pair} className={`hover:bg-zinc-900 transition-colors ${isCurrent ? 'bg-zinc-900/50' : ''}`}>
+              <td className="px-2 py-1.5">
+                <Link href={`/trade/${slug}`} className="text-zinc-100 font-medium hover:underline">
+                  {p.pair}
+                </Link>
+              </td>
+              <td className="text-right text-zinc-300 font-mono px-2 py-1.5">
                 {p.last_price != null ? formatAmount(p.last_price) : '—'}
-              </span>
-              <span className="text-right text-zinc-500 font-mono max-sm:hidden">
+              </td>
+              <td className="text-right text-zinc-500 font-mono px-2 py-1.5 max-sm:hidden">
                 {p.volume_24h != null && p.volume_24h > 0 ? formatAmount(p.volume_24h) : '—'}
-              </span>
-              <span className="text-right text-zinc-500 font-mono max-sm:hidden">
+              </td>
+              <td className="text-right text-zinc-500 font-mono px-2 py-1.5 max-sm:hidden">
                 {p.trade_count_24h ?? '—'}
-              </span>
-              <span className={`text-right font-mono ${
+              </td>
+              <td className={`text-right font-mono px-2 py-1.5 ${
                 p.price_change_24h != null && p.price_change_24h >= 0
                   ? 'text-green-400'
                   : 'text-red-400'
@@ -68,11 +68,11 @@ export function MarketsTable({ asset, currentPair }: MarketsTableProps) {
                 {p.price_change_24h != null
                   ? `${p.price_change_24h >= 0 ? '+' : ''}${p.price_change_24h.toFixed(1)}%`
                   : '—'}
-              </span>
-            </Link>
+              </td>
+            </tr>
           )
         })}
-      </div>
-    </div>
+      </tbody>
+    </table>
   )
 }

@@ -2,6 +2,9 @@
 
 import { useWallet } from '@/lib/wallet/wallet-context'
 import { useCompose } from '@/lib/wallet/useCompose'
+import { useBalance } from '@/lib/hooks/useBalance'
+import { useFeeRate } from '@/lib/hooks/useNetworkInfo'
+import { COMPOSE_STATUS_LABELS } from '@/utils/constants'
 
 interface TradeFormProps {
   baseSymbol: string
@@ -14,12 +17,6 @@ interface TradeFormProps {
   setAmountInput: (v: string) => void
 }
 
-const STATUS_LABELS: Record<string, string> = {
-  composing: 'Composing transaction...',
-  signing: 'Waiting for signature...',
-  broadcasting: 'Broadcasting...',
-}
-
 export function TradeForm({
   baseSymbol,
   quoteSymbol,
@@ -30,8 +27,13 @@ export function TradeForm({
   amountInput,
   setAmountInput,
 }: TradeFormProps) {
-  const { status: walletStatus, connect, connecting } = useWallet()
+  const { status: walletStatus, address, connect, connecting } = useWallet()
   const { status: txStatus, txid, error: txError, composeOrder, reset } = useCompose()
+
+  // Fetch balance of the asset the user is spending
+  const spendAsset = tradeTab === 'buy' ? quoteSymbol : baseSymbol
+  const { balance: spendBalance } = useBalance(address, spendAsset)
+  const feeRate = useFeeRate()
 
   const totalValue =
     priceInput && amountInput
@@ -117,12 +119,25 @@ export function TradeForm({
 
         {/* Percentage buttons */}
         <div className="flex gap-1">
-          {['10%', '25%', '50%', '100%'].map((pct) => (
+          {[10, 25, 50, 100].map((pct) => (
             <button
               key={pct}
+              onClick={() => {
+                if (!(spendBalance > 0)) return
+                const fraction = pct / 100
+                if (tradeTab === 'sell') {
+                  // Sell: amount is in base asset
+                  setAmountInput((spendBalance * fraction).toFixed(8).replace(/\.?0+$/, ''))
+                } else {
+                  // Buy: amount = quoteBalance / price
+                  const p = parseFloat(priceInput)
+                  if (!p || p <= 0) return
+                  setAmountInput(((spendBalance * fraction) / p).toFixed(8).replace(/\.?0+$/, ''))
+                }
+              }}
               className="flex-1 rounded-sm border border-zinc-800 bg-zinc-900 py-1 text-xs text-zinc-500 hover:border-zinc-700 hover:text-zinc-300 transition-colors"
             >
-              {pct}
+              {pct}%
             </button>
           ))}
         </div>
@@ -137,8 +152,10 @@ export function TradeForm({
 
         {/* Fee */}
         <div className="flex items-center justify-between pt-1 text-xs">
-          <span className="text-zinc-600">Fee</span>
-          <span className="text-zinc-500 font-mono">Dynamic (mempool rate)</span>
+          <span className="text-zinc-600">Fee rate</span>
+          <span className="text-zinc-500 font-mono">
+            {feeRate != null ? `~${feeRate} sat/vB` : '—'}
+          </span>
         </div>
 
         {/* Action button */}
@@ -169,7 +186,7 @@ export function TradeForm({
               : txStatus === 'error'
                 ? 'Try Again'
                 : isBusy
-                  ? STATUS_LABELS[txStatus]
+                  ? COMPOSE_STATUS_LABELS[txStatus]
                   : tradeTab === 'buy'
                     ? `Buy ${baseSymbol}`
                     : `Sell ${baseSymbol}`}

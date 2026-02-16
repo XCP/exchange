@@ -1,8 +1,9 @@
 import useSWR from 'swr'
 import { fetcher, dexUrl, counterpartyUrl } from '@/lib/api/client'
+import type { CounterpartyResponse } from '@/types/api'
 import type { PairStats } from './usePairStats'
 
-interface CpAssetInfo {
+interface CounterpartyAssetInfo {
   asset: string
   asset_longname: string | null
   description: string
@@ -10,12 +11,14 @@ interface CpAssetInfo {
   divisible: boolean
   locked: boolean
   supply: number
+  supply_normalized: string
   owner: string | null
   first_issuance_block_index: number | null
+  first_issuance_block_time: number | null
 }
 
-interface CpAssetResponse {
-  result: CpAssetInfo
+interface CounterpartyAssetResponse {
+  result: CounterpartyAssetInfo
 }
 
 export interface TradingPairData {
@@ -43,7 +46,8 @@ export interface TradingPairData {
   trade_count_30d: number | null
   first_trade_time: number | null
   // From CP API /assets
-  asset_info: CpAssetInfo | null
+  asset_info: CounterpartyAssetInfo | null
+  holders_count: number | null
 }
 
 export function useTradingPair(pairSlug: string) {
@@ -55,19 +59,25 @@ export function useTradingPair(pairSlug: string) {
     { refreshInterval: 60_000 }
   )
 
-  const { data: assetData, error: assetError, isLoading: assetLoading } = useSWR<CpAssetResponse>(
-    baseSymbol ? counterpartyUrl(`/assets/${baseSymbol}`) : null,
+  const { data: assetData, error: assetError, isLoading: assetLoading } = useSWR<CounterpartyAssetResponse>(
+    baseSymbol ? counterpartyUrl(`/assets/${baseSymbol}?verbose=true`) : null,
+    fetcher,
+  )
+
+  const { data: holdersData, error: holdersError } = useSWR<CounterpartyResponse<unknown[]>>(
+    baseSymbol ? counterpartyUrl(`/assets/${baseSymbol}/balances?limit=1`) : null,
     fetcher,
   )
 
   const data: TradingPairData | undefined = pairStats ? {
     ...pairStats,
     asset_info: assetData?.result ?? null,
+    holders_count: holdersData?.result_count ?? null,
   } : undefined
 
   return {
     data,
-    error: pairError || assetError,
+    error: pairError || assetError || holdersError,
     isLoading: pairLoading || assetLoading,
   }
 }

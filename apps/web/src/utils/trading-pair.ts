@@ -1,9 +1,9 @@
 import BigNumber from 'bignumber.js'
-import { formatAmountSimple } from '@/utils/format-amount-simple'
+import { formatCommas } from '@/utils/format-commas'
 import { QUOTE_ASSETS, QUOTE_KEYWORDS } from '@/utils/constants'
 import type { AssetInfo, Order } from '@/types/trading'
 
-const getQuoteRank = (symbol: string): number => {
+export const getQuoteRank = (symbol: string): number => {
   const index = QUOTE_ASSETS.indexOf(symbol)
   return index !== -1 ? index : QUOTE_ASSETS.length
 }
@@ -106,7 +106,7 @@ export function calculatePrice(order: Order): string {
   const baseQuantity = new BigNumber(order.give_asset === baseSymbol ? order.give_quantity_normalized : order.get_quantity_normalized)
   const quoteQuantity = new BigNumber(order.give_asset === quoteSymbol ? order.give_quantity_normalized : order.get_quantity_normalized)
   const price = quoteQuantity.dividedBy(baseQuantity)
-  return formatAmountSimple(price.toFixed(8))
+  return formatCommas(price.toFixed(8))
 }
 
 export function calculatePricePlain(order: Order): string {
@@ -128,11 +128,11 @@ export function calculateAmount(order: Order): string {
       ? order.give_quantity_normalized
       : order.get_quantity_normalized
   )
-  return formatAmountSimple(baseQuantity.toFixed(8))
+  return formatCommas(baseQuantity.toFixed(8))
 }
 
 export function calculateTotal(order: Order): string {
   const [, quoteSymbol] = assetsToTradingPair(order)
   const quoteQuantity = new BigNumber(order.give_asset === quoteSymbol ? order.give_quantity_normalized : order.get_quantity_normalized)
-  return formatAmountSimple(quoteQuantity.toFixed(8))
+  return formatCommas(quoteQuantity.toFixed(8))
 }
