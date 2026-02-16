@@ -70,7 +70,7 @@ export default function AssetDispensersPage({ params }: { params: Promise<{ asse
             selectedIndex={selectedIndex}
             onSelectIndex={setSelectedIndex}
           />
-          {pairData && <QuickStats pairData={pairData} />}
+          {pairData && <QuickStats pairData={pairData} assetOnly />}
           {dispenserStats && <DispenserQuickStats stats={dispenserStats} />}
           {pairData && <AssetInfo pairData={pairData} />}
         </div>

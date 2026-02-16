@@ -3,9 +3,10 @@ import type { TradingPairData } from '@/lib/hooks/useTradingPair'
 
 interface QuickStatsProps {
   pairData: TradingPairData
+  assetOnly?: boolean
 }
 
-export function QuickStats({ pairData }: QuickStatsProps) {
+export function QuickStats({ pairData, assetOnly }: QuickStatsProps) {
   const info = pairData.asset_info
 
   return (
@@ -35,6 +36,7 @@ export function QuickStats({ pairData }: QuickStatsProps) {
             {info ? (info.locked ? 'Yes' : 'No') : '—'}
           </div>
         </div>
+        {!assetOnly && (<>
         <div>
           <div className="text-xs text-zinc-600">24h Vol</div>
           <div className="text-xs text-zinc-300 font-mono">
@@ -83,6 +85,7 @@ export function QuickStats({ pairData }: QuickStatsProps) {
             {pairData.first_trade_time != null ? new Date(pairData.first_trade_time * 1000).toLocaleDateString() : '—'}
           </div>
         </div>
+        </>)}
       </div>
     </div>
   )
