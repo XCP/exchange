@@ -55,13 +55,13 @@ function dispSortCol(id: string, tf: Timeframe): string {
 
 export default function DispensersPage() {
   const [activeTab, setActiveTab] = useState<Tab>('markets')
-  const [includeHidden, setIncludeHidden] = useState(false)
+  const [hideLowQuality, setHideLowQuality] = useState(true)
   const [timeframe, setTimeframe] = useState<Timeframe>('24h')
   const [sortId, setSortId] = useState('vol')
   const [sortDesc, setSortDesc] = useState(true)
 
   const apiSort = dispSortCol(sortId, timeframe)
-  const { markets, summary, isLoading: marketsLoading } = useDispenserMarkets(apiSort, includeHidden, timeframe)
+  const { markets, summary, isLoading: marketsLoading } = useDispenserMarkets(apiSort, !hideLowQuality, timeframe)
   const { dispensers, isLoading: dispensersLoading } = useGlobalDispensers(50)
   const { dispenses, isLoading: dispensesLoading } = useGlobalDispenses(50)
 
@@ -117,11 +117,11 @@ export default function DispensersPage() {
             <label className="ml-auto flex items-center gap-1.5 cursor-pointer select-none">
               <input
                 type="checkbox"
-                checked={includeHidden}
-                onChange={(e) => setIncludeHidden(e.target.checked)}
+                checked={hideLowQuality}
+                onChange={(e) => setHideLowQuality(e.target.checked)}
                 className="accent-zinc-500 w-3 h-3"
               />
-              <span className="text-zinc-500">Show all assets</span>
+              <span className="text-zinc-500">Hide low quality</span>
             </label>
           </div>
         )}
