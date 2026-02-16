@@ -39,7 +39,7 @@ export default function DispensersPage() {
   const [activeTab, setActiveTab] = useState<Tab>('markets')
   const [includeHidden, setIncludeHidden] = useState(false)
   const [timeframe, setTimeframe] = useState<Timeframe>('24h')
-  const { markets, summary, isLoading: marketsLoading } = useDispenserMarkets('total_btc_spent', includeHidden, timeframe)
+  const { markets, summary, isLoading: marketsLoading } = useDispenserMarkets('volume_24h', includeHidden, timeframe)
   const { dispensers, isLoading: dispensersLoading } = useGlobalDispensers(50)
   const { dispenses, isLoading: dispensesLoading } = useGlobalDispenses(50)
 

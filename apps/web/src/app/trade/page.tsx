@@ -132,7 +132,6 @@ export default function OrdersPage() {
                     <>
                       <th className="text-right font-normal px-3 py-2.5">{timeframe} %</th>
                       <th className="text-right font-normal px-3 py-2.5">{timeframe} Vol</th>
-                      <th className="text-right font-normal px-3 py-2.5">{timeframe} Base Vol</th>
                       <th className="text-right font-normal px-3 py-2.5">{timeframe} High</th>
                       <th className="text-right font-normal px-3 py-2.5">{timeframe} Low</th>
                       <th className="text-right font-normal px-3 py-2.5">{timeframe} Trades</th>
@@ -140,7 +139,6 @@ export default function OrdersPage() {
                   ) : (
                     <>
                       <th className="text-right font-normal px-3 py-2.5">Total Vol</th>
-                      <th className="text-right font-normal px-3 py-2.5">Total Base Vol</th>
                       <th className="text-right font-normal px-3 py-2.5">Total Trades</th>
                       <th className="text-right font-normal px-3 py-2.5">Traders</th>
                       <th className="text-right font-normal px-3 py-2.5">ATH</th>
@@ -159,13 +157,13 @@ export default function OrdersPage() {
               <tbody>
                 {pairsLoading ? (
                   <tr>
-                    <td colSpan={rolling ? 16 : 16} className="text-center py-20 text-sm text-zinc-500">
+                    <td colSpan={20} className="text-center py-20 text-sm text-zinc-500">
                       Loading markets...
                     </td>
                   </tr>
                 ) : pairs.length === 0 ? (
                   <tr>
-                    <td colSpan={rolling ? 16 : 16} className="text-center py-20 text-sm text-zinc-600">
+                    <td colSpan={20} className="text-center py-20 text-sm text-zinc-600">
                       No trading pairs found
                     </td>
                   </tr>
@@ -190,16 +188,20 @@ export default function OrdersPage() {
                       {rolling ? (
                         <>
                           <td className={`text-right font-mono px-3 py-2 ${pctColor(tfVal(p, 'price_change', timeframe))}`}>{fmtPct(tfVal(p, 'price_change', timeframe))}</td>
-                          <td className="text-right text-zinc-400 font-mono px-3 py-2">{fmtVol(tfVal(p, 'volume', timeframe))}</td>
-                          <td className="text-right text-zinc-400 font-mono px-3 py-2">{fmtVol(tfVal(p, 'base_volume', timeframe))}</td>
+                          <td className="text-right font-mono px-3 py-2">
+                            <div className="text-zinc-400">{fmtVol(tfVal(p, 'volume', timeframe))}</div>
+                            <div className="text-zinc-600 text-[10px]">{fmtVol(tfVal(p, 'base_volume', timeframe))}</div>
+                          </td>
                           <td className="text-right text-zinc-400 font-mono px-3 py-2">{tfVal(p, 'high', timeframe) != null ? formatPrice(tfVal(p, 'high', timeframe)!) : '—'}</td>
                           <td className="text-right text-zinc-400 font-mono px-3 py-2">{tfVal(p, 'low', timeframe) != null ? formatPrice(tfVal(p, 'low', timeframe)!) : '—'}</td>
                           <td className="text-right text-zinc-400 font-mono px-3 py-2">{tfVal(p, 'trade_count', timeframe) ?? 0}</td>
                         </>
                       ) : (
                         <>
-                          <td className="text-right text-zinc-400 font-mono px-3 py-2">{fmtVol(p.total_volume)}</td>
-                          <td className="text-right text-zinc-400 font-mono px-3 py-2">{fmtVol(p.total_base_volume)}</td>
+                          <td className="text-right font-mono px-3 py-2">
+                            <div className="text-zinc-400">{fmtVol(p.total_volume)}</div>
+                            <div className="text-zinc-600 text-[10px]">{fmtVol(p.total_base_volume)}</div>
+                          </td>
                           <td className="text-right text-zinc-400 font-mono px-3 py-2">{p.total_trade_count ?? 0}</td>
                           <td className="text-right text-zinc-400 font-mono px-3 py-2">{p.unique_traders ?? 0}</td>
                           <td className="text-right text-zinc-400 font-mono px-3 py-2">{p.all_time_high != null ? formatPrice(p.all_time_high) : '—'}</td>
