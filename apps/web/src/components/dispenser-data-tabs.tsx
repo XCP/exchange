@@ -5,7 +5,7 @@ import { HoldersTable } from '@/components/holders-table'
 import { MarketsTable } from '@/components/markets-table'
 import { DispensersEmpty } from '@/components/dispensers-empty'
 import { formatAddress } from '@/utils/format-address'
-import { formatTimeAgo } from '@/utils/format-time-ago'
+import { formatPrice } from '@/utils/format-price'
 import type { Dispense } from '@/types/trading'
 
 type TabKey = 'dispenses' | 'holders' | 'markets' | 'dispensers'
@@ -59,6 +59,16 @@ export function DispenserDataTabs({ asset, totalSupply, dispenses, dispensesLoad
   )
 }
 
+function compactTime(ts: number): string {
+  const diff = Math.floor(Date.now() / 1000 - ts)
+  if (diff < 60) return `${diff}s`
+  if (diff < 3600) return `${Math.floor(diff / 60)}m`
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h`
+  if (diff < 2592000) return `${Math.floor(diff / 86400)}d`
+  if (diff < 31536000) return `${Math.floor(diff / 2592000)}mo`
+  return `${Math.floor(diff / 31536000)}y`
+}
+
 export function DispensesTable({ dispenses, isLoading }: { dispenses: Dispense[]; isLoading: boolean }) {
   if (isLoading) {
     return (
@@ -77,32 +87,63 @@ export function DispensesTable({ dispenses, isLoading }: { dispenses: Dispense[]
   }
 
   return (
-    <table className="w-full text-xs">
-      <thead className="sticky top-0 bg-zinc-950 z-10">
-        <tr className="text-zinc-600 border-b border-zinc-800">
-          <th className="text-left font-normal px-2 py-1.5">Qty</th>
-          <th className="text-right font-normal px-2 py-1.5">BTC Paid</th>
-          <th className="text-right font-normal px-2 py-1.5 max-sm:hidden">Buyer</th>
-          <th className="text-right font-normal px-2 py-1.5 max-sm:hidden">Seller</th>
-          <th className="text-right font-normal px-2 py-1.5">Time</th>
-        </tr>
-      </thead>
-      <tbody>
-        {dispenses.map((d) => (
-          <tr
-            key={`${d.tx_hash}-${d.dispense_index}`}
-            className="hover:bg-zinc-900 cursor-default"
-          >
-            <td className="text-green-400 font-mono px-2 py-1">{d.dispense_quantity_normalized}</td>
-            <td className="text-right text-zinc-300 font-mono px-2 py-1">{d.btc_amount_normalized}</td>
-            <td className="text-right text-zinc-500 font-mono px-2 py-1 max-sm:hidden">{formatAddress(d.destination)}</td>
-            <td className="text-right text-zinc-500 font-mono px-2 py-1 max-sm:hidden">{formatAddress(d.source)}</td>
-            <td className="text-right text-zinc-600 font-mono px-2 py-1">
-              {d.block_time ? formatTimeAgo(d.block_time) : '—'}
-            </td>
+    <div>
+      <table className="w-full text-xs">
+        <thead className="sticky top-0 bg-zinc-950 z-10">
+          <tr className="text-zinc-600">
+            <th className="text-left font-normal px-2 py-1.5 w-10">Time</th>
+            <th className="text-right font-normal px-2 py-1.5">Price</th>
+            <th className="text-right font-normal px-2 py-1.5">Qty</th>
+            <th className="text-right font-normal px-2 py-1.5">BTC</th>
+            <th className="text-right font-normal px-2 py-1.5 max-sm:hidden">Buyer</th>
+            <th className="text-right font-normal px-2 py-1.5 max-sm:hidden">Seller</th>
+            <th className="font-normal px-2 py-1.5 w-6 max-sm:hidden"><span className="sr-only">Tx</span></th>
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {dispenses.map((d) => {
+            const qty = parseFloat(d.dispense_quantity_normalized)
+            const btc = parseFloat(d.btc_amount_normalized)
+            const price = qty > 0 ? btc / qty : 0
+            return (
+              <tr
+                key={`${d.tx_hash}-${d.dispense_index}`}
+                className="hover:bg-zinc-900 cursor-default"
+              >
+                <td className="text-zinc-600 font-mono px-2 py-px">
+                  {d.block_time ? compactTime(d.block_time) : '—'}
+                </td>
+                <td className="text-right text-zinc-300 font-mono px-2 py-px">
+                  {formatPrice(price)}
+                </td>
+                <td className="text-right text-green-400 font-mono px-2 py-px">
+                  {formatPrice(qty)}
+                </td>
+                <td className="text-right text-zinc-400 font-mono px-2 py-px">
+                  {formatPrice(btc)}
+                </td>
+                <td className="text-right text-zinc-500 font-mono px-2 py-px max-sm:hidden">
+                  {formatAddress(d.destination)}
+                </td>
+                <td className="text-right text-zinc-500 font-mono px-2 py-px max-sm:hidden">
+                  {formatAddress(d.source)}
+                </td>
+                <td className="text-center px-2 py-px max-sm:hidden">
+                  <a
+                    href={`https://xcp.io/tx/${d.tx_hash}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-zinc-600 hover:text-zinc-300 transition-colors"
+                    title="View transaction"
+                  >
+                    ↗
+                  </a>
+                </td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
   )
 }
