@@ -146,7 +146,7 @@ export default function AssetDispensersPage({ params }: { params: Promise<{ asse
         {/* == Mobile Tab Content (order-5) == */}
         <div className="order-5 lg:hidden bg-zinc-950 h-[300px] overflow-y-auto">
           {mobileDataTab === 'dispenses' && (
-            <DispensesTable dispenses={dispenses} isLoading={dispensesLoading} />
+            <DispensesTable dispenses={dispenses} isLoading={dispensesLoading} asset={asset} />
           )}
           {mobileDataTab === 'holders' && <HoldersTable asset={baseAsset} totalSupply={totalSupply} />}
           {mobileDataTab === 'markets' && <MarketsTable asset={baseAsset} />}

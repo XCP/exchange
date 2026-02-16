@@ -49,7 +49,7 @@ export function DispenserDataTabs({ asset, totalSupply, dispenses, dispensesLoad
       {/* Tab content */}
       <div className="h-[340px] overflow-y-auto">
         {activeTab === 'dispenses' && (
-          <DispensesTable dispenses={dispenses} isLoading={dispensesLoading} />
+          <DispensesTable dispenses={dispenses} isLoading={dispensesLoading} asset={asset} />
         )}
         {activeTab === 'holders' && <HoldersTable asset={asset} totalSupply={totalSupply} />}
         {activeTab === 'markets' && <MarketsTable asset={asset} />}
@@ -69,7 +69,7 @@ function compactTime(ts: number): string {
   return `${Math.floor(diff / 31536000)}y`
 }
 
-export function DispensesTable({ dispenses, isLoading }: { dispenses: Dispense[]; isLoading: boolean }) {
+export function DispensesTable({ dispenses, isLoading, asset }: { dispenses: Dispense[]; isLoading: boolean; asset?: string }) {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -93,7 +93,7 @@ export function DispensesTable({ dispenses, isLoading }: { dispenses: Dispense[]
           <tr className="text-zinc-600">
             <th className="text-left font-normal px-2 py-1.5 w-10">Time</th>
             <th className="text-right font-normal px-2 py-1.5">Price</th>
-            <th className="text-right font-normal px-2 py-1.5">Qty</th>
+            <th className="text-right font-normal px-2 py-1.5">{asset ?? 'Qty'}</th>
             <th className="text-right font-normal px-2 py-1.5">BTC</th>
             <th className="text-right font-normal px-2 py-1.5 max-sm:hidden">Buyer</th>
             <th className="text-right font-normal px-2 py-1.5 max-sm:hidden">Seller</th>
