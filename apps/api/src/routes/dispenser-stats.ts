@@ -19,10 +19,13 @@ export async function handleDispenserStatsList(
     200
   );
   const offset = parseInt(url.searchParams.get("offset") ?? "0", 10);
+  const includeHidden = url.searchParams.get("include_hidden") === "1";
+  const hiddenFilter = includeHidden ? "" : " AND ds.hidden = 0";
+  const hiddenFilterCount = includeHidden ? "" : " AND hidden = 0";
 
   const [countResult, rows, summaryResult] = await db.batch([
     db.prepare(
-      `SELECT COUNT(*) as total FROM dispenser_stats WHERE active_dispensers > 0`
+      `SELECT COUNT(*) as total FROM dispenser_stats WHERE active_dispensers > 0${hiddenFilterCount}`
     ),
     db.prepare(
       `SELECT ds.asset, ds.asset_longname, ds.last_dispense_price, ds.last_dispense_time,
@@ -34,16 +37,16 @@ export async function handleDispenserStatsList(
               (SELECT SUM(price * give_remaining) / SUM(give_remaining) FROM dispensers
                WHERE asset = ds.asset AND status < 10 AND price > 0 AND give_remaining > 0) AS avg_price
        FROM dispenser_stats ds
-       WHERE ds.active_dispensers > 0
+       WHERE ds.active_dispensers > 0${hiddenFilter}
        ORDER BY ds.${sort} DESC
        LIMIT ? OFFSET ?`
     ).bind(limit, offset),
     db.prepare(
       `SELECT
-         (SELECT COUNT(*) FROM dispensers WHERE status < 10) AS total_dispensers,
-         (SELECT COUNT(*) FROM dispenses) AS total_dispenses,
-         (SELECT COALESCE(SUM(btc_amount), 0) FROM dispenses) AS total_btc_volume,
-         (SELECT COUNT(DISTINCT destination) FROM dispenses) AS unique_buyers`
+         (SELECT COUNT(*) FROM dispensers d WHERE d.status < 10${includeHidden ? "" : " AND NOT EXISTS (SELECT 1 FROM dispenser_stats s WHERE s.asset = d.asset AND s.hidden = 1)"}) AS total_dispensers,
+         (SELECT COUNT(*) FROM dispenses p${includeHidden ? "" : " WHERE NOT EXISTS (SELECT 1 FROM dispenser_stats s WHERE s.asset = p.asset AND s.hidden = 1)"}) AS total_dispenses,
+         (SELECT COALESCE(SUM(p.btc_amount), 0) FROM dispenses p${includeHidden ? "" : " WHERE NOT EXISTS (SELECT 1 FROM dispenser_stats s WHERE s.asset = p.asset AND s.hidden = 1)"}) AS total_btc_volume,
+         (SELECT COUNT(DISTINCT p.destination) FROM dispenses p${includeHidden ? "" : " WHERE NOT EXISTS (SELECT 1 FROM dispenser_stats s WHERE s.asset = p.asset AND s.hidden = 1)"}) AS unique_buyers`
     ),
   ]);
 

@@ -15,7 +15,8 @@ type Tab = 'markets' | 'dispensers' | 'dispenses'
 
 export default function DispensersPage() {
   const [activeTab, setActiveTab] = useState<Tab>('markets')
-  const { markets, summary, isLoading: marketsLoading } = useDispenserMarkets()
+  const [includeHidden, setIncludeHidden] = useState(false)
+  const { markets, summary, isLoading: marketsLoading } = useDispenserMarkets('total_btc_spent', includeHidden)
   const { dispensers, isLoading: dispensersLoading } = useGlobalDispensers(50)
   const { dispenses, isLoading: dispensesLoading } = useGlobalDispenses(50)
 
@@ -28,7 +29,7 @@ export default function DispensersPage() {
         </div>
 
         {summary && (
-          <div className="flex gap-6 mb-4 text-xs">
+          <div className="flex items-center gap-6 mb-4 text-xs">
             <div>
               <span className="text-zinc-500">Open Dispensers</span>{' '}
               <span className="text-zinc-300 font-mono">{summary.total_dispensers.toLocaleString()}</span>
@@ -45,6 +46,15 @@ export default function DispensersPage() {
               <span className="text-zinc-500">Unique Buyers</span>{' '}
               <span className="text-zinc-300 font-mono">{summary.unique_buyers?.toLocaleString() ?? '—'}</span>
             </div>
+            <label className="ml-auto flex items-center gap-1.5 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={includeHidden}
+                onChange={(e) => setIncludeHidden(e.target.checked)}
+                className="accent-zinc-500 w-3 h-3"
+              />
+              <span className="text-zinc-500">Show all assets</span>
+            </label>
           </div>
         )}
 

@@ -38,9 +38,9 @@ interface DispenserMarketsResponse {
   summary: DispenserMarketsSummary
 }
 
-export function useDispenserMarkets(sort: string = 'total_btc_spent') {
+export function useDispenserMarkets(sort: string = 'total_btc_spent', includeHidden: boolean = false) {
   const { data, error, isLoading } = useSWR<DispenserMarketsResponse>(
-    dexUrl(`/dispenser-stats?sort=${sort}&limit=50`),
+    dexUrl(`/dispenser-stats?sort=${sort}&limit=50${includeHidden ? '&include_hidden=1' : ''}`),
     fetcher,
     { refreshInterval: 60_000 }
   )
