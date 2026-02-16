@@ -32,11 +32,15 @@ export async function bulkUpdatePairStats(
       db
         .prepare(
           `SELECT pair,
-            SUM(volume) as total_vol, COUNT(*) as total_cnt,
+            SUM(volume) as total_vol, SUM(amount) as total_base_vol,
+            COUNT(*) as total_cnt,
             MAX(price) as ath, MIN(price) as atl,
             COALESCE(SUM(CASE WHEN block_time >= ?1 THEN volume END), 0) as vol_24h,
             COALESCE(SUM(CASE WHEN block_time >= ?2 THEN volume END), 0) as vol_7d,
             COALESCE(SUM(CASE WHEN block_time >= ?3 THEN volume END), 0) as vol_30d,
+            COALESCE(SUM(CASE WHEN block_time >= ?1 THEN amount END), 0) as bvol_24h,
+            COALESCE(SUM(CASE WHEN block_time >= ?2 THEN amount END), 0) as bvol_7d,
+            COALESCE(SUM(CASE WHEN block_time >= ?3 THEN amount END), 0) as bvol_30d,
             SUM(CASE WHEN block_time >= ?1 THEN 1 ELSE 0 END) as cnt_24h,
             SUM(CASE WHEN block_time >= ?2 THEN 1 ELSE 0 END) as cnt_7d,
             SUM(CASE WHEN block_time >= ?3 THEN 1 ELSE 0 END) as cnt_30d,
@@ -149,11 +153,12 @@ export async function bulkUpdatePairStats(
         ft: lt?.first_trade_time ?? null,
         pc24, pc7, pc30,
         v24: s?.vol_24h ?? 0, v7: s?.vol_7d ?? 0, v30: s?.vol_30d ?? 0,
+        bv24: s?.bvol_24h ?? 0, bv7: s?.bvol_7d ?? 0, bv30: s?.bvol_30d ?? 0,
         h24: s?.hi_24h ?? null, l24: s?.lo_24h ?? null,
         h7: s?.hi_7d ?? null, l7: s?.lo_7d ?? null,
         h30: s?.hi_30d ?? null, l30: s?.lo_30d ?? null,
         c24: s?.cnt_24h ?? 0, c7: s?.cnt_7d ?? 0, c30: s?.cnt_30d ?? 0,
-        tv: s?.total_vol ?? 0, tc: s?.total_cnt ?? 0,
+        tv: s?.total_vol ?? 0, tbv: s?.total_base_vol ?? 0, tc: s?.total_cnt ?? 0,
         ut: tr?.unique_traders ?? 0,
         ath: s?.ath ?? null, atl: s?.atl ?? null,
         ua: now,
@@ -174,6 +179,9 @@ export async function bulkUpdatePairStats(
           volume_24h = json_extract(j.value, '$.v24'),
           volume_7d = json_extract(j.value, '$.v7'),
           volume_30d = json_extract(j.value, '$.v30'),
+          base_volume_24h = json_extract(j.value, '$.bv24'),
+          base_volume_7d = json_extract(j.value, '$.bv7'),
+          base_volume_30d = json_extract(j.value, '$.bv30'),
           high_24h = json_extract(j.value, '$.h24'),
           low_24h = json_extract(j.value, '$.l24'),
           high_7d = json_extract(j.value, '$.h7'),
@@ -184,6 +192,7 @@ export async function bulkUpdatePairStats(
           trade_count_7d = json_extract(j.value, '$.c7'),
           trade_count_30d = json_extract(j.value, '$.c30'),
           total_volume = json_extract(j.value, '$.tv'),
+          total_base_volume = json_extract(j.value, '$.tbv'),
           total_trade_count = json_extract(j.value, '$.tc'),
           unique_traders = json_extract(j.value, '$.ut'),
           all_time_high = json_extract(j.value, '$.ath'),
@@ -219,6 +228,9 @@ export async function updatePairStats(
         COALESCE(SUM(CASE WHEN block_time >= ?2 THEN volume ELSE 0 END), 0) as vol_24h,
         COALESCE(SUM(CASE WHEN block_time >= ?3 THEN volume ELSE 0 END), 0) as vol_7d,
         COALESCE(SUM(CASE WHEN block_time >= ?4 THEN volume ELSE 0 END), 0) as vol_30d,
+        COALESCE(SUM(CASE WHEN block_time >= ?2 THEN amount ELSE 0 END), 0) as bvol_24h,
+        COALESCE(SUM(CASE WHEN block_time >= ?3 THEN amount ELSE 0 END), 0) as bvol_7d,
+        COALESCE(SUM(CASE WHEN block_time >= ?4 THEN amount ELSE 0 END), 0) as bvol_30d,
         SUM(CASE WHEN block_time >= ?2 THEN 1 ELSE 0 END) as cnt_24h,
         SUM(CASE WHEN block_time >= ?3 THEN 1 ELSE 0 END) as cnt_7d,
         SUM(CASE WHEN block_time >= ?4 THEN 1 ELSE 0 END) as cnt_30d,
@@ -239,6 +251,9 @@ export async function updatePairStats(
       vol_24h: number;
       vol_7d: number;
       vol_30d: number;
+      bvol_24h: number;
+      bvol_7d: number;
+      bvol_30d: number;
       cnt_24h: number;
       cnt_7d: number;
       cnt_30d: number;
@@ -276,13 +291,14 @@ export async function updatePairStats(
     db
       .prepare(
         `SELECT COALESCE(SUM(volume), 0) as total_volume,
+                COALESCE(SUM(amount), 0) as total_base_volume,
                 COUNT(*) as total_count,
                 MAX(price) as ath,
                 MIN(price) as atl
          FROM trades WHERE pair = ?`
       )
       .bind(pair)
-      .first<{ total_volume: number; total_count: number; ath: number | null; atl: number | null }>(),
+      .first<{ total_volume: number; total_base_volume: number; total_count: number; ath: number | null; atl: number | null }>(),
     // UNION deduplicates addresses that appear as both maker and taker
     db
       .prepare(
@@ -315,12 +331,13 @@ export async function updatePairStats(
       `INSERT INTO pair_stats (pair, base_asset, quote_asset, last_price, last_trade_time, last_side,
          price_change_24h, price_change_7d, price_change_30d,
          volume_24h, volume_7d, volume_30d,
+         base_volume_24h, base_volume_7d, base_volume_30d,
          high_24h, low_24h, high_7d, low_7d, high_30d, low_30d,
          trade_count_24h, trade_count_7d, trade_count_30d,
          first_trade_time,
-         total_volume, total_trade_count, unique_traders, all_time_high, all_time_low,
+         total_volume, total_base_volume, total_trade_count, unique_traders, all_time_high, all_time_low,
          updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT (pair) DO UPDATE SET
          last_price = excluded.last_price,
          last_trade_time = excluded.last_trade_time,
@@ -331,6 +348,9 @@ export async function updatePairStats(
          volume_24h = excluded.volume_24h,
          volume_7d = excluded.volume_7d,
          volume_30d = excluded.volume_30d,
+         base_volume_24h = excluded.base_volume_24h,
+         base_volume_7d = excluded.base_volume_7d,
+         base_volume_30d = excluded.base_volume_30d,
          high_24h = excluded.high_24h,
          low_24h = excluded.low_24h,
          high_7d = excluded.high_7d,
@@ -342,6 +362,7 @@ export async function updatePairStats(
          trade_count_30d = excluded.trade_count_30d,
          first_trade_time = excluded.first_trade_time,
          total_volume = excluded.total_volume,
+         total_base_volume = excluded.total_base_volume,
          total_trade_count = excluded.total_trade_count,
          unique_traders = excluded.unique_traders,
          all_time_high = excluded.all_time_high,
@@ -361,6 +382,9 @@ export async function updatePairStats(
       stats?.vol_24h ?? 0,
       stats?.vol_7d ?? 0,
       stats?.vol_30d ?? 0,
+      stats?.bvol_24h ?? 0,
+      stats?.bvol_7d ?? 0,
+      stats?.bvol_30d ?? 0,
       stats?.hi_24h ?? null,
       stats?.lo_24h ?? null,
       stats?.hi_7d ?? null,
@@ -372,6 +396,7 @@ export async function updatePairStats(
       stats?.cnt_30d ?? 0,
       stats?.first_trade_time ?? null,
       allTime?.total_volume ?? 0,
+      allTime?.total_base_volume ?? 0,
       allTime?.total_count ?? 0,
       traderCount?.unique_traders ?? 0,
       allTime?.ath ?? null,

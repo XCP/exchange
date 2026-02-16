@@ -78,6 +78,24 @@ export function countBuckets(start: number, end: number, interval: string): numb
   return Math.floor((end - start) / step) + 1;
 }
 
+/** SQL expression that computes the bucket timestamp for a given interval */
+export function sqlBucketExpr(interval: string): string {
+  if (interval === "1y")
+    return `CAST(strftime('%s', strftime('%Y', block_time, 'unixepoch') || '-01-01') AS INTEGER)`;
+  if (interval === "1m")
+    return `CAST(strftime('%s', strftime('%Y-%m', block_time, 'unixepoch') || '-01') AS INTEGER)`;
+  const step = INTERVAL_SECONDS[interval];
+  return `(block_time / ${step}) * ${step}`;
+}
+
+/** SQL expression for partitioning rows by time bucket (used in window functions) */
+export function sqlPartitionExpr(interval: string): string {
+  if (interval === "1y") return `strftime('%Y', block_time, 'unixepoch')`;
+  if (interval === "1m") return `strftime('%Y-%m', block_time, 'unixepoch')`;
+  const step = INTERVAL_SECONDS[interval];
+  return `(block_time / ${step}) * ${step}`;
+}
+
 /** Walk backward N buckets from a starting timestamp */
 export function walkBack(from: number, interval: string, count: number): number {
   if (CALENDAR_INTERVALS.has(interval)) {

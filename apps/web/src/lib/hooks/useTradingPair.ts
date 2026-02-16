@@ -46,6 +46,10 @@ export interface TradingPairData {
   trade_count_30d: number | null
   first_trade_time: number | null
   total_volume: number | null
+  total_base_volume: number | null
+  base_volume_24h: number | null
+  base_volume_7d: number | null
+  base_volume_30d: number | null
   total_trade_count: number | null
   unique_traders: number | null
   all_time_high: number | null

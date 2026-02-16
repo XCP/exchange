@@ -12,7 +12,8 @@ export async function handlePair(
               high_24h, low_24h, high_7d, low_7d, high_30d, low_30d,
               trade_count_24h, trade_count_7d, trade_count_30d,
               first_trade_time,
-              total_volume, total_trade_count, unique_traders, all_time_high, all_time_low
+              total_volume, total_base_volume, total_trade_count, unique_traders, all_time_high, all_time_low,
+              base_volume_24h, base_volume_7d, base_volume_30d
        FROM pair_stats WHERE pair = ?`
     )
     .bind(pair)
@@ -53,7 +54,8 @@ export async function handlePairs(
                       high_24h, low_24h, high_7d, low_7d, high_30d, low_30d,
                       trade_count_24h, trade_count_7d, trade_count_30d,
                       first_trade_time,
-                      total_volume, total_trade_count, unique_traders, all_time_high, all_time_low
+                      total_volume, total_base_volume, total_trade_count, unique_traders, all_time_high, all_time_low,
+                      base_volume_24h, base_volume_7d, base_volume_30d
                FROM pair_stats`;
   const binds: (string | number)[] = [];
   const conditions: string[] = [];

@@ -1,10 +1,13 @@
-import { ALL_INTERVALS, calendarBucket } from "../lib/constants";
-import { D1_BATCH_LIMIT, batchExec } from "../lib/batch";
+import { ALL_INTERVALS, calendarBucket, sqlBucketExpr, sqlPartitionExpr } from "../lib/constants";
+import { batchExec } from "../lib/batch";
 import { bulkUpdatePairStats } from "./stats";
 import { bulkUpdateDispenserStats } from "./dispenser-stats";
 import { getMode } from "./state";
 
-const CATCHUP_BATCH_SIZE = 200;
+const CATCHUP_BATCH_SIZE = 400;
+
+/** Max pairs per SQL chunk — D1 allows 100 bound params per statement */
+const SQL_CHUNK = 100;
 
 export function bucketTimestamp(
   unixSeconds: number,
@@ -23,7 +26,7 @@ export async function aggregateCandlesForPair(
 
   const trades = await db
     .prepare(
-      `SELECT block_time, price, volume, side
+      `SELECT block_time, price, amount, side
        FROM trades
        WHERE pair = ? AND block_time >= ?
        ORDER BY block_time ASC, rowid ASC`
@@ -32,7 +35,7 @@ export async function aggregateCandlesForPair(
     .all<{
       block_time: number;
       price: number;
-      volume: number;
+      amount: number;
       side: string;
     }>();
 
@@ -76,9 +79,9 @@ export async function aggregateCandlesForPair(
       entry.close = t.price;
       if (t.price > entry.high) entry.high = t.price;
       if (t.price < entry.low) entry.low = t.price;
-      entry.volume += t.volume;
-      if (t.side === "buy") entry.buyVolume += t.volume;
-      else entry.sellVolume += t.volume;
+      entry.volume += t.amount;
+      if (t.side === "buy") entry.buyVolume += t.amount;
+      else entry.sellVolume += t.amount;
       entry.count++;
     }
 
@@ -116,126 +119,102 @@ export async function aggregateCandlesForPair(
 }
 
 /**
- * Bulk candle aggregation: fetches trades for a chunk of pairs in one query,
- * computes OHLC in JS, batch-inserts candles. Processes pairs in chunks to
- * stay within D1's SQL variable limit.
+ * Bulk candle aggregation using pure SQL with window functions + json_each
+ * bulk insert. Computes OHLCV entirely in D1 (no trade data transfer) and
+ * inserts all candles per interval in a single statement.
+ *
+ * Per 100-pair chunk: 6 compute queries + up to 6 json_each inserts = 12
+ * D1 queries in 2 round trips. ~37x fewer queries than the old per-candle
+ * INSERT approach.
  */
-
 async function bulkAggregateCandlesForPairs(
   db: D1Database,
   pairs: string[]
 ): Promise<void> {
   if (pairs.length === 0) return;
 
-  for (let i = 0; i < pairs.length; i += D1_BATCH_LIMIT) {
-    const chunk = pairs.slice(i, i + D1_BATCH_LIMIT);
+  for (let i = 0; i < pairs.length; i += SQL_CHUNK) {
+    const chunk = pairs.slice(i, i + SQL_CHUNK);
     const placeholders = chunk.map(() => "?").join(",");
 
-    // One query: all trades for this chunk, sorted for deterministic open/close
-    const trades = await db
-      .prepare(
-        `SELECT pair, block_time, price, volume, side
-         FROM trades
-         WHERE pair IN (${placeholders})
-         ORDER BY pair, block_time ASC, rowid ASC`
-      )
-      .bind(...chunk)
-      .all<{
-        pair: string;
-        block_time: number;
-        price: number;
-        volume: number;
-        side: string;
-      }>();
-
-    if (!trades.results.length) continue;
-
-    // Build candles for every interval from the same trade data
-    for (const interval of ALL_INTERVALS) {
-      // Group by pair + bucket
-      const buckets = new Map<
-        string,
-        {
-          pair: string;
-          bucket: number;
-          open: number;
-          close: number;
-          high: number;
-          low: number;
-          volume: number;
-          buyVolume: number;
-          sellVolume: number;
-          count: number;
-        }
-      >();
-
-      for (const t of trades.results) {
-        const bucket = calendarBucket(t.block_time, interval);
-        const key = `${t.pair}|${bucket}`;
-        let entry = buckets.get(key);
-        if (!entry) {
-          entry = {
-            pair: t.pair,
-            bucket,
-            open: t.price,
-            close: t.price,
-            high: t.price,
-            low: t.price,
-            volume: 0,
-            buyVolume: 0,
-            sellVolume: 0,
-            count: 0,
-          };
-          buckets.set(key, entry);
-        }
-        // Trades are sorted ASC — first hit sets open, every hit updates close
-        entry.close = t.price;
-        if (t.price > entry.high) entry.high = t.price;
-        if (t.price < entry.low) entry.low = t.price;
-        entry.volume += t.volume;
-        if (t.side === "buy") entry.buyVolume += t.volume;
-        else entry.sellVolume += t.volume;
-        entry.count++;
-      }
-
-      // Batch upsert candles (50 at a time for D1 limits)
-      const stmts: D1PreparedStatement[] = [];
-      for (const data of buckets.values()) {
-        stmts.push(
-          db
-            .prepare(
-              `INSERT INTO candles (pair, interval, timestamp, open, high, low, close, volume, buy_volume, sell_volume, trades)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-               ON CONFLICT (pair, interval, timestamp)
-               DO UPDATE SET open = excluded.open, high = excluded.high, low = excluded.low,
-                             close = excluded.close, volume = excluded.volume,
-                             buy_volume = excluded.buy_volume, sell_volume = excluded.sell_volume,
-                             trades = excluded.trades`
+    // 1. Batch-compute candles for all 6 intervals in one round trip
+    const computeResults = await db.batch(
+      ALL_INTERVALS.map((interval) => {
+        const bucket = sqlBucketExpr(interval);
+        const partition = sqlPartitionExpr(interval);
+        return db
+          .prepare(
+            `SELECT pair, ${bucket} as bucket,
+              MIN(CASE WHEN rn_asc = 1 THEN price END) as open,
+              MIN(CASE WHEN rn_desc = 1 THEN price END) as close,
+              MAX(price) as high, MIN(price) as low,
+              ROUND(SUM(amount), 8) as volume,
+              ROUND(SUM(CASE WHEN side = 'buy' THEN amount ELSE 0 END), 8) as buy_volume,
+              ROUND(SUM(CASE WHEN side != 'buy' THEN amount ELSE 0 END), 8) as sell_volume,
+              COUNT(*) as trades
+            FROM (
+              SELECT pair, block_time, price, amount, side,
+                ROW_NUMBER() OVER (PARTITION BY pair, ${partition} ORDER BY block_time ASC, rowid ASC) as rn_asc,
+                ROW_NUMBER() OVER (PARTITION BY pair, ${partition} ORDER BY block_time DESC, rowid DESC) as rn_desc
+              FROM trades WHERE pair IN (${placeholders})
             )
-            .bind(
-              data.pair,
-              interval,
-              data.bucket,
-              Math.round(data.open * 1e8) / 1e8,
-              Math.round(data.high * 1e8) / 1e8,
-              Math.round(data.low * 1e8) / 1e8,
-              Math.round(data.close * 1e8) / 1e8,
-              data.volume,
-              data.buyVolume,
-              data.sellVolume,
-              data.count
-            )
-        );
-      }
+            GROUP BY pair, ${partition}`
+          )
+          .bind(...chunk);
+      })
+    );
 
-      await batchExec(db, stmts);
+    // 2. Collect json_each INSERT statements for non-empty intervals
+    const insertStmts: D1PreparedStatement[] = [];
+    for (let idx = 0; idx < ALL_INTERVALS.length; idx++) {
+      const candles = computeResults[idx].results as {
+        pair: string; bucket: number;
+        open: number; close: number; high: number; low: number;
+        volume: number; buy_volume: number; sell_volume: number; trades: number;
+      }[];
+      if (!candles.length) continue;
+
+      const rows = candles.map((c) => ({
+        p: c.pair, t: c.bucket,
+        o: Math.round(c.open * 1e8) / 1e8,
+        h: Math.round(c.high * 1e8) / 1e8,
+        l: Math.round(c.low * 1e8) / 1e8,
+        c: Math.round(c.close * 1e8) / 1e8,
+        v: c.volume, bv: c.buy_volume, sv: c.sell_volume, n: c.trades,
+      }));
+
+      insertStmts.push(
+        db
+          .prepare(
+            `INSERT OR REPLACE INTO candles (pair, interval, timestamp, open, high, low, close, volume, buy_volume, sell_volume, trades)
+             SELECT
+               json_extract(j.value, '$.p'), ?,
+               json_extract(j.value, '$.t'),
+               json_extract(j.value, '$.o'),
+               json_extract(j.value, '$.h'),
+               json_extract(j.value, '$.l'),
+               json_extract(j.value, '$.c'),
+               json_extract(j.value, '$.v'),
+               json_extract(j.value, '$.bv'),
+               json_extract(j.value, '$.sv'),
+               json_extract(j.value, '$.n')
+             FROM json_each(?) AS j`
+          )
+          .bind(ALL_INTERVALS[idx], JSON.stringify(rows))
+      );
+    }
+
+    // 3. Batch-insert all intervals in one round trip
+    if (insertStmts.length > 0) {
+      await db.batch(insertStmts);
     }
   }
 }
 
 /**
  * Catch-up aggregation: processes a batch of pairs that haven't been aggregated yet.
- * Uses bulk SQL for candles — 6 queries per batch instead of 6 per pair.
+ * Uses pure SQL window functions + json_each bulk insert — 12 queries per 100-pair
+ * chunk instead of ~900 individual INSERT statements.
  */
 export async function runCatchupAggregation(
   db: D1Database
