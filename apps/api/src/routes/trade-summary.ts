@@ -9,7 +9,8 @@ export async function handleTradeSummary(
         COALESCE(SUM(volume_24h), 0) as volume_24h,
         COALESCE(SUM(trade_count_24h), 0) as trades_24h,
         COALESCE(SUM(total_trade_count), 0) as total_trades
-       FROM pair_stats`
+       FROM pair_stats
+       WHERE hidden = 0`
     )
     .first();
 

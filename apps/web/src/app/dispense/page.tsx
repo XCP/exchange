@@ -59,9 +59,10 @@ export default function DispensersPage() {
   const [timeframe, setTimeframe] = useState<Timeframe>('24h')
   const [sortId, setSortId] = useState('vol')
   const [sortDesc, setSortDesc] = useState(true)
+  const [page, setPage] = useState(1)
 
   const apiSort = dispSortCol(sortId, timeframe)
-  const { markets, summary, isLoading: marketsLoading } = useDispenserMarkets(apiSort, !hideLowQuality, timeframe, sortDesc ? 'desc' : 'asc')
+  const { markets, total, totalPages, summary, isLoading: marketsLoading } = useDispenserMarkets(apiSort, !hideLowQuality, timeframe, sortDesc ? 'desc' : 'asc', page)
   const { dispensers, isLoading: dispensersLoading } = useGlobalDispensers(50)
   const { dispenses, isLoading: dispensesLoading } = useGlobalDispenses(50)
 
@@ -74,6 +75,7 @@ export default function DispensersPage() {
       setSortId(id)
       setSortDesc(id !== 'price')
     }
+    setPage(1)
   }
 
   function SortHeader({ id, label, className }: { id: string; label: string; className?: string }) {
@@ -150,7 +152,7 @@ export default function DispensersPage() {
               {(['24h', '7d', '30d', 'all'] as const).map((tf) => (
                 <button
                   key={tf}
-                  onClick={() => { setTimeframe(tf); setSortId('vol'); setSortDesc(true) }}
+                  onClick={() => { setTimeframe(tf); setSortId('vol'); setSortDesc(true); setPage(1) }}
                   className={`px-2 py-1 text-xs font-mono rounded-sm transition-colors ${
                     timeframe === tf
                       ? 'bg-zinc-700 text-zinc-100'
@@ -164,7 +166,7 @@ export default function DispensersPage() {
           )}
         </div>
 
-        {activeTab === 'markets' && (
+        {activeTab === 'markets' && (<>
           <div className="border border-zinc-800 rounded-sm overflow-x-auto">
             <table className="w-full text-xs whitespace-nowrap">
               <thead>
@@ -243,7 +245,41 @@ export default function DispensersPage() {
               </tbody>
             </table>
           </div>
-        )}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between mt-3 text-xs">
+              <span className="text-zinc-500">{total.toLocaleString()} assets</span>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setPage(p => Math.max(1, p - 1))}
+                  disabled={page === 1}
+                  className="px-2 py-1 rounded-sm font-mono text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                >
+                  ‹
+                </button>
+                {Array.from({ length: Math.min(totalPages, 10) }, (_, i) => i + 1).map(p => (
+                  <button
+                    key={p}
+                    onClick={() => setPage(p)}
+                    className={`w-7 py-1 rounded-sm font-mono transition-colors ${
+                      page === p
+                        ? 'bg-zinc-700 text-zinc-100'
+                        : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800'
+                    }`}
+                  >
+                    {p}
+                  </button>
+                ))}
+                <button
+                  onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                  disabled={page === totalPages}
+                  className="px-2 py-1 rounded-sm font-mono text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                >
+                  ›
+                </button>
+              </div>
+            </div>
+          )}
+        </>)}
 
         {activeTab === 'dispensers' && (
           <div className="border border-zinc-800 rounded-sm overflow-hidden">

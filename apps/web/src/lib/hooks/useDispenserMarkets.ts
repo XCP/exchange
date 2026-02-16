@@ -51,8 +51,11 @@ interface DispenserMarketsResponse {
   summary: DispenserMarketsSummary
 }
 
-export function useDispenserMarkets(sort: string = 'total_btc_spent', includeHidden: boolean = false, timeframe: string = '24h', order: 'asc' | 'desc' = 'desc') {
-  const params = new URLSearchParams({ sort, limit: '50', timeframe, order })
+const PAGE_SIZE = 50
+
+export function useDispenserMarkets(sort: string = 'total_btc_spent', includeHidden: boolean = false, timeframe: string = '24h', order: 'asc' | 'desc' = 'desc', page: number = 1) {
+  const offset = (page - 1) * PAGE_SIZE
+  const params = new URLSearchParams({ sort, limit: String(PAGE_SIZE), offset: String(offset), timeframe, order })
   if (includeHidden) params.set('include_hidden', '1')
   const { data, error, isLoading } = useSWR<DispenserMarketsResponse>(
     dexUrl(`/dispenser-stats?${params}`),
@@ -60,9 +63,12 @@ export function useDispenserMarkets(sort: string = 'total_btc_spent', includeHid
     { refreshInterval: 60_000 }
   )
 
+  const total = data?.total ?? 0
+
   return {
     markets: data?.dispenser_markets ?? [],
-    total: data?.total ?? 0,
+    total,
+    totalPages: Math.ceil(total / PAGE_SIZE),
     summary: data?.summary ?? null,
     error,
     isLoading,
