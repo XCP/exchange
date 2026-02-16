@@ -76,6 +76,8 @@ export async function handlePairs(
   }
   if (tf !== "all") {
     conditions.push(`trade_count_${tf} > 0`);
+  } else {
+    conditions.push(`total_trade_count > 0`);
   }
   if (quote) {
     conditions.push(`quote_asset = ?`);

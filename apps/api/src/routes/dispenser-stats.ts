@@ -23,8 +23,8 @@ export async function handleDispenserStatsList(
   const order = url.searchParams.get("order") === "asc" ? "ASC" : "DESC";
   const tfParam = url.searchParams.get("timeframe");
   const tf = tfParam === "7d" || tfParam === "30d" || tfParam === "all" ? tfParam : "24h";
-  const activityFilter = tf === "all" ? "" : ` AND ds.dispense_count_${tf} > 0`;
-  const activityFilterCount = tf === "all" ? "" : ` AND dispense_count_${tf} > 0`;
+  const activityFilter = tf === "all" ? ` AND ds.total_dispense_count > 0` : ` AND ds.dispense_count_${tf} > 0`;
+  const activityFilterCount = tf === "all" ? ` AND total_dispense_count > 0` : ` AND dispense_count_${tf} > 0`;
 
   const [countResult, rows, summaryResult] = await db.batch([
     db.prepare(
