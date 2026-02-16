@@ -59,6 +59,7 @@ function pairSortCol(id: string, tf: Timeframe): string {
 export default function OrdersPage() {
   const [activeTab, setActiveTab] = useState<Tab>('markets')
   const [timeframe, setTimeframe] = useState<Timeframe>('24h')
+  const [hideLowQuality, setHideLowQuality] = useState(true)
   const [sortId, setSortId] = useState('trades')
   const [sortDesc, setSortDesc] = useState(true)
   const { orders, isLoading: ordersLoading } = useGlobalOrders(50)
@@ -66,7 +67,7 @@ export default function OrdersPage() {
   const { data: summary } = useTradeSummary()
 
   const apiSort = pairSortCol(sortId, timeframe)
-  const { pairs, isLoading: pairsLoading } = usePairMarkets(apiSort, timeframe)
+  const { pairs, isLoading: pairsLoading } = usePairMarkets(apiSort, !hideLowQuality, timeframe)
 
   const rolling = timeframe !== 'all'
 
@@ -100,7 +101,7 @@ export default function OrdersPage() {
         </div>
 
         {summary && (
-          <div className="flex gap-6 mb-4 text-xs">
+          <div className="flex items-center gap-6 mb-4 text-xs">
             <div>
               <span className="text-zinc-500">Trading Pairs</span>{' '}
               <span className="text-zinc-300 font-mono">{summary.total_pairs.toLocaleString()}</span>
@@ -121,6 +122,15 @@ export default function OrdersPage() {
               <span className="text-zinc-500">Total Trades</span>{' '}
               <span className="text-zinc-300 font-mono">{summary.total_trades.toLocaleString()}</span>
             </div>
+            <label className="ml-auto flex items-center gap-1.5 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={hideLowQuality}
+                onChange={(e) => setHideLowQuality(e.target.checked)}
+                className="accent-zinc-500 w-3 h-3"
+              />
+              <span className="text-zinc-500">Hide low quality</span>
+            </label>
           </div>
         )}
 

@@ -9,9 +9,11 @@ interface PairMarketsResponse {
   offset: number
 }
 
-export function usePairMarkets(sort: string = 'total_trade_count', timeframe: string = '24h') {
+export function usePairMarkets(sort: string = 'total_trade_count', includeHidden: boolean = false, timeframe: string = '24h') {
+  const params = new URLSearchParams({ sort, limit: '50', timeframe })
+  if (includeHidden) params.set('include_hidden', '1')
   const { data, error, isLoading } = useSWR<PairMarketsResponse>(
-    dexUrl(`/pairs?sort=${sort}&limit=50&timeframe=${timeframe}`),
+    dexUrl(`/pairs?${params}`),
     fetcher,
     { refreshInterval: 60_000 }
   )

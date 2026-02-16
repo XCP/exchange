@@ -51,6 +51,7 @@ export async function handlePairs(
   const base = url.searchParams.get("base");
   const tfParam = url.searchParams.get("timeframe");
   const tf = tfParam === "7d" || tfParam === "30d" || tfParam === "all" ? tfParam : "24h";
+  const includeHidden = url.searchParams.get("include_hidden") === "1";
   const offset = Math.max(
     parseInt(url.searchParams.get("offset") ?? "0", 10) || 0,
     0
@@ -69,6 +70,9 @@ export async function handlePairs(
   const binds: (string | number)[] = [];
   const conditions: string[] = [];
 
+  if (!includeHidden) {
+    conditions.push(`hidden = 0`);
+  }
   if (tf !== "all") {
     conditions.push(`trade_count_${tf} > 0`);
   }
