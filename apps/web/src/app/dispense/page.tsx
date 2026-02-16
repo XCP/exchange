@@ -127,43 +127,36 @@ export default function DispensersPage() {
               <thead>
                 <tr className="text-zinc-500 border-b border-zinc-800 bg-zinc-900/50">
                   <th className="text-left font-normal px-3 py-2.5 sticky left-0 bg-zinc-900/50 z-10">Asset</th>
-                  <th className="text-right font-normal px-3 py-2.5">Lowest</th>
-                  <th className="text-right font-normal px-3 py-2.5">Avg</th>
+                  <th className="text-right font-normal px-3 py-2.5">Price</th>
                   <th className="text-right font-normal px-3 py-2.5">Last</th>
                   {rolling ? (
                     <>
                       <th className="text-right font-normal px-3 py-2.5">{timeframe} %</th>
                       <th className="text-right font-normal px-3 py-2.5">{timeframe} Vol</th>
-                      <th className="text-right font-normal px-3 py-2.5">{timeframe} High</th>
-                      <th className="text-right font-normal px-3 py-2.5">{timeframe} Low</th>
                       <th className="text-right font-normal px-3 py-2.5">{timeframe} Disp</th>
                     </>
                   ) : (
                     <>
                       <th className="text-right font-normal px-3 py-2.5">Total BTC</th>
-                      <th className="text-right font-normal px-3 py-2.5">Total Dispensed</th>
                       <th className="text-right font-normal px-3 py-2.5">Dispenses</th>
                       <th className="text-right font-normal px-3 py-2.5">Buyers</th>
-                      <th className="text-right font-normal px-3 py-2.5">Sellers</th>
-                      <th className="text-right font-normal px-3 py-2.5">Created</th>
-                      <th className="text-right font-normal px-3 py-2.5">Avg BTC</th>
                     </>
                   )}
                   <th className="text-right font-normal px-3 py-2.5">Dispensers</th>
                   <th className="text-right font-normal px-3 py-2.5">Depth</th>
-                  <th className="text-right font-normal px-3 py-2.5">First</th>
+                  <th className="text-right font-normal px-3 py-2.5">Age</th>
                 </tr>
               </thead>
               <tbody>
                 {marketsLoading ? (
                   <tr>
-                    <td colSpan={rolling ? 12 : 14} className="text-center py-20 text-sm text-zinc-500">
+                    <td colSpan={9} className="text-center py-20 text-sm text-zinc-500">
                       Loading dispenser markets...
                     </td>
                   </tr>
                 ) : markets.length === 0 ? (
                   <tr>
-                    <td colSpan={rolling ? 12 : 14} className="text-center py-20 text-sm text-zinc-600">
+                    <td colSpan={9} className="text-center py-20 text-sm text-zinc-600">
                       No active dispenser markets found
                     </td>
                   </tr>
@@ -184,25 +177,18 @@ export default function DispensersPage() {
                         </Link>
                       </td>
                       <td className="text-right text-zinc-300 font-mono px-3 py-2">{m.cheapest_price != null ? formatPrice(m.cheapest_price) : '—'}</td>
-                      <td className="text-right text-zinc-400 font-mono px-3 py-2">{m.avg_price != null ? formatPrice(m.avg_price) : '—'}</td>
                       <td className="text-right text-zinc-400 font-mono px-3 py-2">{m.last_dispense_price != null ? formatPrice(m.last_dispense_price) : '—'}</td>
                       {rolling ? (
                         <>
                           <td className={`text-right font-mono px-3 py-2 ${pctColor(tfVal(m, 'price_change', timeframe))}`}>{fmtPct(tfVal(m, 'price_change', timeframe))}</td>
                           <td className="text-right text-zinc-400 font-mono px-3 py-2">{fmtVol(tfVal(m, 'volume', timeframe))}</td>
-                          <td className="text-right text-zinc-400 font-mono px-3 py-2">{tfVal(m, 'high', timeframe) != null ? formatPrice(tfVal(m, 'high', timeframe)!) : '—'}</td>
-                          <td className="text-right text-zinc-400 font-mono px-3 py-2">{tfVal(m, 'low', timeframe) != null ? formatPrice(tfVal(m, 'low', timeframe)!) : '—'}</td>
                           <td className="text-right text-zinc-400 font-mono px-3 py-2">{tfVal(m, 'dispense_count', timeframe) ?? 0}</td>
                         </>
                       ) : (
                         <>
                           <td className="text-right text-zinc-400 font-mono px-3 py-2">{m.total_btc_spent != null && m.total_btc_spent > 0 ? formatPrice(m.total_btc_spent) : '—'}</td>
-                          <td className="text-right text-zinc-400 font-mono px-3 py-2">{m.total_dispensed != null && m.total_dispensed > 0 ? formatAmount(m.total_dispensed) : '—'}</td>
                           <td className="text-right text-zinc-400 font-mono px-3 py-2">{m.total_dispense_count ?? 0}</td>
                           <td className="text-right text-zinc-400 font-mono px-3 py-2">{m.unique_buyers ?? 0}</td>
-                          <td className="text-right text-zinc-400 font-mono px-3 py-2">{m.unique_sellers ?? 0}</td>
-                          <td className="text-right text-zinc-400 font-mono px-3 py-2">{m.total_dispensers_created ?? 0}</td>
-                          <td className="text-right text-zinc-400 font-mono px-3 py-2">{m.avg_dispense_btc != null && m.avg_dispense_btc > 0 ? formatPrice(m.avg_dispense_btc) : '—'}</td>
                         </>
                       )}
                       <td className="text-right text-zinc-400 font-mono px-3 py-2">{m.active_dispensers}</td>
