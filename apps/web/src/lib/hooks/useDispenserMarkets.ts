@@ -3,6 +3,7 @@ import { fetcher, dexUrl } from '@/lib/api/client'
 
 export interface DispenserMarketEntry {
   asset: string
+  asset_longname: string | null
   last_dispense_price: number | null
   last_dispense_time: number | null
   price_change_24h: number | null

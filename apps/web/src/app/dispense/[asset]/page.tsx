@@ -48,6 +48,7 @@ export default function AssetDispensersPage({ params }: { params: Promise<{ asse
 
   const totalSupply = pairData?.asset_info?.supply ?? 0
   const baseAsset = pairData?.base_asset ?? asset
+  const displayAsset = pairData?.asset_info?.asset_longname ?? asset
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 font-sans">
@@ -55,7 +56,7 @@ export default function AssetDispensersPage({ params }: { params: Promise<{ asse
       <DispenserMarketHeader
         pairData={pairData}
         stats={dispenserStats}
-        asset={asset}
+        asset={displayAsset}
         isLoading={pairLoading || statsLoading}
       />
 

@@ -111,7 +111,7 @@ export default function DispensersPage() {
                             className="rounded-sm"
                             unoptimized
                           />
-                          <span className="text-zinc-200 font-medium truncate hover:underline">{m.asset}</span>
+                          <span className="text-zinc-200 font-medium truncate hover:underline">{m.asset_longname ?? m.asset}</span>
                         </Link>
                       </td>
                       <td className="text-right text-zinc-300 font-mono px-3 py-2">

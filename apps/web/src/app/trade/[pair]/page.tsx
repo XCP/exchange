@@ -64,15 +64,17 @@ export default function PairOrdersPage({ params }: { params: Promise<{ pair: str
 
   const totalSupply = pairData?.asset_info?.supply ?? 0
   const baseAsset = pairData?.base_asset ?? baseSymbol
+  const displayBase = pairData?.asset_info?.asset_longname ?? baseSymbol
+  const displayMarket = `${displayBase}/${quoteSymbol}`
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 font-sans">
       {/* Full-width market header (NOT sticky) */}
       <MarketHeader
         pairData={pairData}
-        baseSymbol={baseSymbol}
+        baseSymbol={displayBase}
         quoteSymbol={quoteSymbol}
-        market={market}
+        market={displayMarket}
         isLoading={pairLoading}
         actionSlot={
           <Link

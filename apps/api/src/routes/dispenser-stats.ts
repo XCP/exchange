@@ -25,7 +25,7 @@ export async function handleDispenserStatsList(
       `SELECT COUNT(*) as total FROM dispenser_stats WHERE active_dispensers > 0`
     ),
     db.prepare(
-      `SELECT ds.asset, ds.last_dispense_price, ds.last_dispense_time,
+      `SELECT ds.asset, ds.asset_longname, ds.last_dispense_price, ds.last_dispense_time,
               ds.price_change_24h, ds.volume_24h, ds.volume_7d,
               ds.dispense_count_24h, ds.dispense_count_7d,
               ds.active_dispensers, ds.total_available, ds.cheapest_price,
