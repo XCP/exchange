@@ -409,9 +409,10 @@ export default {
               const aggStart = Date.now();
               let aggTotal = 0;
               let aggDone = false;
-              // D1 allows ~1000 queries per invocation; each batch uses ~270,
-              // so cap at 3 batches (150 pairs) to stay within limits
-              const MAX_AGG_BATCHES = 3;
+              // Without per-pair stats, each batch uses ~30 D1 queries instead
+              // of ~270. With 200 pairs/batch and 1000 queries/invocation budget,
+              // we can safely run 8 batches (1600 pairs) per cron tick.
+              const MAX_AGG_BATCHES = 8;
               for (let b = 0; b < MAX_AGG_BATCHES; b++) {
                 const r = await runCatchupAggregation(env.DB);
                 aggTotal += r.processed;

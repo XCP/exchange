@@ -1,9 +1,8 @@
 import { INTERVAL_SECONDS, ALL_INTERVALS } from "../lib/constants";
 import { D1_BATCH_LIMIT, batchExec } from "../lib/batch";
-import { updatePairStats } from "./stats";
 import { getMode } from "./state";
 
-const CATCHUP_BATCH_SIZE = 50;
+const CATCHUP_BATCH_SIZE = 200;
 
 export function bucketTimestamp(
   unixSeconds: number,
@@ -238,20 +237,6 @@ async function bulkAggregateCandlesForPairs(
 }
 
 /**
- * Bulk stats: compute rolling stats for a batch of pairs in fewer queries.
- */
-async function bulkUpdatePairStats(
-  db: D1Database,
-  pairs: { pair: string; base_asset: string; quote_asset: string }[]
-): Promise<void> {
-  // Still per-pair for stats since updatePairStats does time-windowed queries
-  // But skip pairs with zero trades
-  for (const p of pairs) {
-    await updatePairStats(db, p.pair, p.base_asset, p.quote_asset);
-  }
-}
-
-/**
  * Catch-up aggregation: processes a batch of pairs that haven't been aggregated yet.
  * Uses bulk SQL for candles — 6 queries per batch instead of 6 per pair.
  */
@@ -296,12 +281,11 @@ export async function runCatchupAggregation(
     return { done: true, processed: 0, cursor };
   }
 
-  // Bulk candle aggregation
+  // Bulk candle aggregation (skip stats during catchup — they'll be
+  // computed once we transition to FOLLOWING mode, saving ~250 D1
+  // queries per batch)
   const pairNames = pairs.results.map((p) => p.pair);
   await bulkAggregateCandlesForPairs(db, pairNames);
-
-  // Stats still per-pair
-  await bulkUpdatePairStats(db, pairs.results);
 
   const lastPair = pairs.results[pairs.results.length - 1].pair;
   await db
