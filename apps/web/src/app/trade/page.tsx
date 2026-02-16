@@ -10,6 +10,8 @@ import { formatPrice } from '@/utils/format-price'
 import { formatTimeAgo } from '@/utils/format-time-ago'
 import { getTradingDirection, getTradingPairSlug, getTradingPairString, calculatePrice, calculateAmount, assetsToTradingPairFromSymbols, getTradingPairSlugFromSymbols } from '@/utils/trading-pair'
 import { XCP_IMG_BASE } from '@/utils/constants'
+import { useTradeSummary } from '@/lib/hooks/useTradeSummary'
+import { formatAmount } from '@/utils/format-amount'
 
 type Tab = 'open' | 'matches'
 
@@ -17,6 +19,7 @@ export default function OrdersPage() {
   const [activeTab, setActiveTab] = useState<Tab>('open')
   const { orders, isLoading: ordersLoading } = useGlobalOrders(50)
   const { trades, isLoading: tradesLoading } = useGlobalTrades(50)
+  const { data: summary } = useTradeSummary()
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
@@ -25,6 +28,31 @@ export default function OrdersPage() {
           <h1 className="text-lg font-semibold text-zinc-100 mb-1">Orders</h1>
           <p className="text-xs text-zinc-500">DEX orders across all Counterparty markets</p>
         </div>
+
+        {summary && (
+          <div className="flex gap-6 mb-4 text-xs">
+            <div>
+              <span className="text-zinc-500">Trading Pairs</span>{' '}
+              <span className="text-zinc-300 font-mono">{summary.total_pairs.toLocaleString()}</span>
+            </div>
+            <div>
+              <span className="text-zinc-500">Active (24h)</span>{' '}
+              <span className="text-zinc-300 font-mono">{summary.active_pairs_24h.toLocaleString()}</span>
+            </div>
+            <div>
+              <span className="text-zinc-500">24h Volume</span>{' '}
+              <span className="text-zinc-300 font-mono">{formatAmount(summary.volume_24h)} XCP</span>
+            </div>
+            <div>
+              <span className="text-zinc-500">24h Trades</span>{' '}
+              <span className="text-zinc-300 font-mono">{summary.trades_24h.toLocaleString()}</span>
+            </div>
+            <div>
+              <span className="text-zinc-500">Total Trades</span>{' '}
+              <span className="text-zinc-300 font-mono">{summary.total_trades.toLocaleString()}</span>
+            </div>
+          </div>
+        )}
 
         {/* Tab bar */}
         <div className="flex gap-1 mb-4">

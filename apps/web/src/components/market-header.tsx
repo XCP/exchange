@@ -24,8 +24,17 @@ function getStats(p: TradingPairData | undefined, tf: Timeframe) {
   return { change: p.price_change_24h, volume: p.volume_24h, high: p.high_24h, low: p.low_24h, count: p.trade_count_24h }
 }
 
+function bestTimeframe(p: TradingPairData | undefined): Timeframe {
+  if (!p) return '24h'
+  if (p.trade_count_24h && p.trade_count_24h > 0) return '24h'
+  if (p.trade_count_7d && p.trade_count_7d > 0) return '7d'
+  if (p.trade_count_30d && p.trade_count_30d > 0) return '30d'
+  return '24h'
+}
+
 export function MarketHeader({ pairData, baseSymbol, quoteSymbol, market, isLoading, actionSlot }: MarketHeaderProps) {
-  const [tf, setTf] = useState<Timeframe>('24h')
+  const [tfOverride, setTfOverride] = useState<Timeframe | null>(null)
+  const tf = tfOverride ?? bestTimeframe(pairData)
   const stats = getStats(pairData, tf)
   const isPositive = stats.change != null && stats.change >= 0
 
@@ -112,7 +121,7 @@ export function MarketHeader({ pairData, baseSymbol, quoteSymbol, market, isLoad
           {(['24h', '7d', '30d'] as const).map((t) => (
             <button
               key={t}
-              onClick={() => setTf(t)}
+              onClick={() => setTfOverride(t)}
               className={`px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider transition-colors ${
                 tf === t
                   ? 'bg-zinc-800 text-zinc-200'

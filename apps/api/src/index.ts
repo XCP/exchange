@@ -9,6 +9,7 @@ import { handleMarkets } from "./routes/markets";
 import { handleAsset } from "./routes/asset";
 import { handlePortfolioBids, handlePortfolioDispensers, handlePortfolioOrders } from "./routes/portfolio";
 import { handleDispenserStats, handleDispenserStatsList } from "./routes/dispenser-stats";
+import { handleTradeSummary } from "./routes/trade-summary";
 import { syncBlocks } from "./indexer/sync-block";
 import { runCatchupAggregation, runCatchupStats, runCatchupDispenserStats, aggregateCandlesForPair } from "./indexer/aggregate";
 import { backfillTrades, backfillDispenses } from "./indexer/backfill";
@@ -104,6 +105,11 @@ export default {
       // Route: GET /pairs
       if (path === "/pairs") {
         return await withCors(await handlePairs(request, env.DB));
+      }
+
+      // Route: GET /trade-summary
+      if (path === "/trade-summary") {
+        return await withCors(await handleTradeSummary(env.DB));
       }
 
       // Route: GET /markets

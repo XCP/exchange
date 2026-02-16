@@ -103,15 +103,16 @@ export async function bulkUpdatePairStats(
         .bind(...pairs, t30d),
 
       // Q6: Unique traders per pair (UNION deduplicates maker/taker)
+      // Both subqueries reuse the same positional params to stay within D1's 100-param limit
       db
         .prepare(
           `SELECT pair, COUNT(DISTINCT addr) as unique_traders FROM (
              SELECT pair, maker as addr FROM trades WHERE pair IN (${phFrom(1)})
              UNION
-             SELECT pair, taker FROM trades WHERE pair IN (${phFrom(n + 1)})
+             SELECT pair, taker FROM trades WHERE pair IN (${phFrom(1)})
            ) GROUP BY pair`
         )
-        .bind(...pairs, ...pairs),
+        .bind(...pairs),
     ]);
 
     // Build lookup maps
