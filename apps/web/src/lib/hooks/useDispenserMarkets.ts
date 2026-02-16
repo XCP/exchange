@@ -37,7 +37,7 @@ interface DispenserMarketsResponse {
   summary: DispenserMarketsSummary
 }
 
-export function useDispenserMarkets(sort: string = 'active_dispensers') {
+export function useDispenserMarkets(sort: string = 'total_btc_spent') {
   const { data, error, isLoading } = useSWR<DispenserMarketsResponse>(
     dexUrl(`/dispenser-stats?sort=${sort}&limit=50`),
     fetcher,
