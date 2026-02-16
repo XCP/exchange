@@ -444,7 +444,7 @@ export default {
             }
 
             case "FOLLOWING": {
-              const sync = await syncBlocks(env.DB, env.CP_API_BASE, 5);
+              const sync = await syncBlocks(env.DB, env.CP_API_BASE, 50);
               if (sync.blocks_processed > 0) {
                 console.log(
                   `Sync: ${sync.blocks_processed} blocks (${sync.last_block}/${sync.current_block}) ` +
