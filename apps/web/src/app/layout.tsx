@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { SWRProvider } from "@/lib/swr-provider";
 import { WalletProvider } from "@/lib/wallet/wallet-context";
+import { SatsProvider } from "@/lib/sats-context";
 import { TopBar } from "@/components/top-bar";
 import { Footer } from "@/components/footer";
 import { FathomAnalytics } from "./fathom";
@@ -35,11 +36,13 @@ export default function RootLayout({
       >
         <FathomAnalytics />
         <SWRProvider>
-          <WalletProvider>
-            <TopBar />
-            {children}
-            <Footer />
-          </WalletProvider>
+          <SatsProvider>
+            <WalletProvider>
+              <TopBar />
+              {children}
+              <Footer />
+            </WalletProvider>
+          </SatsProvider>
         </SWRProvider>
       </body>
     </html>

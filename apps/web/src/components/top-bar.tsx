@@ -4,10 +4,12 @@ import Link from 'next/link'
 import { SearchInput } from '@/components/search-input'
 import { WalletButton } from '@/components/wallet-button'
 import { useBtcPrice, useXcpPrice } from '@/lib/hooks/useNetworkInfo'
+import { useSatsMode } from '@/lib/sats-context'
 
 export function TopBar() {
   const btcPrice = useBtcPrice()
   const { xcpUsd } = useXcpPrice()
+  const { satsMode, toggleSatsMode } = useSatsMode()
 
   return (
     <header className="sticky top-0 z-50 flex items-center justify-between gap-4 border-b border-zinc-800 bg-zinc-950/95 backdrop-blur-sm px-4 py-2">
@@ -48,6 +50,15 @@ export function TopBar() {
             {xcpUsd != null ? `$${xcpUsd.toFixed(2)}` : '—'}
           </span>
         </div>
+        <button
+          onClick={toggleSatsMode}
+          className="hidden md:flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-bold tracking-wider border border-zinc-700 hover:border-zinc-500 transition-colors"
+          title={satsMode ? 'Switch to BTC' : 'Switch to sats'}
+        >
+          <span className={satsMode ? 'text-zinc-500' : 'text-orange-400'}>BTC</span>
+          <span className="text-zinc-600">/</span>
+          <span className={satsMode ? 'text-orange-400' : 'text-zinc-500'}>SATS</span>
+        </button>
         <div className="h-4 w-px bg-zinc-800" />
         <WalletButton />
       </div>

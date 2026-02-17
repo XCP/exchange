@@ -3,6 +3,8 @@
 import { useState } from 'react'
 import Image from 'next/image'
 import { formatAmount } from '@/utils/format-amount'
+import { formatPrice } from '@/utils/format-price'
+import { useSatsMode } from '@/lib/sats-context'
 import { XCP_IMG_BASE } from '@/utils/constants'
 import type { TradingPairData } from '@/lib/hooks/useTradingPair'
 import type { DispenserStats } from '@/lib/hooks/useDispenserStats'
@@ -25,7 +27,9 @@ function getStats(s: DispenserStats | undefined, tf: Timeframe) {
 }
 
 export function DispenserMarketHeader({ pairData, stats, asset, isLoading, actionSlot }: DispenserMarketHeaderProps) {
-  const market = `${asset}/BTC`
+  const { satsMode } = useSatsMode()
+  const btcLabel = satsMode ? 'sats' : 'BTC'
+  const market = `${asset}/${btcLabel.toUpperCase()}`
   const [tf, setTf] = useState<Timeframe>('24h')
   const tfStats = getStats(stats, tf)
   const isPositive = tfStats.change != null && tfStats.change >= 0
@@ -64,9 +68,9 @@ export function DispenserMarketHeader({ pairData, stats, asset, isLoading, actio
           ) : (
             <>
               <span className="text-lg font-semibold text-zinc-100 font-mono max-sm:text-base">
-                {stats?.last_dispense_price != null ? formatAmount(stats.last_dispense_price) : '—'}
+                {stats?.last_dispense_price != null ? formatPrice(stats.last_dispense_price, satsMode) : '—'}
               </span>
-              <span className="text-xs text-zinc-500">BTC</span>
+              <span className="text-xs text-zinc-500">{btcLabel}</span>
             </>
           )}
         </div>
@@ -85,19 +89,19 @@ export function DispenserMarketHeader({ pairData, stats, asset, isLoading, actio
           <div>
             <div className="text-xs text-zinc-500">{tf} High</div>
             <div className="text-xs text-zinc-300 font-mono">
-              {tfStats.high != null ? formatAmount(tfStats.high) : '—'}
+              {tfStats.high != null ? formatPrice(tfStats.high, satsMode) : '—'}
             </div>
           </div>
           <div>
             <div className="text-xs text-zinc-500">{tf} Low</div>
             <div className="text-xs text-zinc-300 font-mono">
-              {tfStats.low != null ? formatAmount(tfStats.low) : '—'}
+              {tfStats.low != null ? formatPrice(tfStats.low, satsMode) : '—'}
             </div>
           </div>
           <div>
             <div className="text-xs text-zinc-500">{tf} Vol</div>
             <div className="text-xs text-zinc-300 font-mono">
-              {tfStats.volume ? `${formatAmount(tfStats.volume)} BTC` : '—'}
+              {tfStats.volume ? `${formatPrice(tfStats.volume, satsMode)} ${btcLabel}` : '—'}
             </div>
           </div>
           <div>

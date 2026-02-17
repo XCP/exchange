@@ -6,6 +6,7 @@ import { MarketsTable } from '@/components/markets-table'
 import { DispensersEmpty } from '@/components/dispensers-empty'
 import { formatAddress } from '@/utils/format-address'
 import { formatPrice } from '@/utils/format-price'
+import { useSatsMode } from '@/lib/sats-context'
 import type { Dispense } from '@/types/trading'
 
 type TabKey = 'dispenses' | 'holders' | 'markets' | 'dispensers'
@@ -25,6 +26,7 @@ interface DispenserDataTabsProps {
 }
 
 export function DispenserDataTabs({ asset, totalSupply, dispenses, dispensesLoading }: DispenserDataTabsProps) {
+  const { satsMode } = useSatsMode()
   const [activeTab, setActiveTab] = useState<TabKey>('dispenses')
 
   return (
@@ -70,6 +72,7 @@ function compactTime(ts: number): string {
 }
 
 export function DispensesTable({ dispenses, isLoading, asset }: { dispenses: Dispense[]; isLoading: boolean; asset?: string }) {
+  const { satsMode } = useSatsMode()
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -94,7 +97,7 @@ export function DispensesTable({ dispenses, isLoading, asset }: { dispenses: Dis
             <th className="text-left font-normal px-2 py-1.5 w-10">Time</th>
             <th className="text-right font-normal px-2 py-1.5">Price</th>
             <th className="text-right font-normal px-2 py-1.5">{asset ?? 'Qty'}</th>
-            <th className="text-right font-normal px-2 py-1.5">BTC</th>
+            <th className="text-right font-normal px-2 py-1.5">{satsMode ? 'Sats' : 'BTC'}</th>
             <th className="text-right font-normal px-2 py-1.5 max-sm:hidden">Buyer</th>
             <th className="text-right font-normal px-2 py-1.5 max-sm:hidden">Seller</th>
             <th className="font-normal px-2 py-1.5 w-6 max-sm:hidden"><span className="sr-only">Tx</span></th>
@@ -114,13 +117,13 @@ export function DispensesTable({ dispenses, isLoading, asset }: { dispenses: Dis
                   {d.block_time ? compactTime(d.block_time) : '—'}
                 </td>
                 <td className="text-right text-zinc-300 font-mono px-2 py-px">
-                  {formatPrice(price)}
+                  {formatPrice(price, satsMode)}
                 </td>
                 <td className="text-right text-green-400 font-mono px-2 py-px">
                   {formatPrice(qty)}
                 </td>
                 <td className="text-right text-zinc-400 font-mono px-2 py-px">
-                  {formatPrice(btc)}
+                  {formatPrice(btc, satsMode)}
                 </td>
                 <td className="text-right text-zinc-500 font-mono px-2 py-px max-sm:hidden">
                   {formatAddress(d.destination)}

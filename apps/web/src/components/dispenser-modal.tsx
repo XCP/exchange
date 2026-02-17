@@ -3,7 +3,9 @@
 import { useEffect } from 'react'
 import { formatTimeAgo } from '@/utils/format-time-ago'
 import { formatAmount } from '@/utils/format-amount'
+import { formatPrice } from '@/utils/format-price'
 import { formatAddress } from '@/utils/format-address'
+import { useSatsMode } from '@/lib/sats-context'
 import { usePendingDispenses } from '@/lib/hooks/usePendingDispenses'
 import type { Dispenser } from '@/types/trading'
 
@@ -14,6 +16,8 @@ interface DispenserModalProps {
 }
 
 export function DispenserModal({ dispenser, asset, onClose }: DispenserModalProps) {
+  const { satsMode } = useSatsMode()
+  const btcLabel = satsMode ? 'sats' : 'BTC'
   const { pendingCount } = usePendingDispenses(dispenser.source)
 
   // Close on Escape
@@ -62,16 +66,16 @@ export function DispenserModal({ dispenser, asset, onClose }: DispenserModalProp
           {/* Price hero */}
           <div className="flex items-baseline gap-3 mb-4">
             <span className="text-2xl font-semibold text-green-400 font-mono">
-              {formatAmount(dispenser.price_normalized)}
+              {formatPrice(parseFloat(dispenser.price_normalized), satsMode)}
             </span>
-            <span className="text-xs text-zinc-500">BTC / {asset}</span>
+            <span className="text-xs text-zinc-500">{btcLabel} / {asset}</span>
           </div>
 
           {/* Stats grid */}
           <div className="grid grid-cols-2 gap-3 mb-4">
             <div>
               <div className="text-[10px] uppercase tracking-wider text-zinc-600 mb-0.5">Per Dispense</div>
-              <div className="text-sm text-zinc-200 font-mono">{formatAmount(dispenser.satoshi_price_normalized)} BTC</div>
+              <div className="text-sm text-zinc-200 font-mono">{formatPrice(parseFloat(dispenser.satoshi_price_normalized), satsMode)} {btcLabel}</div>
             </div>
             <div>
               <div className="text-[10px] uppercase tracking-wider text-zinc-600 mb-0.5">Tokens / Dispense</div>

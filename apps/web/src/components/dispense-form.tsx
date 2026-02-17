@@ -7,6 +7,8 @@ import { useBalance } from '@/lib/hooks/useBalance'
 import { useFeeRate } from '@/lib/hooks/useNetworkInfo'
 import { formatAddress } from '@/utils/format-address'
 import { formatAmount } from '@/utils/format-amount'
+import { formatPrice } from '@/utils/format-price'
+import { useSatsMode } from '@/lib/sats-context'
 import { COMPOSE_STATUS_LABELS } from '@/utils/constants'
 import type { Dispenser } from '@/types/trading'
 
@@ -18,6 +20,8 @@ interface DispenseFormProps {
 }
 
 export function DispenseForm({ asset, sortedDispensers, selectedIndex, onSelectIndex }: DispenseFormProps) {
+  const { satsMode } = useSatsMode()
+  const btcLabel = satsMode ? 'sats' : 'BTC'
   const { status: walletStatus, address, connect, connecting } = useWallet()
   const { balance: assetBalance } = useBalance(address, asset)
   const feeRate = useFeeRate()
@@ -164,7 +168,7 @@ export function DispenseForm({ asset, sortedDispensers, selectedIndex, onSelectI
               >
                 {sortedDispensers.map((d, i) => (
                   <option key={d.tx_hash} value={i}>
-                    {formatAmount(d.price_normalized)} BTC/ea — {formatAddress(d.source)}
+                    {formatPrice(parseFloat(d.price_normalized), satsMode)} {btcLabel}/ea — {formatAddress(d.source)}
                   </option>
                 ))}
               </select>
@@ -173,9 +177,9 @@ export function DispenseForm({ asset, sortedDispensers, selectedIndex, onSelectI
 
           {/* BTC price per dispense (read-only) */}
           <div>
-            <label className="mb-1 block text-xs text-zinc-500">BTC per Dispense</label>
+            <label className="mb-1 block text-xs text-zinc-500">{btcLabel.toUpperCase()} per Dispense</label>
             <div className="w-full rounded-sm border border-zinc-800 bg-zinc-900/50 px-3 py-1.5 text-xs text-zinc-400 font-mono">
-              {selected ? `${formatAmount(selected.satoshi_price_normalized)} BTC` : '—'}
+              {selected ? `${formatPrice(parseFloat(selected.satoshi_price_normalized), satsMode)} ${btcLabel}` : '—'}
             </div>
           </div>
 
@@ -224,8 +228,8 @@ export function DispenseForm({ asset, sortedDispensers, selectedIndex, onSelectI
 
           {/* BTC cost */}
           <div className="flex items-center justify-between pt-1 text-xs">
-            <span className="text-zinc-600">Total BTC</span>
-            <span className="text-zinc-500 font-mono">{btcCost} BTC</span>
+            <span className="text-zinc-600">Total {btcLabel.toUpperCase()}</span>
+            <span className="text-zinc-500 font-mono">{satsMode ? formatPrice(parseFloat(btcCost) || 0, true) : btcCost} {btcLabel}</span>
           </div>
 
           {actionButton('green', `Buy ${asset}`, handleBuy)}
@@ -235,7 +239,7 @@ export function DispenseForm({ asset, sortedDispensers, selectedIndex, onSelectI
         <div className="space-y-2">
           {/* Price per token */}
           <div>
-            <label className="mb-1 block text-xs text-zinc-500">Price per {asset} (BTC)</label>
+            <label className="mb-1 block text-xs text-zinc-500">Price per {asset} ({btcLabel.toUpperCase()})</label>
             <input
               type="text"
               value={sellPrice}
@@ -294,9 +298,9 @@ export function DispenseForm({ asset, sortedDispensers, selectedIndex, onSelectI
 
           {/* BTC per dispense (calculated) */}
           <div>
-            <label className="mb-1 block text-xs text-zinc-500">BTC per Dispense</label>
+            <label className="mb-1 block text-xs text-zinc-500">{btcLabel.toUpperCase()} per Dispense</label>
             <div className="w-full rounded-sm border border-zinc-800 bg-zinc-900/50 px-3 py-1.5 text-xs text-zinc-400 font-mono">
-              {sellBtcPerDispense} BTC
+              {satsMode ? formatPrice(parseFloat(sellBtcPerDispense) || 0, true) : sellBtcPerDispense} {btcLabel}
             </div>
           </div>
 

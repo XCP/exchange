@@ -22,6 +22,7 @@ import type {
 } from '@/lib/hooks/useAnalytics'
 import { formatAmount } from '@/utils/format-amount'
 import { formatPrice } from '@/utils/format-price'
+import { useSatsMode } from '@/lib/sats-context'
 import { XCP_IMG_BASE } from '@/utils/constants'
 
 // ── Formatting helpers ──────────────────────────────────────────────
@@ -370,7 +371,7 @@ function TopPairsTable({ pairs, tfLabel }: { pairs: AnalyticsTopPair[]; tfLabel:
   )
 }
 
-function TopDispensersTable({ dispensers, tfLabel }: { dispensers: AnalyticsTopDispenser[]; tfLabel: string }) {
+function TopDispensersTable({ dispensers, tfLabel, satsMode }: { dispensers: AnalyticsTopDispenser[]; tfLabel: string; satsMode: boolean }) {
   return (
     <div className="bg-zinc-900/50 border border-zinc-800 rounded-sm">
       <div className="px-3 py-2 text-xs text-zinc-500">Top Dispensers ({tfLabel} Volume)</div>
@@ -400,7 +401,7 @@ function TopDispensersTable({ dispensers, tfLabel }: { dispensers: AnalyticsTopD
                   <span className="text-zinc-200">{d.asset_longname ?? d.asset}</span>
                 </Link>
               </td>
-              <td className="text-right text-zinc-400 font-mono px-3 py-1.5">{formatPrice(d.volume)}</td>
+              <td className="text-right text-zinc-400 font-mono px-3 py-1.5">{formatPrice(d.volume, satsMode)}</td>
               <td className={`text-right font-mono px-3 py-1.5 ${pctColor(d.price_change)}`}>
                 {fmtPct(d.price_change)}
               </td>
@@ -463,6 +464,8 @@ function TrendingTable({ trending }: { trending: AnalyticsTrending[] }) {
 // ── Main Page ───────────────────────────────────────────────────────
 
 export default function AnalyticsPage() {
+  const { satsMode } = useSatsMode()
+  const btcLabel = satsMode ? 'sats' : 'BTC'
   const [timeframe, setTimeframe] = useState<Timeframe>('24h')
   const [hideLowQuality, setHideLowQuality] = useState(true)
 
@@ -545,8 +548,8 @@ export default function AnalyticsPage() {
               />
               <CounterCard
                 label="Dispense Volume"
-                value={dispenseSummary ? fmtBig(dispenseSummary.total_btc_spent) + ' BTC' : '—'}
-                sub={!isAll && dispenseSummary ? `${tfLabel}: ${fmtBig(dispenseSummary.tf_volume)} BTC` : undefined}
+                value={dispenseSummary ? fmtBig(dispenseSummary.total_btc_spent) + ` ${btcLabel.toUpperCase()}` : '—'}
+                sub={!isAll && dispenseSummary ? `${tfLabel}: ${fmtBig(dispenseSummary.tf_volume)} ${btcLabel.toUpperCase()}` : undefined}
               />
               <CounterCard
                 label="Total Dispenses"
@@ -578,12 +581,12 @@ export default function AnalyticsPage() {
               <CumulativeChart
                 data={dailyDispenseVolume}
                 color="#3b82f6"
-                label="Cumulative Dispense Volume (BTC)"
+                label={`Cumulative Dispense Volume (${btcLabel.toUpperCase()})`}
               />
               <DailyBarChart
                 data={dailyDispenseVolume}
                 color="#3b82f6"
-                label="Daily Dispense Volume (BTC)"
+                label={`Daily Dispense Volume (${btcLabel.toUpperCase()})`}
               />
             </div>
 
@@ -598,7 +601,7 @@ export default function AnalyticsPage() {
             {/* Leaderboards */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
               <TopPairsTable pairs={topPairs} tfLabel={tfLabel} />
-              <TopDispensersTable dispensers={topDispensers} tfLabel={tfLabel} />
+              <TopDispensersTable dispensers={topDispensers} tfLabel={tfLabel} satsMode={satsMode} />
               <TrendingTable trending={trending} />
             </div>
           </>

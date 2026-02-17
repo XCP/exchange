@@ -9,6 +9,7 @@ import { formatAddress } from '@/utils/format-address'
 import { formatTimeAgo } from '@/utils/format-time-ago'
 import { formatPrice } from '@/utils/format-price'
 import { formatAmount } from '@/utils/format-amount'
+import { useSatsMode } from '@/lib/sats-context'
 import { XCP_IMG_BASE } from '@/utils/constants'
 
 type Tab = 'markets' | 'dispensers' | 'dispenses'
@@ -54,6 +55,7 @@ function dispSortCol(id: string, tf: Timeframe): string {
 }
 
 export default function DispensersPage() {
+  const { satsMode } = useSatsMode()
   const [activeTab, setActiveTab] = useState<Tab>('markets')
   const [hideLowQuality, setHideLowQuality] = useState(true)
   const [timeframe, setTimeframe] = useState<Timeframe>('24h')
@@ -109,8 +111,8 @@ export default function DispensersPage() {
               <span className="text-zinc-300 font-mono">{summary.total_dispenses.toLocaleString()}</span>
             </div>
             <div>
-              <span className="text-zinc-500">BTC Volume</span>{' '}
-              <span className="text-zinc-300 font-mono">{formatPrice(summary.total_btc_volume)}</span>
+              <span className="text-zinc-500">{satsMode ? 'Sats' : 'BTC'} Volume</span>{' '}
+              <span className="text-zinc-300 font-mono">{formatPrice(summary.total_btc_volume, satsMode)}</span>
             </div>
             <div>
               <span className="text-zinc-500">Unique Buyers</span>{' '}
@@ -182,7 +184,7 @@ export default function DispensersPage() {
                     </>
                   ) : (
                     <>
-                      <SortHeader id="vol" label="Total BTC" />
+                      <SortHeader id="vol" label={satsMode ? 'Total Sats' : 'Total BTC'} />
                       <SortHeader id="disp" label="Dispenses" />
                       <SortHeader id="buyers" label="Buyers" />
                     </>
@@ -221,8 +223,8 @@ export default function DispensersPage() {
                           <span className="text-zinc-200 font-medium hover:underline">{m.asset_longname ?? m.asset}</span>
                         </Link>
                       </td>
-                      <td className="text-right text-zinc-300 font-mono px-3 py-2">{m.cheapest_price != null ? formatPrice(m.cheapest_price) : '—'}</td>
-                      <td className="text-right text-zinc-400 font-mono px-3 py-2">{m.last_dispense_price != null ? formatPrice(m.last_dispense_price) : '—'}</td>
+                      <td className="text-right text-zinc-300 font-mono px-3 py-2">{m.cheapest_price != null ? formatPrice(m.cheapest_price, satsMode) : '—'}</td>
+                      <td className="text-right text-zinc-400 font-mono px-3 py-2">{m.last_dispense_price != null ? formatPrice(m.last_dispense_price, satsMode) : '—'}</td>
                       {rolling ? (
                         <>
                           <td className={`text-right font-mono px-3 py-2 ${pctColor(tfVal(m, 'price_change', timeframe))}`}>{fmtPct(tfVal(m, 'price_change', timeframe))}</td>
@@ -231,7 +233,7 @@ export default function DispensersPage() {
                         </>
                       ) : (
                         <>
-                          <td className="text-right text-zinc-400 font-mono px-3 py-2">{m.total_btc_spent != null && m.total_btc_spent > 0 ? formatPrice(m.total_btc_spent) : '—'}</td>
+                          <td className="text-right text-zinc-400 font-mono px-3 py-2">{m.total_btc_spent != null && m.total_btc_spent > 0 ? formatPrice(m.total_btc_spent, satsMode) : '—'}</td>
                           <td className="text-right text-zinc-400 font-mono px-3 py-2">{m.total_dispense_count ?? 0}</td>
                           <td className="text-right text-zinc-400 font-mono px-3 py-2">{m.unique_buyers ?? 0}</td>
                         </>
@@ -285,7 +287,7 @@ export default function DispensersPage() {
           <div className="border border-zinc-800 rounded-sm overflow-hidden">
             <div className="grid grid-cols-6 gap-0 px-4 py-2.5 text-xs text-zinc-500 border-b border-zinc-800 bg-zinc-900/50 max-sm:grid-cols-4">
               <span>Asset</span>
-              <span className="text-right">BTC Price</span>
+              <span className="text-right">{satsMode ? 'Sats' : 'BTC'} Price</span>
               <span className="text-right">Per Dispense</span>
               <span className="text-right max-sm:hidden">Remaining</span>
               <span className="text-right max-sm:hidden">Source</span>
@@ -341,7 +343,7 @@ export default function DispensersPage() {
             <div className="grid grid-cols-6 gap-0 px-4 py-2.5 text-xs text-zinc-500 border-b border-zinc-800 bg-zinc-900/50 max-sm:grid-cols-4">
               <span>Asset</span>
               <span className="text-right">Quantity</span>
-              <span className="text-right">BTC Paid</span>
+              <span className="text-right">{satsMode ? 'Sats' : 'BTC'} Paid</span>
               <span className="text-right max-sm:hidden">Buyer</span>
               <span className="text-right max-sm:hidden">Seller</span>
               <span className="text-right">Time</span>

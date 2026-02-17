@@ -1,5 +1,6 @@
 import { formatPrice } from '@/utils/format-price'
 import { formatAmount } from '@/utils/format-amount'
+import { useSatsMode } from '@/lib/sats-context'
 import type { DispenserStats } from '@/lib/hooks/useDispenserStats'
 
 interface DispenserQuickStatsProps {
@@ -7,14 +8,16 @@ interface DispenserQuickStatsProps {
 }
 
 export function DispenserQuickStats({ stats }: DispenserQuickStatsProps) {
+  const { satsMode } = useSatsMode()
+  const btcLabel = satsMode ? 'Sats' : 'BTC'
   return (
     <div className="p-3 border-b border-zinc-800">
       <div className="text-xs text-zinc-500 font-medium mb-2">Dispenser Stats</div>
       <div className="grid grid-cols-2 gap-x-4 gap-y-2">
         <div>
-          <div className="text-xs text-zinc-600">Total BTC Spent</div>
+          <div className="text-xs text-zinc-600">Total {btcLabel} Spent</div>
           <div className="text-xs text-zinc-300 font-mono">
-            {stats.total_btc_spent != null ? formatPrice(stats.total_btc_spent) : '—'}
+            {stats.total_btc_spent != null ? formatPrice(stats.total_btc_spent, satsMode) : '—'}
           </div>
         </div>
         <div>
@@ -36,9 +39,9 @@ export function DispenserQuickStats({ stats }: DispenserQuickStatsProps) {
           </div>
         </div>
         <div>
-          <div className="text-xs text-zinc-600">Avg BTC/Dispense</div>
+          <div className="text-xs text-zinc-600">Avg {btcLabel}/Dispense</div>
           <div className="text-xs text-zinc-300 font-mono">
-            {stats.avg_dispense_btc != null ? formatPrice(stats.avg_dispense_btc) : '—'}
+            {stats.avg_dispense_btc != null ? formatPrice(stats.avg_dispense_btc, satsMode) : '—'}
           </div>
         </div>
         <div>

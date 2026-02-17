@@ -2,7 +2,9 @@
 
 import { formatAddress } from '@/utils/format-address'
 import { formatAmount } from '@/utils/format-amount'
+import { formatPrice } from '@/utils/format-price'
 import { formatTimeAgo } from '@/utils/format-time-ago'
+import { useSatsMode } from '@/lib/sats-context'
 import type { Dispenser } from '@/types/trading'
 
 interface PriceLevel {
@@ -30,6 +32,8 @@ export function DispenserDepthChart({
   onSelectIndex,
   onDispenserClick,
 }: DispenserDepthChartProps) {
+  const { satsMode } = useSatsMode()
+  const btcLabel = satsMode ? 'sats' : 'BTC'
   const levels = (() => {
     const map = new Map<number, PriceLevel>()
     dispensers.forEach((d, i) => {
@@ -86,7 +90,7 @@ export function DispenserDepthChart({
         <div className="flex items-center gap-3">
           {selectedLevel && (
             <span className="text-[11px] font-mono text-green-400">
-              {formatAmount(selectedLevel.priceLabel)} BTC — {selectedLevel.dispensers.length} dispenser{selectedLevel.dispensers.length !== 1 ? 's' : ''}
+              {formatPrice(parseFloat(selectedLevel.priceLabel), satsMode)} {btcLabel} — {selectedLevel.dispensers.length} dispenser{selectedLevel.dispensers.length !== 1 ? 's' : ''}
             </span>
           )}
           <span className="text-[11px] font-mono text-zinc-500">
@@ -144,12 +148,12 @@ export function DispenserDepthChart({
         <div className="border-t border-zinc-800">
           {singleDispenser ? (
             /* Single dispenser — show detail inline */
-            <SingleDispenserDetail dispenser={singleDispenser} />
+            <SingleDispenserDetail dispenser={singleDispenser} satsMode={satsMode} btcLabel={btcLabel} />
           ) : (
             /* Multiple dispensers — show list, click opens modal */
             <>
               <div className="grid grid-cols-4 gap-0 px-3 py-1 text-[10px] text-zinc-600 border-b border-zinc-800/50">
-                <span>BTC Price</span>
+                <span>{btcLabel.toUpperCase()} Price</span>
                 <span className="text-right">Per Dispense</span>
                 <span className="text-right">Remaining</span>
                 <span className="text-right">Source</span>
@@ -201,7 +205,7 @@ export function DispenserDepthChart({
 }
 
 /** Compact inline detail for a single dispenser at a price level */
-function SingleDispenserDetail({ dispenser }: { dispenser: Dispenser }) {
+function SingleDispenserDetail({ dispenser, satsMode, btcLabel }: { dispenser: Dispenser; satsMode: boolean; btcLabel: string }) {
   const remainingPct = dispenser.escrow_quantity > 0
     ? (dispenser.give_remaining / dispenser.escrow_quantity) * 100
     : 0
@@ -212,7 +216,7 @@ function SingleDispenserDetail({ dispenser }: { dispenser: Dispenser }) {
       <div className="flex items-center gap-6 text-[11px]">
         <div>
           <span className="text-zinc-600 mr-1.5">Per Dispense</span>
-          <span className="text-zinc-300 font-mono">{formatAmount(dispenser.satoshi_price_normalized)} BTC</span>
+          <span className="text-zinc-300 font-mono">{formatPrice(parseFloat(dispenser.satoshi_price_normalized), satsMode)} {btcLabel}</span>
         </div>
         <div>
           <span className="text-zinc-600 mr-1.5">Tokens</span>
