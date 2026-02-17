@@ -55,7 +55,7 @@ export async function handleAnalytics(
     db.prepare(
       `SELECT timestamp, SUM(volume) AS volume, SUM(trades) AS trades
        FROM candles
-       WHERE interval = '1d'
+       WHERE interval = '1d'${includeHidden ? "" : " AND NOT EXISTS (SELECT 1 FROM pair_stats ps WHERE ps.pair = candles.pair AND ps.hidden = 1)"}
        GROUP BY timestamp
        ORDER BY timestamp`
     ),
@@ -65,6 +65,7 @@ export async function handleAnalytics(
               SUM(btc_amount) AS volume,
               COUNT(*) AS dispenses
        FROM dispenses
+       WHERE 1=1${includeHidden ? "" : " AND NOT EXISTS (SELECT 1 FROM dispenser_stats ds2 WHERE ds2.asset = dispenses.asset AND ds2.hidden = 1)"}
        GROUP BY 1
        ORDER BY 1`
     ),
