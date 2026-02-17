@@ -224,6 +224,7 @@ function ComboVolumeChart({
     const histSeries = chart.addSeries(HistogramSeries, {
       priceFormat: { type: 'custom', formatter: (v: number) => fmtBig(v) },
       priceScaleId: 'right',
+      lastValueVisible: false,
     })
     histSeries.setData(
       monthlyData.map((d) => ({ ...d, color: color + '99' }))
