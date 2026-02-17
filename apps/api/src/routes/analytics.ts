@@ -29,6 +29,8 @@ export async function handleAnalytics(
     trendingCandidates,
     topMakersResult,
     topTakersResult,
+    topBtcBuyersResult,
+    topBtcSellersResult,
   ] = await db.batch([
     // 1. Trade summary (always shows all-time totals + selected timeframe rolling)
     db.prepare(
@@ -119,14 +121,38 @@ export async function handleAnalytics(
       `SELECT maker AS address, ROUND(SUM(volume), 2) AS volume, COUNT(*) AS trades
        FROM trades
        WHERE quote_asset = 'XCP'${includeHidden ? "" : " AND NOT EXISTS (SELECT 1 FROM pair_stats ps WHERE ps.pair = trades.pair AND ps.hidden = 1)"}
-       GROUP BY maker ORDER BY volume DESC LIMIT 20`
+       GROUP BY maker ORDER BY volume DESC LIMIT 30`
     ),
     // 9. Top 10 takers by XCP volume (only XCP-quoted pairs so units are comparable)
     db.prepare(
       `SELECT taker AS address, ROUND(SUM(volume), 2) AS volume, COUNT(*) AS trades
        FROM trades
        WHERE quote_asset = 'XCP'${includeHidden ? "" : " AND NOT EXISTS (SELECT 1 FROM pair_stats ps WHERE ps.pair = trades.pair AND ps.hidden = 1)"}
-       GROUP BY taker ORDER BY volume DESC LIMIT 20`
+       GROUP BY taker ORDER BY volume DESC LIMIT 30`
+    ),
+    // 10. Top 30 BTC buyers (BTC-quoted trade takers + dispense buyers)
+    db.prepare(
+      `SELECT address, ROUND(SUM(volume), 8) AS volume, SUM(trades) AS trades FROM (
+         SELECT taker AS address, SUM(volume) AS volume, COUNT(*) AS trades
+         FROM trades WHERE quote_asset = 'BTC'${includeHidden ? "" : " AND NOT EXISTS (SELECT 1 FROM pair_stats ps WHERE ps.pair = trades.pair AND ps.hidden = 1)"}
+         GROUP BY taker
+         UNION ALL
+         SELECT source AS address, SUM(btc_amount) AS volume, COUNT(*) AS trades
+         FROM dispenses${includeHidden ? "" : " WHERE NOT EXISTS (SELECT 1 FROM dispenser_stats ds2 WHERE ds2.asset = dispenses.asset AND ds2.hidden = 1)"}
+         GROUP BY source
+       ) GROUP BY address ORDER BY volume DESC LIMIT 30`
+    ),
+    // 11. Top 30 BTC sellers (BTC-quoted trade makers + dispenser operators)
+    db.prepare(
+      `SELECT address, ROUND(SUM(volume), 8) AS volume, SUM(trades) AS trades FROM (
+         SELECT maker AS address, SUM(volume) AS volume, COUNT(*) AS trades
+         FROM trades WHERE quote_asset = 'BTC'${includeHidden ? "" : " AND NOT EXISTS (SELECT 1 FROM pair_stats ps WHERE ps.pair = trades.pair AND ps.hidden = 1)"}
+         GROUP BY maker
+         UNION ALL
+         SELECT d.source AS address, SUM(di.btc_amount) AS volume, COUNT(*) AS trades
+         FROM dispenses di JOIN dispensers d ON di.dispenser_hash = d.tx_hash${includeHidden ? "" : " WHERE NOT EXISTS (SELECT 1 FROM dispenser_stats ds2 WHERE ds2.asset = di.asset AND ds2.hidden = 1)"}
+         GROUP BY d.source
+       ) GROUP BY address ORDER BY volume DESC LIMIT 30`
     ),
   ]);
 
@@ -190,6 +216,8 @@ export async function handleAnalytics(
       trending,
       top_makers: topMakersResult.results,
       top_takers: topTakersResult.results,
+      top_btc_buyers: topBtcBuyersResult.results,
+      top_btc_sellers: topBtcSellersResult.results,
     },
     {
       headers: { "Cache-Control": "public, max-age=300" },

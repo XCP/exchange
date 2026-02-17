@@ -14,8 +14,6 @@ import {
 import { useAnalytics } from '@/lib/hooks/useAnalytics'
 import type {
   Timeframe,
-  DailyTradeVolume,
-  DailyDispenseVolume,
   AnalyticsTopPair,
   AnalyticsTopDispenser,
   AnalyticsTrending,
@@ -260,84 +258,6 @@ function ComboVolumeChart({
   )
 }
 
-// ── ActivityChart (stacked histogram: trades + dispenses) ───────────
-
-function ActivityChart({
-  tradeData,
-  dispenseData,
-}: {
-  tradeData: DailyTradeVolume[]
-  dispenseData: DailyDispenseVolume[]
-}) {
-  const { containerRef, chartRef } = useChartContainer(260)
-  const height = 260
-
-  useEffect(() => {
-    if (!containerRef.current || (tradeData.length === 0 && dispenseData.length === 0)) return
-
-    if (chartRef.current) {
-      chartRef.current.remove()
-      chartRef.current = null
-    }
-
-    const chart = createChart(containerRef.current, {
-      ...baseChartOptions(),
-      width: containerRef.current.clientWidth,
-      height,
-    })
-
-    if (tradeData.length > 0) {
-      const tradeSeries = chart.addSeries(HistogramSeries, {
-        color: '#22c55ecc',
-        priceFormat: { type: 'custom', formatter: (v: number) => fmtBig(v, 0) },
-        priceScaleId: 'left',
-      })
-      tradeSeries.setData(
-        tradeData.map((d) => ({ time: d.timestamp as Time, value: d.trades, color: '#22c55eaa' }))
-      )
-    }
-
-    if (dispenseData.length > 0) {
-      const dispenseSeries = chart.addSeries(HistogramSeries, {
-        color: '#3b82f6cc',
-        priceFormat: { type: 'custom', formatter: (v: number) => fmtBig(v, 0) },
-        priceScaleId: 'right',
-      })
-      dispenseSeries.setData(
-        dispenseData.map((d) => ({ time: d.timestamp as Time, value: d.dispenses, color: '#3b82f6aa' }))
-      )
-    }
-
-    chart.timeScale().fitContent()
-    chartRef.current = chart
-
-    const ro = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        chart.applyOptions({ width: entry.contentRect.width })
-      }
-    })
-    ro.observe(containerRef.current)
-    return () => ro.disconnect()
-  }, [tradeData, dispenseData, height]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  return (
-    <div className="bg-zinc-900/50 border border-zinc-800 rounded-sm">
-      <div className="px-3 py-2 flex items-center gap-4">
-        <span className="text-xs text-zinc-500">Daily Activity</span>
-        <span className="flex items-center gap-1">
-          <span className="inline-block w-2 h-2 rounded-full bg-green-500" />
-          <span className="text-[10px] text-zinc-600">Trades</span>
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="inline-block w-2 h-2 rounded-full bg-blue-500" />
-          <span className="text-[10px] text-zinc-600">Dispenses</span>
-        </span>
-      </div>
-      <div ref={containerRef} style={{ height, width: '100%' }} />
-    </div>
-  )
-}
-
 // ── LeaderboardTable ────────────────────────────────────────────────
 
 function TopPairsTable({ pairs, tfLabel }: { pairs: AnalyticsTopPair[]; tfLabel: string }) {
@@ -478,33 +398,39 @@ function TrendingTable({ trending }: { trending: AnalyticsTrending[] }) {
 // ── TopTradersTable ──────────────────────────────────────────────────
 
 function TopTradersTable({
-  makers,
-  takers,
+  title,
+  unit,
+  tabLabels,
+  listA,
+  listB,
 }: {
-  makers: AnalyticsTopTrader[]
-  takers: AnalyticsTopTrader[]
+  title: string
+  unit: string
+  tabLabels: [string, string]
+  listA: AnalyticsTopTrader[]
+  listB: AnalyticsTopTrader[]
 }) {
-  const [tab, setTab] = useState<'makers' | 'takers'>('makers')
+  const [tab, setTab] = useState<0 | 1>(0)
   const [sortBy, setSortBy] = useState<'volume' | 'trades'>('volume')
-  const raw = tab === 'makers' ? makers : takers
+  const raw = tab === 0 ? listA : listB
   const list = [...raw].sort((a, b) => b[sortBy] - a[sortBy])
 
   return (
     <div className="bg-zinc-900/50 border border-zinc-800 rounded-sm">
       <div className="px-3 py-2 flex items-center gap-2">
-        <span className="text-xs text-zinc-500">Top Traders</span>
+        <span className="text-xs text-zinc-500">{title}</span>
         <div className="flex gap-0.5 ml-auto">
-          {(['makers', 'takers'] as const).map((t) => (
+          {tabLabels.map((label, i) => (
             <button
-              key={t}
-              onClick={() => setTab(t)}
+              key={label}
+              onClick={() => setTab(i as 0 | 1)}
               className={`px-2 py-0.5 text-[10px] font-mono rounded-sm transition-colors ${
-                tab === t
+                tab === i
                   ? 'bg-zinc-700 text-zinc-100'
                   : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900'
               }`}
             >
-              {t === 'makers' ? 'Makers' : 'Takers'}
+              {label}
             </button>
           ))}
         </div>
@@ -518,7 +444,7 @@ function TopTradersTable({
               className={`text-right font-normal px-3 py-1.5 cursor-pointer select-none hover:text-zinc-400 ${sortBy === 'volume' ? 'text-zinc-300' : ''}`}
               onClick={() => setSortBy('volume')}
             >
-              Volume (XCP) {sortBy === 'volume' ? '▼' : ''}
+              Volume ({unit}) {sortBy === 'volume' ? '▼' : ''}
             </th>
             <th
               className={`text-right font-normal px-3 py-1.5 cursor-pointer select-none hover:text-zinc-400 ${sortBy === 'trades' ? 'text-zinc-300' : ''}`}
@@ -567,6 +493,8 @@ export default function AnalyticsPage() {
     trending,
     topMakers,
     topTakers,
+    topBtcBuyers,
+    topBtcSellers,
     isLoading,
   } = useAnalytics(timeframe, !hideLowQuality)
 
@@ -670,14 +598,6 @@ export default function AnalyticsPage() {
               />
             </div>
 
-            {/* Activity chart (full width) */}
-            <div className="mb-6">
-              <ActivityChart
-                tradeData={dailyTradeVolume}
-                dispenseData={dailyDispenseVolume}
-              />
-            </div>
-
             {/* Leaderboards */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mb-6">
               <TopPairsTable pairs={topPairs} tfLabel={tfLabel} />
@@ -686,7 +606,22 @@ export default function AnalyticsPage() {
             </div>
 
             {/* Top Traders */}
-            <TopTradersTable makers={topMakers} takers={topTakers} />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+              <TopTradersTable
+                title="Top Traders (XCP)"
+                unit="XCP"
+                tabLabels={['Makers', 'Takers']}
+                listA={topMakers}
+                listB={topTakers}
+              />
+              <TopTradersTable
+                title="Top Traders (BTC)"
+                unit="BTC"
+                tabLabels={['Buyers', 'Sellers']}
+                listA={topBtcBuyers}
+                listB={topBtcSellers}
+              />
+            </div>
           </>
         )}
       </div>

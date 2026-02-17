@@ -84,6 +84,8 @@ interface AnalyticsResponse {
   trending: AnalyticsTrending[]
   top_makers: AnalyticsTopTrader[]
   top_takers: AnalyticsTopTrader[]
+  top_btc_buyers: AnalyticsTopTrader[]
+  top_btc_sellers: AnalyticsTopTrader[]
 }
 
 export function useAnalytics(timeframe: Timeframe = '24h', includeHidden: boolean = false) {
@@ -108,6 +110,8 @@ export function useAnalytics(timeframe: Timeframe = '24h', includeHidden: boolea
     trending: data?.trending ?? [],
     topMakers: data?.top_makers ?? [],
     topTakers: data?.top_takers ?? [],
+    topBtcBuyers: data?.top_btc_buyers ?? [],
+    topBtcSellers: data?.top_btc_sellers ?? [],
     error,
     isLoading,
   }
