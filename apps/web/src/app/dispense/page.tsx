@@ -174,7 +174,7 @@ export default function DispensersPage() {
               <thead>
                 <tr className="text-zinc-500 border-b border-zinc-800 bg-zinc-900/50">
                   <th className="text-left font-normal px-3 py-2.5 sticky left-0 bg-zinc-900/50 z-10">Asset</th>
-                  <SortHeader id="price" label="Price" />
+                  <SortHeader id="price" label={satsMode ? 'Price (sats)' : 'Price (BTC)'} />
                   <th className="text-right font-normal px-3 py-2.5">Last Price</th>
                   {rolling ? (
                     <>
