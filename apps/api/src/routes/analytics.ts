@@ -101,18 +101,18 @@ export async function handleAnalytics(
        ORDER BY trade_count_24h DESC
        LIMIT 100`
     ),
-    // 8. Top 10 makers by quote-denominated volume
+    // 8. Top 10 makers by XCP volume (only XCP-quoted pairs so units are comparable)
     db.prepare(
       `SELECT maker AS address, ROUND(SUM(volume), 2) AS volume, COUNT(*) AS trades
        FROM trades
-       WHERE 1=1${includeHidden ? "" : " AND NOT EXISTS (SELECT 1 FROM pair_stats ps WHERE ps.pair = trades.pair AND ps.hidden = 1)"}
+       WHERE quote_asset = 'XCP'${includeHidden ? "" : " AND NOT EXISTS (SELECT 1 FROM pair_stats ps WHERE ps.pair = trades.pair AND ps.hidden = 1)"}
        GROUP BY maker ORDER BY volume DESC LIMIT 10`
     ),
-    // 9. Top 10 takers by quote-denominated volume
+    // 9. Top 10 takers by XCP volume (only XCP-quoted pairs so units are comparable)
     db.prepare(
       `SELECT taker AS address, ROUND(SUM(volume), 2) AS volume, COUNT(*) AS trades
        FROM trades
-       WHERE 1=1${includeHidden ? "" : " AND NOT EXISTS (SELECT 1 FROM pair_stats ps WHERE ps.pair = trades.pair AND ps.hidden = 1)"}
+       WHERE quote_asset = 'XCP'${includeHidden ? "" : " AND NOT EXISTS (SELECT 1 FROM pair_stats ps WHERE ps.pair = trades.pair AND ps.hidden = 1)"}
        GROUP BY taker ORDER BY volume DESC LIMIT 10`
     ),
   ]);
