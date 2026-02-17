@@ -11,6 +11,7 @@ import { handlePortfolioBids, handlePortfolioDispensers, handlePortfolioOrders }
 import { handleDispenserStats, handleDispenserStatsList } from "./routes/dispenser-stats";
 import { handleTradeSummary } from "./routes/trade-summary";
 import { handleAnalytics } from "./routes/analytics";
+import { handleSearch } from "./routes/search";
 import { syncBlocks } from "./indexer/sync-block";
 import { runCatchupAggregation, runCatchupStats, runCatchupDispenserStats, aggregateCandlesForPair } from "./indexer/aggregate";
 import { backfillTrades, backfillDispenses } from "./indexer/backfill";
@@ -177,6 +178,11 @@ export default {
       const dispenserStatsMatch = path.match(/^\/dispenser-stats\/([A-Za-z0-9._]+)$/);
       if (dispenserStatsMatch) {
         return await withCors(await handleDispenserStats(env.DB, dispenserStatsMatch[1]));
+      }
+
+      // Route: GET /search?q=...
+      if (path === "/search") {
+        return await withCors(await handleSearch(request, env.DB));
       }
 
       // Route: GET /analytics
