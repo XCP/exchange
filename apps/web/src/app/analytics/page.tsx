@@ -183,21 +183,14 @@ function ComboVolumeChart({
       },
     })
 
-    // Monthly bars on right axis
+    // Both series must use monthly timestamps so bars render at month width
     const monthlyData = aggregateMonthly(data)
-    const histSeries = chart.addSeries(HistogramSeries, {
-      priceFormat: { type: 'custom', formatter: (v: number) => fmtBig(v) },
-      priceScaleId: 'right',
-    })
-    histSeries.setData(
-      monthlyData.map((d) => ({ ...d, color: color + '99' }))
-    )
 
-    // Cumulative line on left axis
+    // Cumulative line on left axis (running total of monthly buckets)
     let cumulative = 0
-    const cumulativeData = data.map((d) => {
-      cumulative += d.volume
-      return { time: d.timestamp as Time, value: cumulative }
+    const cumulativeData = monthlyData.map((d) => {
+      cumulative += d.value
+      return { time: d.time, value: cumulative }
     })
     const lineSeries = chart.addSeries(LineSeries, {
       color,
@@ -207,6 +200,15 @@ function ComboVolumeChart({
       lastValueVisible: false,
     })
     lineSeries.setData(cumulativeData)
+
+    // Monthly bars on right axis
+    const histSeries = chart.addSeries(HistogramSeries, {
+      priceFormat: { type: 'custom', formatter: (v: number) => fmtBig(v) },
+      priceScaleId: 'right',
+    })
+    histSeries.setData(
+      monthlyData.map((d) => ({ ...d, color: color + '99' }))
+    )
 
     chart.timeScale().fitContent()
     chartRef.current = chart
