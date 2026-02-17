@@ -141,20 +141,27 @@ function mergeDailyVolumes(...sources: { timestamp: number; volume: number }[][]
 }
 
 function aggregateMonthly(data: { timestamp: number; volume: number }[]): { time: Time; value: number }[] {
+  if (data.length === 0) return []
   const buckets = new Map<string, number>()
   for (const d of data) {
     const date = new Date(d.timestamp * 1000)
     const key = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`
     buckets.set(key, (buckets.get(key) ?? 0) + d.volume)
   }
-  return Array.from(buckets.entries())
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([key, value]) => {
-      const [year, month] = key.split('-').map(Number)
-      // First day of month as unix timestamp
-      const ts = Math.floor(Date.UTC(year, month - 1, 1) / 1000)
-      return { time: ts as Time, value }
-    })
+  // Fill in all months between first and last with zeros
+  const sorted = Array.from(buckets.keys()).sort()
+  const [startY, startM] = sorted[0].split('-').map(Number)
+  const [endY, endM] = sorted[sorted.length - 1].split('-').map(Number)
+  const result: { time: Time; value: number }[] = []
+  let y = startY, m = startM
+  while (y < endY || (y === endY && m <= endM)) {
+    const key = `${y}-${String(m).padStart(2, '0')}`
+    const ts = Math.floor(Date.UTC(y, m - 1, 1) / 1000)
+    result.push({ time: ts as Time, value: buckets.get(key) ?? 0 })
+    m++
+    if (m > 12) { m = 1; y++ }
+  }
+  return result
 }
 
 // ── ComboVolumeChart (monthly bars + cumulative line) ───────────────
