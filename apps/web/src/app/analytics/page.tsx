@@ -584,43 +584,43 @@ export default function AnalyticsPage() {
               />
             </div>
 
-            {/* Combo Volume Charts */}
-            <div className="grid grid-cols-1 gap-2 mb-6">
-              <ComboVolumeChart
-                data={dailyTradeVolume}
-                color="#22c55e"
-                label="Trade Volume (XCP)"
-              />
-              <ComboVolumeChart
-                data={mergeDailyVolumes(dailyBtcTradeVolume, dailyDispenseVolume)}
-                color="#3b82f6"
-                label="Trade Volume (BTC)"
-              />
+            {/* Volume Charts + Top Traders — XCP left, BTC right */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-6">
+              <div className="flex flex-col gap-2">
+                <ComboVolumeChart
+                  data={dailyTradeVolume}
+                  color="#22c55e"
+                  label="Trade Volume (XCP)"
+                />
+                <TopTradersTable
+                  title="Top Traders (XCP)"
+                  unit="XCP"
+                  tabLabels={['Makers', 'Takers']}
+                  listA={topMakers}
+                  listB={topTakers}
+                />
+              </div>
+              <div className="flex flex-col gap-2">
+                <ComboVolumeChart
+                  data={mergeDailyVolumes(dailyBtcTradeVolume, dailyDispenseVolume)}
+                  color="#3b82f6"
+                  label="Trade Volume (BTC)"
+                />
+                <TopTradersTable
+                  title="Top Traders (BTC)"
+                  unit="BTC"
+                  tabLabels={['Makers', 'Takers']}
+                  listA={topBtcSellers}
+                  listB={topBtcBuyers}
+                />
+              </div>
             </div>
 
             {/* Leaderboards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mb-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
               <TopPairsTable pairs={topPairs} tfLabel={tfLabel} />
               <TopDispensersTable dispensers={topDispensers} tfLabel={tfLabel} satsMode={satsMode} />
               <TrendingTable trending={trending} />
-            </div>
-
-            {/* Top Traders */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-              <TopTradersTable
-                title="Top Traders (XCP)"
-                unit="XCP"
-                tabLabels={['Makers', 'Takers']}
-                listA={topMakers}
-                listB={topTakers}
-              />
-              <TopTradersTable
-                title="Top Traders (BTC)"
-                unit="BTC"
-                tabLabels={['Makers', 'Takers']}
-                listA={topBtcSellers}
-                listB={topBtcBuyers}
-              />
             </div>
           </>
         )}
