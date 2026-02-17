@@ -512,8 +512,8 @@ function TopTradersTable({
           {list.map((t, i) => (
             <tr key={t.address} className="hover:bg-zinc-800/50 transition-colors border-b border-zinc-800/30 last:border-0">
               <td className="px-3 py-1.5 text-zinc-600">{i + 1}</td>
-              <td className="px-3 py-1.5 text-zinc-300 font-mono">
-                {t.address.slice(0, 6)}...{t.address.slice(-4)}
+              <td className="px-3 py-1.5 text-zinc-300 font-mono text-[11px] break-all">
+                {t.address}
               </td>
               <td className="text-right text-zinc-400 font-mono px-3 py-1.5">{fmtBig(t.volume)}</td>
               <td className="text-right text-zinc-400 font-mono px-3 py-1.5">{t.trades.toLocaleString()}</td>

@@ -108,14 +108,14 @@ export async function handleAnalytics(
       `SELECT maker AS address, ROUND(SUM(volume), 2) AS volume, COUNT(*) AS trades
        FROM trades
        WHERE quote_asset = 'XCP'${includeHidden ? "" : " AND NOT EXISTS (SELECT 1 FROM pair_stats ps WHERE ps.pair = trades.pair AND ps.hidden = 1)"}
-       GROUP BY maker ORDER BY volume DESC LIMIT 10`
+       GROUP BY maker ORDER BY volume DESC LIMIT 20`
     ),
     // 9. Top 10 takers by XCP volume (only XCP-quoted pairs so units are comparable)
     db.prepare(
       `SELECT taker AS address, ROUND(SUM(volume), 2) AS volume, COUNT(*) AS trades
        FROM trades
        WHERE quote_asset = 'XCP'${includeHidden ? "" : " AND NOT EXISTS (SELECT 1 FROM pair_stats ps WHERE ps.pair = trades.pair AND ps.hidden = 1)"}
-       GROUP BY taker ORDER BY volume DESC LIMIT 10`
+       GROUP BY taker ORDER BY volume DESC LIMIT 20`
     ),
   ]);
 
