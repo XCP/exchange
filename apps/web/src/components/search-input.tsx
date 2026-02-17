@@ -140,15 +140,10 @@ export function SearchInput() {
                 selectedIndex === i ? 'bg-zinc-800' : 'hover:bg-zinc-800/50'
               }`}
             >
-              <div className="flex flex-col min-w-0">
-                <span className="text-xs text-zinc-200 font-medium truncate">
-                  {p.base_asset}
+              <span className="text-xs text-zinc-200 font-medium truncate min-w-0">
+                  {p.base_asset_longname || p.base_asset}
                   <span className="text-zinc-500">/{p.quote_asset}</span>
                 </span>
-                {p.base_asset_longname && (
-                  <span className="text-[10px] text-zinc-500 truncate">{p.base_asset_longname}</span>
-                )}
-              </div>
               {p.volume_24h != null && p.volume_24h > 0 && (
                 <span className="text-[10px] text-zinc-500 ml-2 shrink-0">
                   {formatBtc(p.volume_24h)}
@@ -175,12 +170,7 @@ export function SearchInput() {
                   selectedIndex === idx ? 'bg-zinc-800' : 'hover:bg-zinc-800/50'
                 }`}
               >
-                <div className="flex flex-col min-w-0">
-                  <span className="text-xs text-zinc-200 font-medium truncate">{d.asset}</span>
-                  {d.asset_longname && (
-                    <span className="text-[10px] text-zinc-500 truncate">{d.asset_longname}</span>
-                  )}
-                </div>
+                <span className="text-xs text-zinc-200 font-medium truncate min-w-0">{d.asset_longname || d.asset}</span>
                 <div className="flex items-center gap-2 ml-2 shrink-0">
                   {d.active_dispensers > 0 && (
                     <span className="text-[10px] text-green-500">{d.active_dispensers} active</span>
@@ -299,15 +289,10 @@ export function SearchInput() {
                           selectedIndex === i ? 'bg-zinc-800' : 'active:bg-zinc-800/50'
                         }`}
                       >
-                        <div className="flex flex-col min-w-0">
-                          <span className="text-sm text-zinc-200 font-medium truncate">
-                            {p.base_asset}
+                        <span className="text-sm text-zinc-200 font-medium truncate min-w-0">
+                            {p.base_asset_longname || p.base_asset}
                             <span className="text-zinc-500">/{p.quote_asset}</span>
                           </span>
-                          {p.base_asset_longname && (
-                            <span className="text-[11px] text-zinc-500 truncate">{p.base_asset_longname}</span>
-                          )}
-                        </div>
                         {p.volume_24h != null && p.volume_24h > 0 && (
                           <span className="text-[11px] text-zinc-500 ml-2 shrink-0">
                             {formatBtc(p.volume_24h)}
@@ -332,12 +317,7 @@ export function SearchInput() {
                             selectedIndex === idx ? 'bg-zinc-800' : 'active:bg-zinc-800/50'
                           }`}
                         >
-                          <div className="flex flex-col min-w-0">
-                            <span className="text-sm text-zinc-200 font-medium truncate">{d.asset}</span>
-                            {d.asset_longname && (
-                              <span className="text-[11px] text-zinc-500 truncate">{d.asset_longname}</span>
-                            )}
-                          </div>
+                          <span className="text-sm text-zinc-200 font-medium truncate min-w-0">{d.asset_longname || d.asset}</span>
                           <div className="flex items-center gap-2 ml-2 shrink-0">
                             {d.active_dispensers > 0 && (
                               <span className="text-[11px] text-green-500">{d.active_dispensers} active</span>
