@@ -617,7 +617,7 @@ export default function AnalyticsPage() {
               <TopTradersTable
                 title="Top Traders (BTC)"
                 unit="BTC"
-                tabLabels={['Buyers', 'Sellers']}
+                tabLabels={['Takers', 'Makers']}
                 listA={topBtcBuyers}
                 listB={topBtcSellers}
               />
