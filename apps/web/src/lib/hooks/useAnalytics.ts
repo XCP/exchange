@@ -54,6 +54,12 @@ export interface AnalyticsTopDispenser {
   active_dispensers: number
 }
 
+export interface AnalyticsTopTrader {
+  address: string
+  volume: number
+  trades: number
+}
+
 export interface AnalyticsTrending {
   pair: string
   base_asset: string
@@ -75,6 +81,8 @@ interface AnalyticsResponse {
   top_pairs: AnalyticsTopPair[]
   top_dispensers: AnalyticsTopDispenser[]
   trending: AnalyticsTrending[]
+  top_makers: AnalyticsTopTrader[]
+  top_takers: AnalyticsTopTrader[]
 }
 
 export function useAnalytics(timeframe: Timeframe = '24h', includeHidden: boolean = false) {
@@ -96,6 +104,8 @@ export function useAnalytics(timeframe: Timeframe = '24h', includeHidden: boolea
     topPairs: data?.top_pairs ?? [],
     topDispensers: data?.top_dispensers ?? [],
     trending: data?.trending ?? [],
+    topMakers: data?.top_makers ?? [],
+    topTakers: data?.top_takers ?? [],
     error,
     isLoading,
   }

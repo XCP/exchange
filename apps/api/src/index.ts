@@ -12,6 +12,7 @@ import { handleDispenserStats, handleDispenserStatsList } from "./routes/dispens
 import { handleTradeSummary } from "./routes/trade-summary";
 import { handleAnalytics } from "./routes/analytics";
 import { handleSearch } from "./routes/search";
+import { handleCreateSwap, handleGetSwaps, handleGetSwap, handleCancelSwap, handleFillSwap } from "./routes/swaps";
 import { syncBlocks } from "./indexer/sync-block";
 import { runCatchupAggregation, runCatchupStats, runCatchupDispenserStats, aggregateCandlesForPair } from "./indexer/aggregate";
 import { backfillTrades, backfillDispenses } from "./indexer/backfill";
@@ -29,7 +30,7 @@ export interface Env {
 function corsHeaders(): Record<string, string> {
   return {
     "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET, OPTIONS",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type",
   };
 }
@@ -365,6 +366,36 @@ export default {
           deleteState(env.DB, "aggregation_cursor"),
         ]);
         return await withCors(Response.json({ ok: true, mode: "IDLE" }));
+      }
+
+      // ---- Swap routes (PSBT atomic swaps) ----
+
+      // Route: POST /swaps — create listing
+      if (path === "/swaps" && request.method === "POST") {
+        return await withCors(await handleCreateSwap(request, env.DB));
+      }
+
+      // Route: GET /swaps — browse listings
+      if (path === "/swaps" && request.method === "GET") {
+        return await withCors(await handleGetSwaps(request, env.DB));
+      }
+
+      // Route: POST /swaps/:id/cancel
+      const swapCancelMatch = path.match(/^\/swaps\/([0-9a-f-]+)\/cancel$/);
+      if (swapCancelMatch && request.method === "POST") {
+        return await withCors(await handleCancelSwap(request, env.DB, swapCancelMatch[1]));
+      }
+
+      // Route: POST /swaps/:id/fill
+      const swapFillMatch = path.match(/^\/swaps\/([0-9a-f-]+)\/fill$/);
+      if (swapFillMatch && request.method === "POST") {
+        return await withCors(await handleFillSwap(request, env.DB, swapFillMatch[1]));
+      }
+
+      // Route: GET /swaps/:id — single listing
+      const swapMatch = path.match(/^\/swaps\/([0-9a-f-]+)$/);
+      if (swapMatch) {
+        return await withCors(await handleGetSwap(env.DB, swapMatch[1]));
       }
 
       return await withCors(

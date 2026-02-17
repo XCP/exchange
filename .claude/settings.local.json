@@ -5,7 +5,8 @@
       "Bash(curl:*)",
       "Bash(python -m json.tool:*)",
       "Bash(git add:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(git clone:*)"
     ]
   }
 }

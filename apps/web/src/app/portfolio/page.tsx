@@ -5,13 +5,15 @@ import { useWallet } from '@/lib/wallet/wallet-context'
 import { PortfolioOrders } from '@/components/portfolio/portfolio-orders'
 import { PortfolioDispensers } from '@/components/portfolio/portfolio-dispensers'
 import { PortfolioBalances } from '@/components/portfolio/portfolio-balances'
+import { PortfolioSwaps } from '@/components/portfolio/portfolio-swaps'
 import { formatAddress } from '@/utils/format-address'
 
-type TabKey = 'orders' | 'dispensers' | 'balances'
+type TabKey = 'orders' | 'dispensers' | 'swaps' | 'balances'
 
 const TAB_LABELS: Record<TabKey, string> = {
   orders: 'Orders',
   dispensers: 'Dispensers',
+  swaps: 'Swaps',
   balances: 'Balances',
 }
 
@@ -60,7 +62,7 @@ export default function PortfolioPage() {
 
       {/* Tabs */}
       <div className="flex border-b border-zinc-800">
-        {(['orders', 'dispensers', 'balances'] as const).map((tab) => (
+        {(['orders', 'dispensers', 'swaps', 'balances'] as const).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -79,6 +81,7 @@ export default function PortfolioPage() {
       <div className="max-w-5xl mx-auto">
         {activeTab === 'orders' && <PortfolioOrders address={address} />}
         {activeTab === 'dispensers' && <PortfolioDispensers address={address} />}
+        {activeTab === 'swaps' && <PortfolioSwaps address={address} />}
         {activeTab === 'balances' && <PortfolioBalances address={address} />}
       </div>
     </div>

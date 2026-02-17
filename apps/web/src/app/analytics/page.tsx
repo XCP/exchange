@@ -5,7 +5,7 @@ import Link from 'next/link'
 import Image from 'next/image'
 import {
   createChart,
-  AreaSeries,
+  LineSeries,
   HistogramSeries,
   type IChartApi,
   type Time,
@@ -19,6 +19,7 @@ import type {
   AnalyticsTopPair,
   AnalyticsTopDispenser,
   AnalyticsTrending,
+  AnalyticsTopTrader,
 } from '@/lib/hooks/useAnalytics'
 import { formatAmount } from '@/utils/format-amount'
 import { formatPrice } from '@/utils/format-price'
@@ -125,9 +126,28 @@ function useChartContainer(height: number = 220) {
   return { containerRef, chartRef, height }
 }
 
-// ── CumulativeChart (AreaSeries) ────────────────────────────────────
+// ── Monthly aggregation helper ──────────────────────────────────────
 
-function CumulativeChart({
+function aggregateMonthly(data: { timestamp: number; volume: number }[]): { time: Time; value: number }[] {
+  const buckets = new Map<string, number>()
+  for (const d of data) {
+    const date = new Date(d.timestamp * 1000)
+    const key = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`
+    buckets.set(key, (buckets.get(key) ?? 0) + d.volume)
+  }
+  return Array.from(buckets.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([key, value]) => {
+      const [year, month] = key.split('-').map(Number)
+      // First day of month as unix timestamp
+      const ts = Math.floor(Date.UTC(year, month - 1, 1) / 1000)
+      return { time: ts as Time, value }
+    })
+}
+
+// ── ComboVolumeChart (monthly bars + cumulative line) ───────────────
+
+function ComboVolumeChart({
   data,
   color,
   label,
@@ -136,7 +156,8 @@ function CumulativeChart({
   color: string
   label: string
 }) {
-  const { containerRef, chartRef, height } = useChartContainer()
+  const { containerRef, chartRef } = useChartContainer(280)
+  const height = 280
 
   useEffect(() => {
     if (!containerRef.current || data.length === 0) return
@@ -150,25 +171,44 @@ function CumulativeChart({
       ...baseChartOptions(),
       width: containerRef.current.clientWidth,
       height,
+      leftPriceScale: {
+        visible: true,
+        borderColor: '#27272a',
+        scaleMargins: { top: 0.1, bottom: 0.05 },
+      },
+      rightPriceScale: {
+        visible: true,
+        borderColor: '#27272a',
+        scaleMargins: { top: 0.1, bottom: 0.05 },
+      },
     })
 
-    // Compute cumulative
+    // Monthly bars on right axis
+    const monthlyData = aggregateMonthly(data)
+    const histSeries = chart.addSeries(HistogramSeries, {
+      priceFormat: { type: 'custom', formatter: (v: number) => fmtBig(v) },
+      priceScaleId: 'right',
+    })
+    histSeries.setData(
+      monthlyData.map((d) => ({ ...d, color: color + '99' }))
+    )
+
+    // Cumulative line on left axis
     let cumulative = 0
-    const series = data.map((d) => {
+    const cumulativeData = data.map((d) => {
       cumulative += d.volume
       return { time: d.timestamp as Time, value: cumulative }
     })
-
-    const areaSeries = chart.addSeries(AreaSeries, {
-      lineColor: color,
-      topColor: color + '40',
-      bottomColor: color + '05',
+    const lineSeries = chart.addSeries(LineSeries, {
+      color,
       lineWidth: 2,
       priceFormat: { type: 'custom', formatter: (v: number) => fmtBig(v) },
+      priceScaleId: 'left',
+      lastValueVisible: false,
     })
-    areaSeries.setData(series)
-    chart.timeScale().fitContent()
+    lineSeries.setData(cumulativeData)
 
+    chart.timeScale().fitContent()
     chartRef.current = chart
 
     const ro = new ResizeObserver((entries) => {
@@ -182,65 +222,17 @@ function CumulativeChart({
 
   return (
     <div className="bg-zinc-900/50 border border-zinc-800 rounded-sm">
-      <div className="px-3 py-2 text-xs text-zinc-500">{label}</div>
-      <div ref={containerRef} style={{ height, width: '100%' }} />
-    </div>
-  )
-}
-
-// ── DailyBarChart (HistogramSeries) ─────────────────────────────────
-
-function DailyBarChart({
-  data,
-  color,
-  label,
-}: {
-  data: { timestamp: number; volume: number }[]
-  color: string
-  label: string
-}) {
-  const { containerRef, chartRef, height } = useChartContainer()
-
-  useEffect(() => {
-    if (!containerRef.current || data.length === 0) return
-
-    if (chartRef.current) {
-      chartRef.current.remove()
-      chartRef.current = null
-    }
-
-    const chart = createChart(containerRef.current, {
-      ...baseChartOptions(),
-      width: containerRef.current.clientWidth,
-      height,
-    })
-
-    const series = data.map((d) => ({
-      time: d.timestamp as Time,
-      value: d.volume,
-      color: color + 'cc',
-    }))
-
-    const histSeries = chart.addSeries(HistogramSeries, {
-      priceFormat: { type: 'custom', formatter: (v: number) => fmtBig(v) },
-    })
-    histSeries.setData(series)
-    chart.timeScale().fitContent()
-
-    chartRef.current = chart
-
-    const ro = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        chart.applyOptions({ width: entry.contentRect.width })
-      }
-    })
-    ro.observe(containerRef.current)
-    return () => ro.disconnect()
-  }, [data, color, height]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  return (
-    <div className="bg-zinc-900/50 border border-zinc-800 rounded-sm">
-      <div className="px-3 py-2 text-xs text-zinc-500">{label}</div>
+      <div className="px-3 py-2 flex items-center gap-4">
+        <span className="text-xs text-zinc-500">{label}</span>
+        <span className="flex items-center gap-1">
+          <span className="inline-block w-2 h-2 rounded-sm" style={{ backgroundColor: color + '99' }} />
+          <span className="text-[10px] text-zinc-600">Monthly</span>
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="inline-block w-4 h-0.5" style={{ backgroundColor: color }} />
+          <span className="text-[10px] text-zinc-600">Cumulative</span>
+        </span>
+      </div>
       <div ref={containerRef} style={{ height, width: '100%' }} />
     </div>
   )
@@ -461,6 +453,67 @@ function TrendingTable({ trending }: { trending: AnalyticsTrending[] }) {
   )
 }
 
+// ── TopTradersTable ──────────────────────────────────────────────────
+
+function TopTradersTable({
+  makers,
+  takers,
+}: {
+  makers: AnalyticsTopTrader[]
+  takers: AnalyticsTopTrader[]
+}) {
+  const [tab, setTab] = useState<'makers' | 'takers'>('makers')
+  const list = tab === 'makers' ? makers : takers
+
+  return (
+    <div className="bg-zinc-900/50 border border-zinc-800 rounded-sm">
+      <div className="px-3 py-2 flex items-center gap-2">
+        <span className="text-xs text-zinc-500">Top Traders</span>
+        <div className="flex gap-0.5 ml-auto">
+          {(['makers', 'takers'] as const).map((t) => (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              className={`px-2 py-0.5 text-[10px] font-mono rounded-sm transition-colors ${
+                tab === t
+                  ? 'bg-zinc-700 text-zinc-100'
+                  : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900'
+              }`}
+            >
+              {t === 'makers' ? 'Makers' : 'Takers'}
+            </button>
+          ))}
+        </div>
+      </div>
+      <table className="w-full text-xs">
+        <thead>
+          <tr className="text-zinc-600 border-b border-zinc-800">
+            <th className="text-left font-normal px-3 py-1.5">#</th>
+            <th className="text-left font-normal px-3 py-1.5">Address</th>
+            <th className="text-right font-normal px-3 py-1.5">Volume (XCP)</th>
+            <th className="text-right font-normal px-3 py-1.5">Trades</th>
+          </tr>
+        </thead>
+        <tbody>
+          {list.map((t, i) => (
+            <tr key={t.address} className="hover:bg-zinc-800/50 transition-colors border-b border-zinc-800/30 last:border-0">
+              <td className="px-3 py-1.5 text-zinc-600">{i + 1}</td>
+              <td className="px-3 py-1.5 text-zinc-300 font-mono">
+                {t.address.slice(0, 6)}...{t.address.slice(-4)}
+              </td>
+              <td className="text-right text-zinc-400 font-mono px-3 py-1.5">{fmtBig(t.volume)}</td>
+              <td className="text-right text-zinc-400 font-mono px-3 py-1.5">{t.trades.toLocaleString()}</td>
+            </tr>
+          ))}
+          {list.length === 0 && (
+            <tr><td colSpan={4} className="text-center py-6 text-zinc-600">No data</td></tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 // ── Main Page ───────────────────────────────────────────────────────
 
 export default function AnalyticsPage() {
@@ -477,6 +530,8 @@ export default function AnalyticsPage() {
     topPairs,
     topDispensers,
     trending,
+    topMakers,
+    topTakers,
     isLoading,
   } = useAnalytics(timeframe, !hideLowQuality)
 
@@ -566,27 +621,17 @@ export default function AnalyticsPage() {
               />
             </div>
 
-            {/* Charts Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-6">
-              <CumulativeChart
+            {/* Combo Volume Charts */}
+            <div className="grid grid-cols-1 gap-2 mb-6">
+              <ComboVolumeChart
                 data={dailyTradeVolume}
                 color="#22c55e"
-                label="Cumulative Trade Volume (XCP)"
+                label="Trade Volume"
               />
-              <DailyBarChart
-                data={dailyTradeVolume}
-                color="#22c55e"
-                label="Daily Trade Volume (XCP)"
-              />
-              <CumulativeChart
+              <ComboVolumeChart
                 data={dailyDispenseVolume}
                 color="#3b82f6"
-                label={`Cumulative Dispense Volume (${btcLabel.toUpperCase()})`}
-              />
-              <DailyBarChart
-                data={dailyDispenseVolume}
-                color="#3b82f6"
-                label={`Daily Dispense Volume (${btcLabel.toUpperCase()})`}
+                label={`Dispense Volume (${btcLabel.toUpperCase()})`}
               />
             </div>
 
@@ -599,11 +644,14 @@ export default function AnalyticsPage() {
             </div>
 
             {/* Leaderboards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mb-6">
               <TopPairsTable pairs={topPairs} tfLabel={tfLabel} />
               <TopDispensersTable dispensers={topDispensers} tfLabel={tfLabel} satsMode={satsMode} />
               <TrendingTable trending={trending} />
             </div>
+
+            {/* Top Traders */}
+            <TopTradersTable makers={topMakers} takers={topTakers} />
           </>
         )}
       </div>
