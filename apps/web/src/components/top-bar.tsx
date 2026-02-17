@@ -1,12 +1,15 @@
 'use client'
 
 import Link from 'next/link'
+import { usePathname } from 'next/navigation'
+import { RiTerminalBoxLine } from 'react-icons/ri'
 import { SearchInput } from '@/components/search-input'
 import { WalletButton } from '@/components/wallet-button'
 import { useBtcPrice, useXcpPrice } from '@/lib/hooks/useNetworkInfo'
 import { useSatsMode } from '@/lib/sats-context'
 
 export function TopBar() {
+  const pathname = usePathname()
   const btcPrice = useBtcPrice()
   const { xcpUsd } = useXcpPrice()
   const { satsMode, toggleSatsMode } = useSatsMode()
@@ -14,7 +17,8 @@ export function TopBar() {
   return (
     <header className="sticky top-0 z-50 flex items-center justify-between gap-4 border-b border-zinc-800 bg-zinc-950/95 backdrop-blur-sm px-4 py-2">
       <div className="flex items-center gap-6">
-        <Link href="/" className="text-sm font-bold tracking-wider text-green-500 font-mono">
+        <Link href="/" className="flex items-center gap-2.5 text-sm font-bold tracking-wider text-green-500 font-mono">
+          <RiTerminalBoxLine className="text-lg relative" style={{ color: '#c8b898', top: '-0.5px' }} />
           XCP DEX
         </Link>
         <nav className="hidden sm:flex items-center gap-4">
@@ -23,15 +27,18 @@ export function TopBar() {
             { label: 'Dispense', href: '/dispense' },
             { label: 'Swap', href: '#' },
             { label: 'Analytics', href: '/analytics' },
-          ].map((link) => (
-            <Link
-              key={link.label}
-              href={link.href}
-              className="text-xs font-medium transition-colors hover:text-zinc-100 text-zinc-500"
-            >
-              {link.label}
-            </Link>
-          ))}
+          ].map((link) => {
+            const isActive = link.href !== '#' && pathname.startsWith(link.href)
+            return (
+              <Link
+                key={link.label}
+                href={link.href}
+                className={`text-xs font-medium transition-colors hover:text-zinc-100 ${isActive ? 'text-zinc-100' : 'text-zinc-500'}`}
+              >
+                {link.label}
+              </Link>
+            )
+          })}
         </nav>
       </div>
 

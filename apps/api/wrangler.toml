@@ -6,7 +6,7 @@ compatibility_date = "2025-01-01"
 cpu_ms = 300000
 
 [triggers]
-crons = ["*/10 * * * *"]
+crons = ["*/2 * * * *"]
 
 [[d1_databases]]
 binding = "DB"
