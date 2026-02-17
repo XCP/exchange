@@ -137,9 +137,9 @@ export async function handleAnalytics(
          FROM trades WHERE quote_asset = 'BTC'${includeHidden ? "" : " AND NOT EXISTS (SELECT 1 FROM pair_stats ps WHERE ps.pair = trades.pair AND ps.hidden = 1)"}
          GROUP BY taker
          UNION ALL
-         SELECT source AS address, SUM(btc_amount) AS volume, COUNT(*) AS trades
+         SELECT destination AS address, SUM(btc_amount) AS volume, COUNT(*) AS trades
          FROM dispenses${includeHidden ? "" : " WHERE NOT EXISTS (SELECT 1 FROM dispenser_stats ds2 WHERE ds2.asset = dispenses.asset AND ds2.hidden = 1)"}
-         GROUP BY source
+         GROUP BY destination
        ) GROUP BY address ORDER BY volume DESC LIMIT 30`
     ),
     // 11. Top 30 BTC sellers (BTC-quoted trade makers + dispenser operators)
@@ -149,9 +149,9 @@ export async function handleAnalytics(
          FROM trades WHERE quote_asset = 'BTC'${includeHidden ? "" : " AND NOT EXISTS (SELECT 1 FROM pair_stats ps WHERE ps.pair = trades.pair AND ps.hidden = 1)"}
          GROUP BY maker
          UNION ALL
-         SELECT d.source AS address, SUM(di.btc_amount) AS volume, COUNT(*) AS trades
-         FROM dispenses di JOIN dispensers d ON di.dispenser_hash = d.tx_hash${includeHidden ? "" : " WHERE NOT EXISTS (SELECT 1 FROM dispenser_stats ds2 WHERE ds2.asset = di.asset AND ds2.hidden = 1)"}
-         GROUP BY d.source
+         SELECT source AS address, SUM(btc_amount) AS volume, COUNT(*) AS trades
+         FROM dispenses${includeHidden ? "" : " WHERE NOT EXISTS (SELECT 1 FROM dispenser_stats ds2 WHERE ds2.asset = dispenses.asset AND ds2.hidden = 1)"}
+         GROUP BY source
        ) GROUP BY address ORDER BY volume DESC LIMIT 30`
     ),
   ]);
