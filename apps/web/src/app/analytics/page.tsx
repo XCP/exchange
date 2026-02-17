@@ -465,7 +465,9 @@ function TopTradersTable({
   takers: AnalyticsTopTrader[]
 }) {
   const [tab, setTab] = useState<'makers' | 'takers'>('makers')
-  const list = tab === 'makers' ? makers : takers
+  const [sortBy, setSortBy] = useState<'volume' | 'trades'>('volume')
+  const raw = tab === 'makers' ? makers : takers
+  const list = [...raw].sort((a, b) => b[sortBy] - a[sortBy])
 
   return (
     <div className="bg-zinc-900/50 border border-zinc-800 rounded-sm">
@@ -492,8 +494,18 @@ function TopTradersTable({
           <tr className="text-zinc-600 border-b border-zinc-800">
             <th className="text-left font-normal px-3 py-1.5">#</th>
             <th className="text-left font-normal px-3 py-1.5">Address</th>
-            <th className="text-right font-normal px-3 py-1.5">Volume (XCP)</th>
-            <th className="text-right font-normal px-3 py-1.5">Trades</th>
+            <th
+              className={`text-right font-normal px-3 py-1.5 cursor-pointer select-none hover:text-zinc-400 ${sortBy === 'volume' ? 'text-zinc-300' : ''}`}
+              onClick={() => setSortBy('volume')}
+            >
+              Volume (XCP) {sortBy === 'volume' ? '▼' : ''}
+            </th>
+            <th
+              className={`text-right font-normal px-3 py-1.5 cursor-pointer select-none hover:text-zinc-400 ${sortBy === 'trades' ? 'text-zinc-300' : ''}`}
+              onClick={() => setSortBy('trades')}
+            >
+              Trades {sortBy === 'trades' ? '▼' : ''}
+            </th>
           </tr>
         </thead>
         <tbody>
