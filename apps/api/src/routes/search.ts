@@ -13,6 +13,7 @@ export async function handleSearch(
   }
 
   const like = `%${q}%`;
+  const upper = q.toUpperCase();
 
   const [pairResult, dispenserResult] = await db.batch([
     db
@@ -21,20 +22,24 @@ export async function handleSearch(
          FROM pair_stats
          WHERE hidden = 0
            AND (pair LIKE ?1 OR base_asset LIKE ?1 OR quote_asset LIKE ?1 OR base_asset_longname LIKE ?1)
-         ORDER BY volume_24h DESC
+         ORDER BY
+           CASE WHEN UPPER(base_asset) = ?2 OR UPPER(quote_asset) = ?2 OR UPPER(base_asset_longname) = ?2 THEN 0 ELSE 1 END,
+           COALESCE(volume_24h, 0) DESC
          LIMIT 5`
       )
-      .bind(like),
+      .bind(like, upper),
     db
       .prepare(
         `SELECT asset, asset_longname, last_dispense_price, cheapest_price, volume_24h, active_dispensers
          FROM dispenser_stats
          WHERE hidden = 0
            AND (asset LIKE ?1 OR asset_longname LIKE ?1)
-         ORDER BY volume_24h DESC
+         ORDER BY
+           CASE WHEN UPPER(asset) = ?2 OR UPPER(asset_longname) = ?2 THEN 0 ELSE 1 END,
+           COALESCE(volume_24h, 0) DESC
          LIMIT 5`
       )
-      .bind(like),
+      .bind(like, upper),
   ]);
 
   return Response.json(

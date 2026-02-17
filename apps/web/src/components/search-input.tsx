@@ -1,8 +1,10 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
+import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { useSearch } from '@/lib/hooks/useSearch'
+import { XCP_IMG_BASE } from '@/utils/constants'
 
 function formatBtc(val: number | null): string {
   if (val == null || val === 0) return ''
@@ -140,10 +142,15 @@ export function SearchInput() {
                 selectedIndex === i ? 'bg-zinc-800' : 'hover:bg-zinc-800/50'
               }`}
             >
-              <span className="text-xs text-zinc-200 font-medium truncate min-w-0">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="h-5 w-5 rounded-sm bg-zinc-800 overflow-hidden flex items-center justify-center shrink-0">
+                  <Image src={`${XCP_IMG_BASE}/icon/${p.base_asset}`} alt="" width={20} height={20} className="object-cover" unoptimized />
+                </div>
+                <span className="text-xs text-zinc-200 font-medium truncate">
                   {p.base_asset_longname || p.base_asset}
                   <span className="text-zinc-500">/{p.quote_asset}</span>
                 </span>
+              </div>
               {p.volume_24h != null && p.volume_24h > 0 && (
                 <span className="text-[10px] text-zinc-500 ml-2 shrink-0">
                   {formatBtc(p.volume_24h)}
@@ -170,7 +177,12 @@ export function SearchInput() {
                   selectedIndex === idx ? 'bg-zinc-800' : 'hover:bg-zinc-800/50'
                 }`}
               >
-                <span className="text-xs text-zinc-200 font-medium truncate min-w-0">{d.asset_longname || d.asset}</span>
+                <div className="flex items-center gap-2 min-w-0">
+                  <div className="h-5 w-5 rounded-sm bg-zinc-800 overflow-hidden flex items-center justify-center shrink-0">
+                    <Image src={`${XCP_IMG_BASE}/icon/${d.asset}`} alt="" width={20} height={20} className="object-cover" unoptimized />
+                  </div>
+                  <span className="text-xs text-zinc-200 font-medium truncate">{d.asset_longname || d.asset}</span>
+                </div>
                 <div className="flex items-center gap-2 ml-2 shrink-0">
                   {d.active_dispensers > 0 && (
                     <span className="text-[10px] text-green-500">{d.active_dispensers} active</span>
@@ -289,10 +301,15 @@ export function SearchInput() {
                           selectedIndex === i ? 'bg-zinc-800' : 'active:bg-zinc-800/50'
                         }`}
                       >
-                        <span className="text-sm text-zinc-200 font-medium truncate min-w-0">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div className="h-6 w-6 rounded-sm bg-zinc-800 overflow-hidden flex items-center justify-center shrink-0">
+                            <Image src={`${XCP_IMG_BASE}/icon/${p.base_asset}`} alt="" width={24} height={24} className="object-cover" unoptimized />
+                          </div>
+                          <span className="text-sm text-zinc-200 font-medium truncate">
                             {p.base_asset_longname || p.base_asset}
                             <span className="text-zinc-500">/{p.quote_asset}</span>
                           </span>
+                        </div>
                         {p.volume_24h != null && p.volume_24h > 0 && (
                           <span className="text-[11px] text-zinc-500 ml-2 shrink-0">
                             {formatBtc(p.volume_24h)}
@@ -317,7 +334,12 @@ export function SearchInput() {
                             selectedIndex === idx ? 'bg-zinc-800' : 'active:bg-zinc-800/50'
                           }`}
                         >
-                          <span className="text-sm text-zinc-200 font-medium truncate min-w-0">{d.asset_longname || d.asset}</span>
+                          <div className="flex items-center gap-2 min-w-0">
+                            <div className="h-6 w-6 rounded-sm bg-zinc-800 overflow-hidden flex items-center justify-center shrink-0">
+                              <Image src={`${XCP_IMG_BASE}/icon/${d.asset}`} alt="" width={24} height={24} className="object-cover" unoptimized />
+                            </div>
+                            <span className="text-sm text-zinc-200 font-medium truncate">{d.asset_longname || d.asset}</span>
+                          </div>
                           <div className="flex items-center gap-2 ml-2 shrink-0">
                             {d.active_dispensers > 0 && (
                               <span className="text-[11px] text-green-500">{d.active_dispensers} active</span>
