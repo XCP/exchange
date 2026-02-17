@@ -23,6 +23,7 @@ export async function handleAnalytics(
     dispenseSummary,
     dailyTradeVolume,
     dailyDispenseVolume,
+    dailyBtcTradeVolume,
     topPairs,
     topDispensers,
     trendingCandidates,
@@ -63,13 +64,23 @@ export async function handleAnalytics(
        GROUP BY 1
        ORDER BY 1`
     ),
-    // 4. Daily dispense volume
+    // 4. Daily dispense volume (kept for activity chart)
     db.prepare(
       `SELECT (block_time / 86400) * 86400 AS timestamp,
               SUM(btc_amount) AS volume,
               COUNT(*) AS dispenses
        FROM dispenses
        WHERE 1=1${includeHidden ? "" : " AND NOT EXISTS (SELECT 1 FROM dispenser_stats ds2 WHERE ds2.asset = dispenses.asset AND ds2.hidden = 1)"}
+       GROUP BY 1
+       ORDER BY 1`
+    ),
+    // 4b. Daily BTC trade volume (BTC-quoted pairs only)
+    db.prepare(
+      `SELECT (block_time / 86400) * 86400 AS timestamp,
+              ROUND(SUM(volume), 8) AS volume,
+              COUNT(*) AS trades
+       FROM trades
+       WHERE quote_asset = 'BTC'${includeHidden ? "" : " AND NOT EXISTS (SELECT 1 FROM pair_stats ps WHERE ps.pair = trades.pair AND ps.hidden = 1)"}
        GROUP BY 1
        ORDER BY 1`
     ),
@@ -173,6 +184,7 @@ export async function handleAnalytics(
       },
       daily_trade_volume: dailyTradeVolume.results,
       daily_dispense_volume: dailyDispenseVolume.results,
+      daily_btc_trade_volume: dailyBtcTradeVolume.results,
       top_pairs: topPairs.results,
       top_dispensers: topDispensers.results,
       trending,

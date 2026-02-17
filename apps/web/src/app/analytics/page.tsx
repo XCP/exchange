@@ -128,6 +128,18 @@ function useChartContainer(height: number = 220) {
 
 // ── Monthly aggregation helper ──────────────────────────────────────
 
+function mergeDailyVolumes(...sources: { timestamp: number; volume: number }[][]): { timestamp: number; volume: number }[] {
+  const buckets = new Map<number, number>()
+  for (const src of sources) {
+    for (const d of src) {
+      buckets.set(d.timestamp, (buckets.get(d.timestamp) ?? 0) + d.volume)
+    }
+  }
+  return Array.from(buckets.entries())
+    .sort(([a], [b]) => a - b)
+    .map(([timestamp, volume]) => ({ timestamp, volume }))
+}
+
 function aggregateMonthly(data: { timestamp: number; volume: number }[]): { time: Time; value: number }[] {
   const buckets = new Map<string, number>()
   for (const d of data) {
@@ -541,6 +553,7 @@ export default function AnalyticsPage() {
     dispenseSummary,
     dailyTradeVolume,
     dailyDispenseVolume,
+    dailyBtcTradeVolume,
     topPairs,
     topDispensers,
     trending,
@@ -640,12 +653,12 @@ export default function AnalyticsPage() {
               <ComboVolumeChart
                 data={dailyTradeVolume}
                 color="#22c55e"
-                label="Trade Volume"
+                label="Trade Volume (XCP)"
               />
               <ComboVolumeChart
-                data={dailyDispenseVolume}
+                data={mergeDailyVolumes(dailyBtcTradeVolume, dailyDispenseVolume)}
                 color="#3b82f6"
-                label={`Dispense Volume (${btcLabel.toUpperCase()})`}
+                label="Trade Volume (BTC)"
               />
             </div>
 

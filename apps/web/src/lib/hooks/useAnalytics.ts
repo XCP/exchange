@@ -78,6 +78,7 @@ interface AnalyticsResponse {
   dispense_summary: DispenseSummary
   daily_trade_volume: DailyTradeVolume[]
   daily_dispense_volume: DailyDispenseVolume[]
+  daily_btc_trade_volume: DailyTradeVolume[]
   top_pairs: AnalyticsTopPair[]
   top_dispensers: AnalyticsTopDispenser[]
   trending: AnalyticsTrending[]
@@ -101,6 +102,7 @@ export function useAnalytics(timeframe: Timeframe = '24h', includeHidden: boolea
     dispenseSummary: data?.dispense_summary ?? null,
     dailyTradeVolume: data?.daily_trade_volume ?? [],
     dailyDispenseVolume: data?.daily_dispense_volume ?? [],
+    dailyBtcTradeVolume: data?.daily_btc_trade_volume ?? [],
     topPairs: data?.top_pairs ?? [],
     topDispensers: data?.top_dispensers ?? [],
     trending: data?.trending ?? [],
