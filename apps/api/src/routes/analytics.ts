@@ -53,13 +53,15 @@ export async function handleAnalytics(
        FROM dispenser_stats ds
        WHERE 1=1${dispHidden}`
     ),
-    // 3. Daily trade volume (from 1d candles)
+    // 3. Daily trade volume (XCP-quoted pairs only, quote-denominated)
     db.prepare(
-      `SELECT timestamp, SUM(volume) AS volume, SUM(trades) AS trades
-       FROM candles
-       WHERE interval = '1d'${includeHidden ? "" : " AND NOT EXISTS (SELECT 1 FROM pair_stats ps WHERE ps.pair = candles.pair AND ps.hidden = 1)"}
-       GROUP BY timestamp
-       ORDER BY timestamp`
+      `SELECT (block_time / 86400) * 86400 AS timestamp,
+              ROUND(SUM(volume), 2) AS volume,
+              COUNT(*) AS trades
+       FROM trades
+       WHERE quote_asset = 'XCP'${includeHidden ? "" : " AND NOT EXISTS (SELECT 1 FROM pair_stats ps WHERE ps.pair = trades.pair AND ps.hidden = 1)"}
+       GROUP BY 1
+       ORDER BY 1`
     ),
     // 4. Daily dispense volume
     db.prepare(
