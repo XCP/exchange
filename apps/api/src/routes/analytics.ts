@@ -10,6 +10,16 @@ export async function handleAnalytics(
   const pairHidden = includeHidden ? "" : " AND hidden = 0";
   const dispHidden = includeHidden ? "" : " AND ds.hidden = 0";
 
+  // Timestamp cutoff for raw trade/dispense queries
+  const now = Math.floor(Date.now() / 1000);
+  const cutoffMap: Record<string, number> = {
+    "24h": now - 86400,
+    "7d": now - 604800,
+    "30d": now - 2592000,
+  };
+  const cutoff = cutoffMap[tf] ?? 0; // 0 = no filter (all)
+  const timeFilt = cutoff > 0 ? ` AND block_time >= ${cutoff}` : "";
+
   // Timeframe-aware column names
   const volCol = tf === "all" ? "total_volume" : `volume_${tf}`;
   const tradeCountCol = tf === "all" ? "total_trade_count" : `trade_count_${tf}`;
@@ -62,17 +72,17 @@ export async function handleAnalytics(
               ROUND(SUM(volume), 2) AS volume,
               COUNT(*) AS trades
        FROM trades
-       WHERE quote_asset = 'XCP'${includeHidden ? "" : " AND NOT EXISTS (SELECT 1 FROM pair_stats ps WHERE ps.pair = trades.pair AND ps.hidden = 1)"}
+       WHERE quote_asset = 'XCP'${timeFilt}${includeHidden ? "" : " AND NOT EXISTS (SELECT 1 FROM pair_stats ps WHERE ps.pair = trades.pair AND ps.hidden = 1)"}
        GROUP BY 1
        ORDER BY 1`
     ),
-    // 4. Daily dispense volume (kept for activity chart)
+    // 4. Daily dispense volume
     db.prepare(
       `SELECT (block_time / 86400) * 86400 AS timestamp,
               SUM(btc_amount) AS volume,
               COUNT(*) AS dispenses
        FROM dispenses
-       WHERE 1=1${includeHidden ? "" : " AND NOT EXISTS (SELECT 1 FROM dispenser_stats ds2 WHERE ds2.asset = dispenses.asset AND ds2.hidden = 1)"}
+       WHERE 1=1${timeFilt}${includeHidden ? "" : " AND NOT EXISTS (SELECT 1 FROM dispenser_stats ds2 WHERE ds2.asset = dispenses.asset AND ds2.hidden = 1)"}
        GROUP BY 1
        ORDER BY 1`
     ),
@@ -82,7 +92,7 @@ export async function handleAnalytics(
               ROUND(SUM(volume), 8) AS volume,
               COUNT(*) AS trades
        FROM trades
-       WHERE quote_asset = 'BTC'${includeHidden ? "" : " AND NOT EXISTS (SELECT 1 FROM pair_stats ps WHERE ps.pair = trades.pair AND ps.hidden = 1)"}
+       WHERE quote_asset = 'BTC'${timeFilt}${includeHidden ? "" : " AND NOT EXISTS (SELECT 1 FROM pair_stats ps WHERE ps.pair = trades.pair AND ps.hidden = 1)"}
        GROUP BY 1
        ORDER BY 1`
     ),
@@ -116,41 +126,41 @@ export async function handleAnalytics(
        ORDER BY trade_count_24h DESC
        LIMIT 100`
     ),
-    // 8. Top 10 makers by XCP volume (only XCP-quoted pairs so units are comparable)
+    // 8. Top 30 makers by XCP volume (only XCP-quoted pairs so units are comparable)
     db.prepare(
       `SELECT maker AS address, ROUND(SUM(volume), 2) AS volume, COUNT(*) AS trades
        FROM trades
-       WHERE quote_asset = 'XCP'${includeHidden ? "" : " AND NOT EXISTS (SELECT 1 FROM pair_stats ps WHERE ps.pair = trades.pair AND ps.hidden = 1)"}
+       WHERE quote_asset = 'XCP'${timeFilt}${includeHidden ? "" : " AND NOT EXISTS (SELECT 1 FROM pair_stats ps WHERE ps.pair = trades.pair AND ps.hidden = 1)"}
        GROUP BY maker ORDER BY volume DESC LIMIT 30`
     ),
-    // 9. Top 10 takers by XCP volume (only XCP-quoted pairs so units are comparable)
+    // 9. Top 30 takers by XCP volume (only XCP-quoted pairs so units are comparable)
     db.prepare(
       `SELECT taker AS address, ROUND(SUM(volume), 2) AS volume, COUNT(*) AS trades
        FROM trades
-       WHERE quote_asset = 'XCP'${includeHidden ? "" : " AND NOT EXISTS (SELECT 1 FROM pair_stats ps WHERE ps.pair = trades.pair AND ps.hidden = 1)"}
+       WHERE quote_asset = 'XCP'${timeFilt}${includeHidden ? "" : " AND NOT EXISTS (SELECT 1 FROM pair_stats ps WHERE ps.pair = trades.pair AND ps.hidden = 1)"}
        GROUP BY taker ORDER BY volume DESC LIMIT 30`
     ),
-    // 10. Top 30 BTC buyers (BTC-quoted trade takers + dispense buyers)
+    // 10. Top 30 BTC takers (BTC-quoted trade takers + dispense buyers)
     db.prepare(
       `SELECT address, ROUND(SUM(volume), 8) AS volume, SUM(trades) AS trades FROM (
          SELECT taker AS address, SUM(volume) AS volume, COUNT(*) AS trades
-         FROM trades WHERE quote_asset = 'BTC'${includeHidden ? "" : " AND NOT EXISTS (SELECT 1 FROM pair_stats ps WHERE ps.pair = trades.pair AND ps.hidden = 1)"}
+         FROM trades WHERE quote_asset = 'BTC'${timeFilt}${includeHidden ? "" : " AND NOT EXISTS (SELECT 1 FROM pair_stats ps WHERE ps.pair = trades.pair AND ps.hidden = 1)"}
          GROUP BY taker
          UNION ALL
          SELECT destination AS address, SUM(btc_amount) AS volume, COUNT(*) AS trades
-         FROM dispenses${includeHidden ? "" : " WHERE NOT EXISTS (SELECT 1 FROM dispenser_stats ds2 WHERE ds2.asset = dispenses.asset AND ds2.hidden = 1)"}
+         FROM dispenses WHERE 1=1${timeFilt}${includeHidden ? "" : " AND NOT EXISTS (SELECT 1 FROM dispenser_stats ds2 WHERE ds2.asset = dispenses.asset AND ds2.hidden = 1)"}
          GROUP BY destination
        ) GROUP BY address ORDER BY volume DESC LIMIT 30`
     ),
-    // 11. Top 30 BTC sellers (BTC-quoted trade makers + dispenser operators)
+    // 11. Top 30 BTC makers (BTC-quoted trade makers + dispenser operators)
     db.prepare(
       `SELECT address, ROUND(SUM(volume), 8) AS volume, SUM(trades) AS trades FROM (
          SELECT maker AS address, SUM(volume) AS volume, COUNT(*) AS trades
-         FROM trades WHERE quote_asset = 'BTC'${includeHidden ? "" : " AND NOT EXISTS (SELECT 1 FROM pair_stats ps WHERE ps.pair = trades.pair AND ps.hidden = 1)"}
+         FROM trades WHERE quote_asset = 'BTC'${timeFilt}${includeHidden ? "" : " AND NOT EXISTS (SELECT 1 FROM pair_stats ps WHERE ps.pair = trades.pair AND ps.hidden = 1)"}
          GROUP BY maker
          UNION ALL
          SELECT source AS address, SUM(btc_amount) AS volume, COUNT(*) AS trades
-         FROM dispenses${includeHidden ? "" : " WHERE NOT EXISTS (SELECT 1 FROM dispenser_stats ds2 WHERE ds2.asset = dispenses.asset AND ds2.hidden = 1)"}
+         FROM dispenses WHERE 1=1${timeFilt}${includeHidden ? "" : " AND NOT EXISTS (SELECT 1 FROM dispenser_stats ds2 WHERE ds2.asset = dispenses.asset AND ds2.hidden = 1)"}
          GROUP BY source
        ) GROUP BY address ORDER BY volume DESC LIMIT 30`
     ),
