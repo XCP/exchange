@@ -584,8 +584,15 @@ export default function AnalyticsPage() {
               />
             </div>
 
+            {/* Leaderboards */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mb-6">
+              <TopPairsTable pairs={topPairs} tfLabel={tfLabel} />
+              <TopDispensersTable dispensers={topDispensers} tfLabel={tfLabel} satsMode={satsMode} />
+              <TrendingTable trending={trending} />
+            </div>
+
             {/* Volume Charts + Top Traders — XCP left, BTC right */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
               <div className="flex flex-col gap-2">
                 <ComboVolumeChart
                   data={dailyTradeVolume}
@@ -614,13 +621,6 @@ export default function AnalyticsPage() {
                   listB={topBtcBuyers}
                 />
               </div>
-            </div>
-
-            {/* Leaderboards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-              <TopPairsTable pairs={topPairs} tfLabel={tfLabel} />
-              <TopDispensersTable dispensers={topDispensers} tfLabel={tfLabel} satsMode={satsMode} />
-              <TrendingTable trending={trending} />
             </div>
           </>
         )}
