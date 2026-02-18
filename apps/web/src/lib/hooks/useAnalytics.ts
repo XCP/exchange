@@ -88,31 +88,39 @@ interface AnalyticsResponse {
   top_btc_sellers: AnalyticsTopTrader[]
 }
 
-export function useAnalytics(timeframe: Timeframe = '24h', includeHidden: boolean = false) {
+function buildParams(timeframe: Timeframe, includeHidden: boolean, section: string) {
   const params = new URLSearchParams()
   params.set('timeframe', timeframe)
+  params.set('section', section)
   if (includeHidden) params.set('include_hidden', '1')
+  return params.toString()
+}
 
-  const { data, error, isLoading } = useSWR<AnalyticsResponse>(
-    dexUrl(`/analytics?${params}`),
-    fetcher,
-    { refreshInterval: 300_000 }
-  )
+export function useAnalytics(timeframe: Timeframe = '24h', includeHidden: boolean = false) {
+  // Three parallel requests to stay within D1 resource limits
+  const summaryKey = dexUrl(`/analytics?${buildParams(timeframe, includeHidden, 'summary')}`)
+  const chartsKey = dexUrl(`/analytics?${buildParams(timeframe, includeHidden, 'charts')}`)
+  const tradersKey = dexUrl(`/analytics?${buildParams(timeframe, includeHidden, 'traders')}`)
+
+  const opts = { refreshInterval: 300_000 }
+  const summary = useSWR<AnalyticsResponse>(summaryKey, fetcher, opts)
+  const charts = useSWR<AnalyticsResponse>(chartsKey, fetcher, opts)
+  const traders = useSWR<AnalyticsResponse>(tradersKey, fetcher, opts)
 
   return {
-    tradeSummary: data?.trade_summary ?? null,
-    dispenseSummary: data?.dispense_summary ?? null,
-    dailyTradeVolume: data?.daily_trade_volume ?? [],
-    dailyDispenseVolume: data?.daily_dispense_volume ?? [],
-    dailyBtcTradeVolume: data?.daily_btc_trade_volume ?? [],
-    topPairs: data?.top_pairs ?? [],
-    topDispensers: data?.top_dispensers ?? [],
-    trending: data?.trending ?? [],
-    topMakers: data?.top_makers ?? [],
-    topTakers: data?.top_takers ?? [],
-    topBtcBuyers: data?.top_btc_buyers ?? [],
-    topBtcSellers: data?.top_btc_sellers ?? [],
-    error,
-    isLoading,
+    tradeSummary: summary.data?.trade_summary ?? null,
+    dispenseSummary: summary.data?.dispense_summary ?? null,
+    topPairs: summary.data?.top_pairs ?? [],
+    topDispensers: summary.data?.top_dispensers ?? [],
+    trending: summary.data?.trending ?? [],
+    dailyTradeVolume: charts.data?.daily_trade_volume ?? [],
+    dailyDispenseVolume: charts.data?.daily_dispense_volume ?? [],
+    dailyBtcTradeVolume: charts.data?.daily_btc_trade_volume ?? [],
+    topMakers: traders.data?.top_makers ?? [],
+    topTakers: traders.data?.top_takers ?? [],
+    topBtcBuyers: traders.data?.top_btc_buyers ?? [],
+    topBtcSellers: traders.data?.top_btc_sellers ?? [],
+    error: summary.error || charts.error || traders.error,
+    isLoading: summary.isLoading || charts.isLoading || traders.isLoading,
   }
 }
