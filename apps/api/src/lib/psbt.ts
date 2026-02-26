@@ -106,20 +106,31 @@ export function mergeAndFinalize(
 }
 
 /**
- * Broadcast a raw transaction via mempool.space API.
+ * Broadcast a raw transaction via mempool.space with blockstream.info fallback.
  * Returns the txid on success.
  */
 export async function broadcastTx(rawTxHex: string): Promise<string> {
-  const res = await fetch("https://mempool.space/api/tx", {
+  // Primary: mempool.space
+  try {
+    const res = await fetch("https://mempool.space/api/tx", {
+      method: "POST",
+      body: rawTxHex,
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (res.ok) return (await res.text()).trim();
+  } catch {
+    // fallthrough to blockstream
+  }
+
+  // Fallback: blockstream.info
+  const res = await fetch("https://blockstream.info/api/tx", {
     method: "POST",
     body: rawTxHex,
+    signal: AbortSignal.timeout(10_000),
   });
-
   if (!res.ok) {
     const body = await res.text();
     throw new Error(`Broadcast failed (${res.status}): ${body}`);
   }
-
-  // mempool.space returns the txid as plain text
   return (await res.text()).trim();
 }

@@ -11,6 +11,7 @@ export interface SwapListing {
   utxo_vout: number
   price_sats: number
   status: string
+  broadcast_txid: string | null
   buyer_address: string | null
   tx_id: string | null
   created_at: string

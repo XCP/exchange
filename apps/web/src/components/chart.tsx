@@ -31,7 +31,7 @@ export function Chart({ pairSlug, pairLabel }: ChartProps) {
   const chartRef = useRef<IChartApi | null>(null)
   const candleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null)
   const volumeSeriesRef = useRef<ISeriesApi<'Histogram'> | null>(null)
-  const [activeTimeframe, setActiveTimeframe] = useState('1D')
+  const [activeTimeframe, setActiveTimeframe] = useState('1Y')
   const candlesRef = useRef<CandlestickData<Time>[]>([])
   const volumesRef = useRef<HistogramData<Time>[]>([])
   const prevCandleCount = useRef(0)

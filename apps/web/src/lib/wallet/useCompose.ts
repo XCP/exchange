@@ -77,6 +77,31 @@ function friendlyError(e: unknown): string {
   return msg
 }
 
+/** Call Counterparty compose endpoint for UTXO-based operations */
+async function composeUtxoRequest(
+  utxo: string,
+  type: string,
+  params: Record<string, string | number>
+): Promise<string> {
+  const feeRate = await getFeeRate()
+  const qp = new URLSearchParams()
+  for (const [k, v] of Object.entries(params)) {
+    qp.set(k, String(v))
+  }
+  qp.set('sat_per_vbyte', String(feeRate))
+  qp.set('verbose', 'true')
+
+  const url = `${COUNTERPARTY_API_BASE}/utxos/${utxo}/compose/${type}?${qp.toString()}`
+  const res = await fetch(url, { signal: AbortSignal.timeout(30_000) })
+  const data = await res.json()
+
+  if (!res.ok || data.error) {
+    throw new Error(data.error || `Compose failed: ${res.status}`)
+  }
+
+  return data.result.rawtransaction
+}
+
 export function useCompose() {
   const { address, signTransaction, broadcastTransaction } = useWallet()
   const [state, setState] = useState<ComposeState>({ status: 'idle', txid: null, error: null })
@@ -145,6 +170,43 @@ export function useCompose() {
     quantity: params.quantity,
   }), [execute])
 
+  const executeUtxo = useCallback(async (utxo: string, type: string, params: Record<string, string | number>) => {
+    if (!address) {
+      setState({ status: 'error', txid: null, error: 'Wallet not connected' })
+      return
+    }
+    if (busyRef.current) return
+    busyRef.current = true
+
+    try {
+      setState({ status: 'composing', txid: null, error: null })
+      const unsignedHex = await composeUtxoRequest(utxo, type, params)
+
+      setState({ status: 'signing', txid: null, error: null })
+      const signedHex = await signTransaction(unsignedHex)
+
+      setState({ status: 'broadcasting', txid: null, error: null })
+      const txid = await broadcastTransaction(signedHex)
+
+      setState({ status: 'confirmed', txid, error: null })
+    } catch (e) {
+      setState({ status: 'error', txid: null, error: friendlyError(e) })
+    } finally {
+      busyRef.current = false
+    }
+  }, [address, signTransaction, broadcastTransaction])
+
+  const composeAttach = useCallback((params: {
+    asset: string
+    quantity: number
+  }) => execute('attach', {
+    asset: params.asset,
+    quantity: params.quantity,
+  }), [execute])
+
+  const composeDetach = useCallback((utxo: string) =>
+    executeUtxo(utxo, 'detach', {}), [executeUtxo])
+
   const reset = useCallback(() => {
     setState({ status: 'idle', txid: null, error: null })
   }, [])
@@ -154,6 +216,8 @@ export function useCompose() {
     composeOrder,
     composeDispenser,
     composeDispense,
+    composeAttach,
+    composeDetach,
     reset,
   }
 }

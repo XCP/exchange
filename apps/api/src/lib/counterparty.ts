@@ -161,6 +161,56 @@ export async function fetchDispensers(
   };
 }
 
+/**
+ * Verify that a UTXO holds the expected Counterparty asset.
+ * Calls the Counterparty API: GET /utxos/{txid}:{vout}/balances
+ */
+export async function verifyUtxoAsset(
+  apiBase: string,
+  utxoTxid: string,
+  utxoVout: number,
+  expectedAsset: string,
+  expectedQuantity?: number
+): Promise<{ verified: boolean; error?: string }> {
+  try {
+    const res = await fetchWithRetry(
+      `${apiBase}/utxos/${utxoTxid}:${utxoVout}/balances`
+    );
+    const data: { result: Array<{ asset: string; quantity: number; asset_longname: string | null }> } =
+      await res.json();
+
+    const match = data.result.find(
+      (b) => b.asset === expectedAsset || b.asset_longname === expectedAsset
+    );
+
+    if (!match) {
+      return {
+        verified: false,
+        error: `UTXO ${utxoTxid}:${utxoVout} does not hold asset ${expectedAsset}`,
+      };
+    }
+
+    if (match.quantity <= 0) {
+      return {
+        verified: false,
+        error: `UTXO has zero quantity of ${expectedAsset}`,
+      };
+    }
+
+    if (expectedQuantity !== undefined && match.quantity < expectedQuantity) {
+      return {
+        verified: false,
+        error: `UTXO holds ${match.quantity} of ${expectedAsset}, expected at least ${expectedQuantity}`,
+      };
+    }
+
+    return { verified: true };
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return { verified: false, error: `Failed to verify UTXO asset: ${msg}` };
+  }
+}
+
 export async function fetchOrders(
   apiBase: string,
   status: string = "open",

@@ -12,7 +12,8 @@ import { handleDispenserStats, handleDispenserStatsList } from "./routes/dispens
 import { handleTradeSummary } from "./routes/trade-summary";
 import { handleAnalytics } from "./routes/analytics";
 import { handleSearch } from "./routes/search";
-import { handleCreateSwap, handleGetSwaps, handleGetSwap, handleCancelSwap, handleFillSwap } from "./routes/swaps";
+import { handleGetSwaps, handleGetSwap, handleCancelSwap, handlePrepareListingPsbt, handleCompleteListingPsbt, handlePrepareFill, handleCompleteFill, handlePrepareCancelSwap } from "./routes/swaps";
+import { checkPendingFills } from "./lib/swap-monitor";
 import { syncBlocks } from "./indexer/sync-block";
 import { runCatchupAggregation, runCatchupStats, runCatchupDispenserStats, aggregateCandlesForPair } from "./indexer/aggregate";
 import { backfillTrades, backfillDispenses } from "./indexer/backfill";
@@ -25,6 +26,7 @@ export interface Env {
   DB: D1Database;
   CP_API_BASE: string;
   INDEXER_TOKEN?: string;
+  FEE_ADDRESS?: string;
 }
 
 function corsHeaders(): Record<string, string> {
@@ -370,9 +372,14 @@ export default {
 
       // ---- Swap routes (PSBT atomic swaps) ----
 
-      // Route: POST /swaps — create listing
-      if (path === "/swaps" && request.method === "POST") {
-        return await withCors(await handleCreateSwap(request, env.DB));
+      // Route: POST /swaps/prepare-listing — server constructs seller PSBT
+      if (path === "/swaps/prepare-listing" && request.method === "POST") {
+        return await withCors(await handlePrepareListingPsbt(request, env));
+      }
+
+      // Route: POST /swaps/complete-listing — seller submits signed PSBT
+      if (path === "/swaps/complete-listing" && request.method === "POST") {
+        return await withCors(await handleCompleteListingPsbt(request, env));
       }
 
       // Route: GET /swaps — browse listings
@@ -380,16 +387,28 @@ export default {
         return await withCors(await handleGetSwaps(request, env.DB));
       }
 
+      // Route: POST /swaps/:id/prepare-fill — server constructs buyer PSBT
+      const swapPrepareFillMatch = path.match(/^\/swaps\/([0-9a-f-]+)\/prepare-fill$/);
+      if (swapPrepareFillMatch && request.method === "POST") {
+        return await withCors(await handlePrepareFill(request, env, swapPrepareFillMatch[1]));
+      }
+
+      // Route: POST /swaps/:id/complete-fill — buyer submits signed PSBT
+      const swapCompleteFillMatch = path.match(/^\/swaps\/([0-9a-f-]+)\/complete-fill$/);
+      if (swapCompleteFillMatch && request.method === "POST") {
+        return await withCors(await handleCompleteFill(request, env.DB, swapCompleteFillMatch[1]));
+      }
+
+      // Route: POST /swaps/:id/prepare-cancel
+      const swapPrepareCancelMatch = path.match(/^\/swaps\/([0-9a-f-]+)\/prepare-cancel$/);
+      if (swapPrepareCancelMatch && request.method === "POST") {
+        return await withCors(await handlePrepareCancelSwap(env.DB, swapPrepareCancelMatch[1]));
+      }
+
       // Route: POST /swaps/:id/cancel
       const swapCancelMatch = path.match(/^\/swaps\/([0-9a-f-]+)\/cancel$/);
       if (swapCancelMatch && request.method === "POST") {
         return await withCors(await handleCancelSwap(request, env.DB, swapCancelMatch[1]));
-      }
-
-      // Route: POST /swaps/:id/fill
-      const swapFillMatch = path.match(/^\/swaps\/([0-9a-f-]+)\/fill$/);
-      if (swapFillMatch && request.method === "POST") {
-        return await withCors(await handleFillSwap(request, env.DB, swapFillMatch[1]));
       }
 
       // Route: GET /swaps/:id — single listing
@@ -501,6 +520,18 @@ export default {
                   `dispensers=+${sync.dispensers_upserted}/~${sync.dispensers_updated} ` +
                   `dispenses=${sync.dispenses_inserted}`
                 );
+              }
+
+              // Monitor pending swap fills for confirmation + detect anomalous UTXO spends
+              try {
+                const swapStatus = await checkPendingFills(env.DB);
+                if (swapStatus.confirmed > 0 || swapStatus.relisted > 0 || swapStatus.anomalous > 0) {
+                  console.log(
+                    `Swap monitor: confirmed=${swapStatus.confirmed} relisted=${swapStatus.relisted} anomalous=${swapStatus.anomalous}`
+                  );
+                }
+              } catch (e) {
+                console.error("Swap monitor error:", e);
               }
 
               // Periodic stats refresh: recalculate stale 24h/7d windows every 6 hours

@@ -4,18 +4,18 @@ import { useState } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
 import { useSwapListings, type SwapListing } from '@/lib/hooks/useSwapListings'
+import { useWallet } from '@/lib/wallet/wallet-context'
 import { useSatsMode } from '@/lib/sats-context'
-import { formatAddress } from '@/utils/format-address'
 import { formatTimeAgo } from '@/utils/format-time-ago'
 import { formatAmount } from '@/utils/format-amount'
 import { formatPrice } from '@/utils/format-price'
 import { DEX_API_BASE, XCP_IMG_BASE } from '@/utils/constants'
 
 type StatusFilter = 'active' | 'filled' | 'cancelled'
-type CancelStatus = 'idle' | 'cancelling' | 'cancelled' | 'error'
 
 export function PortfolioSwaps({ address }: { address: string }) {
   const { satsMode } = useSatsMode()
+  const { signMessage } = useWallet()
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('active')
   const [cancellingId, setCancellingId] = useState<string | null>(null)
   const [cancelError, setCancelError] = useState<string | null>(null)
@@ -31,10 +31,27 @@ export function PortfolioSwaps({ address }: { address: string }) {
     setCancelError(null)
 
     try {
+      // Step 1: Get challenge from server
+      const prepareRes = await fetch(`${DEX_API_BASE}/swaps/${listing.id}/prepare-cancel`, {
+        method: 'POST',
+      })
+      const prepareData = await prepareRes.json()
+      if (!prepareRes.ok) {
+        throw new Error(prepareData.error || 'Failed to prepare cancel')
+      }
+
+      // Step 2: Sign the challenge with wallet
+      const signature = await signMessage(prepareData.challenge)
+
+      // Step 3: Submit signed cancel
       const res = await fetch(`${DEX_API_BASE}/swaps/${listing.id}/cancel`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ seller_address: address }),
+        body: JSON.stringify({
+          seller_address: address,
+          challenge: prepareData.challenge,
+          signature,
+        }),
       })
 
       const data = await res.json()
@@ -156,6 +173,20 @@ export function PortfolioSwaps({ address }: { address: string }) {
                       >
                         {cancellingId === listing.id ? 'Cancelling...' : 'Cancel'}
                       </button>
+                    )}
+                    {listing.status === 'pending_fill' && (
+                      listing.broadcast_txid ? (
+                        <a
+                          href={`https://mempool.space/tx/${listing.broadcast_txid}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-yellow-400 hover:text-yellow-300 text-[10px] font-medium"
+                        >
+                          Confirming...
+                        </a>
+                      ) : (
+                        <span className="text-yellow-500 text-[10px] font-medium">Pending...</span>
+                      )
                     )}
                     {listing.status === 'filled' && listing.tx_id && (
                       <a

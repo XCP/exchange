@@ -3,18 +3,17 @@
 import { use, useState } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
-import { useSwapListings, type SwapListing } from '@/lib/hooks/useSwapListings'
+import { useSwapListings } from '@/lib/hooks/useSwapListings'
 import { useWallet } from '@/lib/wallet/wallet-context'
 import { useSatsMode } from '@/lib/sats-context'
 import { formatAddress } from '@/utils/format-address'
 import { formatTimeAgo } from '@/utils/format-time-ago'
 import { formatAmount } from '@/utils/format-amount'
 import { formatPrice } from '@/utils/format-price'
-import { DEX_API_BASE, XCP_IMG_BASE } from '@/utils/constants'
+import { XCP_IMG_BASE } from '@/utils/constants'
 
 type Tab = 'active' | 'filled'
 type SortKey = 'price_asc' | 'price_desc' | 'created_at_desc' | 'created_at_asc'
-type SwapStatus = 'idle' | 'submitting' | 'success' | 'error'
 
 export default function SwapAssetPage({ params }: { params: Promise<{ asset: string }> }) {
   const { asset } = use(params)
@@ -22,10 +21,8 @@ export default function SwapAssetPage({ params }: { params: Promise<{ asset: str
   const { address } = useWallet()
   const [activeTab, setActiveTab] = useState<Tab>('active')
   const [sort, setSort] = useState<SortKey>('price_asc')
-  const [buyingId, setBuyingId] = useState<string | null>(null)
-
   const status = activeTab === 'filled' ? 'filled' : 'active'
-  const { listings, total, isLoading, mutate } = useSwapListings({
+  const { listings, total, isLoading } = useSwapListings({
     asset,
     status,
     sort,
@@ -46,21 +43,31 @@ export default function SwapAssetPage({ params }: { params: Promise<{ asset: str
             </Link>
             <span className="text-zinc-700 text-xs">/</span>
           </div>
-          <div className="flex items-center gap-3">
-            <Image
-              src={`${XCP_IMG_BASE}/icon/${asset}`}
-              alt=""
-              width={28}
-              height={28}
-              className="rounded-sm"
-              unoptimized
-            />
-            <div>
-              <h1 className="text-lg font-semibold text-zinc-100">{displayName}</h1>
-              {displayName !== asset && (
-                <p className="text-[10px] text-zinc-600 font-mono">{asset}</p>
-              )}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Image
+                src={`${XCP_IMG_BASE}/icon/${asset}`}
+                alt=""
+                width={28}
+                height={28}
+                className="rounded-sm"
+                unoptimized
+              />
+              <div>
+                <h1 className="text-lg font-semibold text-zinc-100">{displayName}</h1>
+                {displayName !== asset && (
+                  <p className="text-[10px] text-zinc-600 font-mono">{asset}</p>
+                )}
+              </div>
             </div>
+            {address && (
+              <Link
+                href="/swap/sell"
+                className="px-3 py-1.5 bg-orange-600 hover:bg-orange-500 text-white text-xs font-bold rounded-sm transition-colors"
+              >
+                List for Sale
+              </Link>
+            )}
           </div>
         </div>
 
@@ -173,12 +180,26 @@ export default function SwapAssetPage({ params }: { params: Promise<{ asset: str
                       </td>
                       <td className="text-right px-3 py-2">
                         {listing.status === 'active' && address && address !== listing.seller_address && (
-                          <button
-                            onClick={() => setBuyingId(listing.id)}
+                          <Link
+                            href={`/swap/buy/${listing.id}`}
                             className="px-2.5 py-1 bg-green-600 hover:bg-green-500 text-white text-[10px] font-bold rounded-sm transition-colors"
                           >
                             Buy
-                          </button>
+                          </Link>
+                        )}
+                        {listing.status === 'pending_fill' && (
+                          listing.broadcast_txid ? (
+                            <a
+                              href={`https://mempool.space/tx/${listing.broadcast_txid}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-yellow-400 hover:text-yellow-300 text-[10px] font-medium"
+                            >
+                              Confirming...
+                            </a>
+                          ) : (
+                            <span className="text-yellow-500 text-[10px] font-medium">Pending...</span>
+                          )
                         )}
                         {listing.status === 'filled' && listing.tx_id && (
                           <a
@@ -199,186 +220,6 @@ export default function SwapAssetPage({ params }: { params: Promise<{ asset: str
           </table>
         </div>
 
-        {/* Buy modal */}
-        {buyingId && (
-          <BuyModal
-            listing={listings.find((l) => l.id === buyingId)!}
-            satsMode={satsMode}
-            onClose={() => setBuyingId(null)}
-            onFilled={() => { setBuyingId(null); mutate() }}
-          />
-        )}
-      </div>
-    </div>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// Buy Modal
-// ---------------------------------------------------------------------------
-function BuyModal({
-  listing,
-  satsMode,
-  onClose,
-  onFilled,
-}: {
-  listing: SwapListing
-  satsMode: boolean
-  onClose: () => void
-  onFilled: () => void
-}) {
-  const { address } = useWallet()
-  const [buyerPsbt, setBuyerPsbt] = useState('')
-  const [status, setStatus] = useState<SwapStatus>('idle')
-  const [error, setError] = useState<string | null>(null)
-  const [txId, setTxId] = useState<string | null>(null)
-
-  const totalPriceBtc = listing.price_sats / 1e8
-  const unitPrice = listing.price_sats / listing.asset_quantity
-
-  async function handleFill() {
-    if (!address || !buyerPsbt.trim()) return
-    setStatus('submitting')
-    setError(null)
-
-    try {
-      const res = await fetch(`${DEX_API_BASE}/swaps/${listing.id}/fill`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          buyer_address: address,
-          psbt_hex: buyerPsbt.trim(),
-        }),
-      })
-
-      const data = await res.json()
-      if (!res.ok) {
-        throw new Error(data.error || data.details || 'Fill failed')
-      }
-
-      setTxId(data.tx_id)
-      setStatus('success')
-      setTimeout(onFilled, 3000)
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Unknown error'
-      setError(msg)
-      setStatus('error')
-      setTimeout(() => setStatus('idle'), 3000)
-    }
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={onClose}>
-      <div
-        className="bg-zinc-950 border border-zinc-800 rounded-sm w-full max-w-md mx-4 shadow-xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
-          <h3 className="text-sm font-medium text-zinc-200">Buy Swap</h3>
-          <button onClick={onClose} className="text-zinc-500 hover:text-zinc-300 text-lg leading-none">&times;</button>
-        </div>
-
-        <div className="px-4 py-3 border-b border-zinc-800 space-y-2">
-          <div className="flex items-center gap-2">
-            <Image
-              src={`${XCP_IMG_BASE}/icon/${listing.asset}`}
-              alt=""
-              width={20}
-              height={20}
-              className="rounded-sm"
-              unoptimized
-            />
-            <span className="text-sm font-medium text-zinc-200">
-              {listing.asset_longname ?? listing.asset}
-            </span>
-          </div>
-
-          <div className="grid grid-cols-2 gap-2 text-xs">
-            <div>
-              <span className="text-zinc-500">Quantity</span>
-              <div className="text-zinc-200 font-mono">{formatAmount(listing.asset_quantity)}</div>
-            </div>
-            <div>
-              <span className="text-zinc-500">Total Price</span>
-              <div className="text-zinc-200 font-mono">
-                {satsMode
-                  ? `${listing.price_sats.toLocaleString()} sats`
-                  : `${formatPrice(totalPriceBtc, false)} BTC`}
-              </div>
-            </div>
-            <div>
-              <span className="text-zinc-500">Unit Price</span>
-              <div className="text-zinc-400 font-mono">
-                {satsMode
-                  ? `${unitPrice < 1 ? unitPrice.toPrecision(2) : Math.round(unitPrice).toLocaleString()} sats`
-                  : `${formatPrice(unitPrice / 1e8, false)} BTC`}
-              </div>
-            </div>
-            <div>
-              <span className="text-zinc-500">Seller</span>
-              <div className="text-zinc-400 font-mono">{formatAddress(listing.seller_address)}</div>
-            </div>
-          </div>
-
-          <div className="text-[10px] text-zinc-600">
-            UTXO: {listing.utxo_txid.slice(0, 12)}...:{listing.utxo_vout}
-          </div>
-        </div>
-
-        <div className="px-4 py-3 space-y-2">
-          <label className="block">
-            <span className="text-[10px] text-zinc-500 mb-1 block">
-              Your Signed PSBT (hex)
-              <span className="text-zinc-600 ml-1">— include seller&apos;s UTXO as input 0 (unsigned), your funding inputs signed</span>
-            </span>
-            <textarea
-              value={buyerPsbt}
-              onChange={(e) => setBuyerPsbt(e.target.value.replace(/\s/g, ''))}
-              placeholder="70736274ff..."
-              rows={3}
-              className="w-full bg-zinc-900 border border-zinc-800 rounded-sm px-2.5 py-1.5 text-xs text-zinc-200 placeholder-zinc-700 font-mono focus:outline-none focus:border-zinc-600 resize-none"
-            />
-          </label>
-
-          {address && (
-            <div className="text-[10px] text-zinc-600">
-              Buyer: <span className="font-mono text-zinc-500">{address}</span>
-            </div>
-          )}
-
-          <div className="flex items-center gap-3 pt-1">
-            <button
-              onClick={handleFill}
-              disabled={status !== 'idle' || !buyerPsbt.trim() || !address}
-              className="px-4 py-2 bg-green-600 hover:bg-green-500 disabled:bg-zinc-800 disabled:text-zinc-600 text-white text-xs font-bold rounded-sm transition-colors"
-            >
-              {status === 'submitting' ? 'Filling...' :
-               status === 'success' ? 'Filled!' :
-               'Confirm Purchase'}
-            </button>
-            <button
-              onClick={onClose}
-              className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 text-xs font-medium rounded-sm transition-colors"
-            >
-              Cancel
-            </button>
-          </div>
-
-          {error && <p className="text-red-400 text-[10px]">{error}</p>}
-          {txId && (
-            <p className="text-green-400 text-[10px]">
-              Transaction broadcast!{' '}
-              <a
-                href={`https://mempool.space/tx/${txId}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="underline"
-              >
-                {txId.slice(0, 12)}...
-              </a>
-            </p>
-          )}
-        </div>
       </div>
     </div>
   )

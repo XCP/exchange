@@ -10,7 +10,9 @@ interface WalletContextValue {
   connecting: boolean
   connect: () => Promise<void>
   disconnect: () => Promise<void>
+  signMessage: (message: string) => Promise<string>
   signTransaction: (hex: string) => Promise<string>
+  signPsbt: (hex: string, signInputs?: Record<string, number[]>, sighashTypes?: number[]) => Promise<string>
   broadcastTransaction: (hex: string) => Promise<string>
 }
 
@@ -142,6 +144,19 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     storageRemove(STORAGE_KEY)
   }
 
+  const signMessage = async (message: string): Promise<string> => {
+    if (!window.xcpwallet) throw new Error('Wallet not available')
+    const result = await window.xcpwallet.request({
+      method: 'xcp_signMessage',
+      params: [message],
+    })
+    const signature = result && typeof result === 'object' && 'signature' in result
+      ? (result as { signature: string }).signature
+      : typeof result === 'string' ? result : undefined
+    if (!signature) throw new Error('Wallet returned invalid sign message response')
+    return signature
+  }
+
   const signTransaction = async (hex: string): Promise<string> => {
     if (!window.xcpwallet) throw new Error('Wallet not available')
     const result = await window.xcpwallet.request({
@@ -150,6 +165,20 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     })
     const signed = result && typeof result === 'object' && 'hex' in result ? (result as { hex: string }).hex : undefined
     if (!signed) throw new Error('Wallet returned invalid sign response')
+    return signed
+  }
+
+  const signPsbt = async (psbtHex: string, signInputs?: Record<string, number[]>, sighashTypes?: number[]): Promise<string> => {
+    if (!window.xcpwallet) throw new Error('Wallet not available')
+    const params: { hex: string; signInputs?: Record<string, number[]>; sighashTypes?: number[] } = { hex: psbtHex }
+    if (signInputs) params.signInputs = signInputs
+    if (sighashTypes) params.sighashTypes = sighashTypes
+    const result = await window.xcpwallet.request({
+      method: 'xcp_signPsbt',
+      params: [params],
+    })
+    const signed = result && typeof result === 'object' && 'hex' in result ? (result as { hex: string }).hex : undefined
+    if (!signed) throw new Error('Wallet returned invalid PSBT response')
     return signed
   }
 
@@ -171,7 +200,9 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       connecting,
       connect,
       disconnect,
+      signMessage,
       signTransaction,
+      signPsbt,
       broadcastTransaction,
     }}>
       {children}
