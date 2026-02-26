@@ -136,17 +136,27 @@ export async function constructSellerPsbt(params: {
 
   const tx = new Transaction(PSBT_OPTS);
 
+  // Detect if seller address is legacy P2PKH (starts with 1 or m/n)
+  const isLegacy = /^[1mn]/.test(sellerAddress);
+
   // Input 0: Seller's asset UTXO with SIGHASH_SINGLE|ANYONECANPAY
-  tx.addInput({
+  const inputData: Parameters<typeof tx.addInput>[0] = {
     txid: utxoTxid,
     index: utxoVout,
-    sighashType:
-      SigHash.SINGLE_ANYONECANPAY, // 0x83
+    sighashType: SigHash.SINGLE_ANYONECANPAY, // 0x83
     witnessUtxo: {
       script: hex.decode(output.scriptpubkey),
       amount: BigInt(output.value),
     },
-  });
+  };
+
+  // Legacy P2PKH needs full previous tx for finalization
+  if (isLegacy) {
+    const rawTxHex = await fetchRawTx(utxoTxid);
+    inputData.nonWitnessUtxo = hex.decode(rawTxHex);
+  }
+
+  tx.addInput(inputData);
 
   // Output 0: Payment to seller
   tx.addOutputAddress(sellerAddress, BigInt(priceSats));
