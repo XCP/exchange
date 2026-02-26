@@ -521,6 +521,12 @@ export async function syncBlocks(
 
         switch (event.event) {
           case "ORDER_MATCH": {
+            // Only insert completed order matches — pending/expired matches
+            // produce phantom trades with wrong prices (especially BTC pairs)
+            const matchStatus = params.status as string | undefined;
+            if (matchStatus && matchStatus !== "completed") {
+              break;
+            }
             const trade = processOrderMatch(params, blockIndex, blockTime);
             stmts.push(trade.stmt);
             result.trades_inserted++;
