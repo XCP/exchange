@@ -1,5 +1,4 @@
 {
   "name": "exchange",
-  "private": true,
-  "workspaces": ["apps/api"]
+  "private": true
 }
