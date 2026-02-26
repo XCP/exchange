@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { Suspense, useState } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { useWallet } from '@/lib/wallet/wallet-context'
@@ -9,6 +9,14 @@ import { DEX_API_BASE } from '@/utils/constants'
 type SellStatus = 'idle' | 'preparing' | 'signing' | 'submitting' | 'success' | 'error'
 
 export default function SellPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-zinc-950" />}>
+      <SellPageInner />
+    </Suspense>
+  )
+}
+
+function SellPageInner() {
   const searchParams = useSearchParams()
   const { address, signPsbt } = useWallet()
   const [status, setStatus] = useState<SellStatus>('idle')
