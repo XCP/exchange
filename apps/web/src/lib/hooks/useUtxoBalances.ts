@@ -17,7 +17,7 @@ interface UtxoBalancesResponse {
 
 export function useUtxoBalances(address: string | null) {
   const { data, error, isLoading, mutate } = useSWR<UtxoBalancesResponse>(
-    address ? counterpartyUrl(`/addresses/${address}/balances/utxo`) : null,
+    address ? counterpartyUrl(`/addresses/${address}/balances?type=utxo`) : null,
     fetcher,
     { refreshInterval: 30_000 }
   )
