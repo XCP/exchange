@@ -2,8 +2,8 @@
 // Uses @noble/curves + @noble/hashes + @scure/btc-signer (all pure JS, Workers-compatible)
 // Ported from the wallet extension's bip322.ts implementation
 
-import { sha256 } from "@noble/hashes/sha256";
-import { secp256k1, schnorr } from "@noble/curves/secp256k1";
+import { sha256 } from "@noble/hashes/sha2.js";
+import { secp256k1, schnorr } from "@noble/curves/secp256k1.js";
 import { hex, base64 } from "@scure/base";
 import * as btc from "@scure/btc-signer";
 
