@@ -543,10 +543,10 @@ export default function AnalyticsPage() {
               />
             </div>
 
-            {/* Other Quote Assets Ticker */}
+            {/* Other Quote Assets */}
             {quoteVolumes.length > 0 && (
-              <div className="flex gap-2 overflow-x-auto pb-1 mb-6 scrollbar-thin">
-                {quoteVolumes.map((q) => (
+              <div className="flex gap-2 mb-6">
+                {quoteVolumes.slice(0, 4).map((q) => (
                   <div key={q.quote_asset} className="flex items-center gap-2 shrink-0 px-3 py-1.5 bg-zinc-900/50 border border-zinc-800 rounded-sm">
                     <Image
                       src={`${XCP_IMG_BASE}/icon/${q.quote_asset}`}

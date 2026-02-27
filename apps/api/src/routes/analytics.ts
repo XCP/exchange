@@ -233,9 +233,6 @@ export async function handleAnalytics(
       top_takers: topTakersResults,
       top_btc_buyers: topBtcBuyersResults,
       top_btc_sellers: topBtcSellersResults,
-    },
-    {
-      headers: { "Cache-Control": "public, max-age=300" },
     }
   );
 }

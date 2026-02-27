@@ -62,7 +62,7 @@ async function withCors(response: Response): Promise<Response> {
 }
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     // Handle CORS preflight
     if (request.method === "OPTIONS") {
       return new Response(null, { status: 204, headers: corsHeaders() });
@@ -188,9 +188,29 @@ export default {
         return await withCors(await handleSearch(request, env.DB));
       }
 
-      // Route: GET /analytics
+      // Route: GET /analytics (edge-cached for 3 hours, browser 5 min)
       if (path === "/analytics") {
-        return await withCors(await handleAnalytics(request, env.DB));
+        const cache = caches.default;
+        const cacheUrl = new URL(request.url);
+        cacheUrl.searchParams.sort();
+        const cacheKey = new Request(cacheUrl.toString());
+
+        const cached = await cache.match(cacheKey);
+        if (cached) {
+          const body = await cached.text();
+          return withCors(new Response(body, {
+            headers: { "Content-Type": "application/json", "Cache-Control": "public, max-age=300" },
+          }));
+        }
+
+        const raw = await handleAnalytics(request, env.DB);
+        const body = await raw.text();
+        ctx.waitUntil(cache.put(cacheKey, new Response(body, {
+          headers: { "Content-Type": "application/json", "Cache-Control": "public, s-maxage=10800, max-age=300" },
+        })));
+        return withCors(new Response(body, {
+          headers: { "Content-Type": "application/json", "Cache-Control": "public, max-age=300" },
+        }));
       }
 
       // Route: GET /status — mode, progress, table counts
@@ -580,6 +600,46 @@ export default {
                 if (stalePairs > 0 || staleDispensers > 0) {
                   console.log(`Stats refresh: ${stalePairs} pairs, ${staleDispensers} dispenser assets`);
                 }
+              }
+
+              // Analytics cache warming: cycle one timeframe per tick (~12 D1 queries).
+              // Full cycle every 40 min (4 tf × 10-min cron). Edge cache TTL is 3 hours.
+              try {
+                const cache = caches.default;
+                const ANALYTICS_CACHE_TTL = 10800;
+                const timeframes = ['all', '24h', '7d', '30d'];
+                const lastWarmRow = await env.DB
+                  .prepare(`SELECT value FROM indexer_state WHERE key = 'analytics_warm_idx'`)
+                  .first<{ value: string }>();
+                const warmIdx = lastWarmRow ? (parseInt(lastWarmRow.value, 10) + 1) % timeframes.length : 0;
+                const warmTf = timeframes[warmIdx];
+
+                for (const section of ['summary', 'charts', 'traders']) {
+                  const warmUrl = new URL('https://api.xcpdex.com/analytics');
+                  warmUrl.searchParams.set('section', section);
+                  warmUrl.searchParams.set('timeframe', warmTf);
+                  warmUrl.searchParams.sort();
+                  const req = new Request(warmUrl.toString());
+                  const resp = await handleAnalytics(req, env.DB);
+                  const body = await resp.text();
+                  await cache.put(req, new Response(body, {
+                    headers: {
+                      'Content-Type': 'application/json',
+                      'Cache-Control': `public, s-maxage=${ANALYTICS_CACHE_TTL}, max-age=300`,
+                    },
+                  }));
+                }
+
+                await env.DB
+                  .prepare(
+                    `INSERT INTO indexer_state (key, value) VALUES ('analytics_warm_idx', ?)
+                     ON CONFLICT (key) DO UPDATE SET value = excluded.value`
+                  )
+                  .bind(String(warmIdx))
+                  .run();
+                console.log(`Analytics cache warmed: ${warmTf}`);
+              } catch (e) {
+                console.error("Analytics cache warm error:", e);
               }
               break;
             }
