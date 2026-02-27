@@ -41,6 +41,7 @@ export async function handleAnalytics(
   let dailyBtcTradeVolumeResults: unknown[] = [];
   let topPairsResults: unknown[] = [];
   let topDispensersResults: unknown[] = [];
+  let quoteVolumeResults: unknown[] = [];
   let topMakersResults: unknown[] = [];
   let topTakersResults: unknown[] = [];
   let topBtcBuyersResults: unknown[] = [];
@@ -53,6 +54,7 @@ export async function handleAnalytics(
       dispenseSummary,
       topPairs,
       topDispensers,
+      quoteVolumes,
     ] = await db.batch([
       db.prepare(
         `SELECT
@@ -99,12 +101,21 @@ export async function handleAnalytics(
          ORDER BY ds.${dispVolCol} DESC
          LIMIT 10`
       ),
+      db.prepare(
+        `SELECT quote_asset, ROUND(SUM(${volCol}), 2) AS volume,
+                SUM(${tradeCountCol}) AS trade_count
+         FROM pair_stats
+         WHERE ${volCol} > 0${pairHidden}
+         GROUP BY quote_asset
+         ORDER BY volume DESC`
+      ),
     ]);
 
     tradeSummaryData = tradeSummary.results[0] as Record<string, number> | undefined;
     dispenseSummaryData = dispenseSummary.results[0] as Record<string, number> | undefined;
     topPairsResults = topPairs.results;
     topDispensersResults = topDispensers.results;
+    quoteVolumeResults = quoteVolumes.results;
   }
 
   // Section: charts — volume timeseries from raw tables
@@ -217,6 +228,7 @@ export async function handleAnalytics(
       daily_btc_trade_volume: dailyBtcTradeVolumeResults,
       top_pairs: topPairsResults,
       top_dispensers: topDispensersResults,
+      quote_volumes: quoteVolumeResults,
       top_makers: topMakersResults,
       top_takers: topTakersResults,
       top_btc_buyers: topBtcBuyersResults,

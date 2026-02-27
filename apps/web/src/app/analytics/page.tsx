@@ -443,6 +443,7 @@ export default function AnalyticsPage() {
     dailyBtcTradeVolume,
     topPairs,
     topDispensers,
+    quoteVolumes,
     topMakers,
     topTakers,
     topBtcBuyers,
@@ -537,6 +538,27 @@ export default function AnalyticsPage() {
                 value={dispenseSummary ? dispenseSummary.open_dispensers.toLocaleString() : '—'}
               />
             </div>
+
+            {/* Quote Asset Volume Ticker */}
+            {quoteVolumes.length > 0 && (
+              <div className="flex gap-2 overflow-x-auto pb-1 mb-6 scrollbar-thin">
+                {quoteVolumes.map((q) => (
+                  <div key={q.quote_asset} className="flex items-center gap-2 shrink-0 px-3 py-1.5 bg-zinc-900/50 border border-zinc-800 rounded-sm">
+                    <Image
+                      src={`${XCP_IMG_BASE}/icon/${q.quote_asset}`}
+                      alt=""
+                      width={14}
+                      height={14}
+                      className="rounded-sm"
+                      unoptimized
+                    />
+                    <span className="text-xs text-zinc-400 font-mono">{q.quote_asset}</span>
+                    <span className="text-xs text-zinc-200 font-mono font-semibold">{fmtBig(q.volume)}</span>
+                    <span className="text-[10px] text-zinc-600 font-mono">{q.trade_count.toLocaleString()} trades</span>
+                  </div>
+                ))}
+              </div>
+            )}
 
             {/* Leaderboards */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-6">
