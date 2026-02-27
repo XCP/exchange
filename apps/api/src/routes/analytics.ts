@@ -58,11 +58,11 @@ export async function handleAnalytics(
     ] = await db.batch([
       db.prepare(
         `SELECT
-          COALESCE(SUM(total_volume), 0) AS total_volume,
+          COALESCE(SUM(CASE WHEN quote_asset = 'XCP' THEN total_volume ELSE 0 END), 0) AS total_volume,
           COALESCE(SUM(total_trade_count), 0) AS total_trade_count,
           COUNT(*) AS total_pairs,
           SUM(CASE WHEN ${tradeCountCol} > 0 THEN 1 ELSE 0 END) AS active_pairs,
-          COALESCE(SUM(${volCol}), 0) AS tf_volume,
+          COALESCE(SUM(CASE WHEN quote_asset = 'XCP' THEN ${volCol} ELSE 0 END), 0) AS tf_volume,
           COALESCE(SUM(${tradeCountCol}), 0) AS tf_trades,
           (SELECT COUNT(*) FROM orders WHERE status = 'open') AS open_orders
          FROM pair_stats

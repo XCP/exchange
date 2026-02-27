@@ -10,6 +10,7 @@ import { formatAmount } from '@/utils/format-amount'
 import { formatPrice } from '@/utils/format-price'
 import { useSatsMode } from '@/lib/sats-context'
 import { COMPOSE_STATUS_LABELS } from '@/utils/constants'
+import { WalletInstallModal } from '@/components/wallet-install-modal'
 import type { Dispenser } from '@/types/trading'
 
 interface DispenseFormProps {
@@ -72,20 +73,25 @@ export function DispenseForm({ asset, sortedDispensers, selectedIndex, onSelectI
     })
   }
 
+  const [showInstall, setShowInstall] = useState(false)
+
   const actionButton = (color: 'green' | 'red', label: string, onSubmit: () => void) => {
     if (walletStatus !== 'connected') {
       return (
-        <button
-          onClick={walletStatus === 'disconnected' ? connect : undefined}
-          disabled={connecting}
-          className={`w-full rounded-sm py-2.5 text-xs font-semibold uppercase tracking-wider transition-colors ${
-            color === 'green'
-              ? 'bg-green-500 text-zinc-950 hover:bg-green-400'
-              : 'bg-red-500 text-zinc-950 hover:bg-red-400'
-          } disabled:opacity-50`}
-        >
-          {walletStatus === 'not_detected' ? 'Install Wallet' : connecting ? 'Connecting...' : 'Connect Wallet'}
-        </button>
+        <>
+          <button
+            onClick={walletStatus === 'disconnected' ? connect : () => setShowInstall(true)}
+            disabled={connecting}
+            className={`w-full rounded-sm py-2.5 text-xs font-semibold uppercase tracking-wider transition-colors ${
+              color === 'green'
+                ? 'bg-green-500 text-zinc-950 hover:bg-green-400'
+                : 'bg-red-500 text-zinc-950 hover:bg-red-400'
+            } disabled:opacity-50`}
+          >
+            {connecting ? 'Connecting...' : 'Connect Wallet'}
+          </button>
+          {showInstall && <WalletInstallModal onClose={() => setShowInstall(false)} />}
+        </>
       )
     }
 

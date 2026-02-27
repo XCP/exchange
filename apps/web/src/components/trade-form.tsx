@@ -1,10 +1,12 @@
 'use client'
 
+import { useState as useLocalState } from 'react'
 import { useWallet } from '@/lib/wallet/wallet-context'
 import { useCompose } from '@/lib/wallet/useCompose'
 import { useBalance } from '@/lib/hooks/useBalance'
 import { useFeeRate } from '@/lib/hooks/useNetworkInfo'
 import { COMPOSE_STATUS_LABELS } from '@/utils/constants'
+import { WalletInstallModal } from '@/components/wallet-install-modal'
 
 interface TradeFormProps {
   baseSymbol: string
@@ -34,6 +36,8 @@ export function TradeForm({
   const spendAsset = tradeTab === 'buy' ? quoteSymbol : baseSymbol
   const { balance: spendBalance } = useBalance(address, spendAsset)
   const feeRate = useFeeRate()
+
+  const [showInstall, setShowInstall] = useLocalState(false)
 
   const totalValue =
     priceInput && amountInput
@@ -160,8 +164,9 @@ export function TradeForm({
 
         {/* Action button */}
         {walletStatus !== 'connected' ? (
+          <>
           <button
-            onClick={walletStatus === 'disconnected' ? connect : undefined}
+            onClick={walletStatus === 'disconnected' ? connect : () => setShowInstall(true)}
             disabled={connecting}
             className={`w-full rounded-sm py-2.5 text-xs font-semibold uppercase tracking-wider transition-colors ${
               tradeTab === 'buy'
@@ -169,8 +174,10 @@ export function TradeForm({
                 : 'bg-red-500 text-zinc-950 hover:bg-red-400'
             } disabled:opacity-50`}
           >
-            {walletStatus === 'not_detected' ? 'Install Wallet' : connecting ? 'Connecting...' : 'Connect Wallet'}
+            {connecting ? 'Connecting...' : 'Connect Wallet'}
           </button>
+          {showInstall && <WalletInstallModal onClose={() => setShowInstall(false)} />}
+          </>
         ) : (
           <button
             onClick={txStatus === 'confirmed' || txStatus === 'error' ? reset : handleSubmit}

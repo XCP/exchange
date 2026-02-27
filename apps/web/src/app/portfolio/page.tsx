@@ -7,6 +7,7 @@ import { PortfolioDispensers } from '@/components/portfolio/portfolio-dispensers
 import { PortfolioBalances } from '@/components/portfolio/portfolio-balances'
 import { PortfolioSwaps } from '@/components/portfolio/portfolio-swaps'
 import { PortfolioUtxos } from '@/components/portfolio/portfolio-utxos'
+import { WalletInstallModal } from '@/components/wallet-install-modal'
 import { formatAddress } from '@/utils/format-address'
 
 type TabKey = 'orders' | 'dispensers' | 'swaps' | 'utxos' | 'balances'
@@ -23,30 +24,22 @@ export default function PortfolioPage() {
   const { status, address, connect, connecting } = useWallet()
   const [activeTab, setActiveTab] = useState<TabKey>('orders')
 
+  const [showInstall, setShowInstall] = useState(false)
+
   if (status !== 'connected' || !address) {
     return (
       <div className="min-h-screen bg-zinc-950 text-zinc-100 flex items-center justify-center">
         <div className="text-center space-y-4">
           <h1 className="text-lg font-semibold">Portfolio</h1>
           <p className="text-sm text-zinc-500">Connect your wallet to view your portfolio</p>
-          {status === 'not_detected' ? (
-            <a
-              href="https://xcpwallet.com"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-block rounded-sm border border-zinc-700 px-6 py-2 text-sm text-zinc-400 hover:text-zinc-200 hover:border-zinc-500 transition-colors"
-            >
-              Install XCP Wallet
-            </a>
-          ) : (
-            <button
-              onClick={connect}
-              disabled={connecting}
-              className="rounded-sm bg-green-500 px-6 py-2 text-sm font-semibold text-zinc-950 hover:bg-green-400 transition-colors disabled:opacity-50"
-            >
-              {connecting ? 'Connecting...' : 'Connect Wallet'}
-            </button>
-          )}
+          <button
+            onClick={status === 'disconnected' ? connect : () => setShowInstall(true)}
+            disabled={connecting}
+            className="rounded-sm bg-green-500 px-6 py-2 text-sm font-semibold text-zinc-950 hover:bg-green-400 transition-colors disabled:opacity-50"
+          >
+            {connecting ? 'Connecting...' : 'Connect Wallet'}
+          </button>
+          {showInstall && <WalletInstallModal onClose={() => setShowInstall(false)} />}
         </div>
       </div>
     )

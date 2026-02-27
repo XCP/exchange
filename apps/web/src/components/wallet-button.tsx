@@ -4,10 +4,12 @@ import { useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
 import { useWallet } from '@/lib/wallet/wallet-context'
 import { formatAddress } from '@/utils/format-address'
+import { WalletInstallModal } from '@/components/wallet-install-modal'
 
 export function WalletButton() {
   const { status, address, connecting, connect, disconnect } = useWallet()
   const [open, setOpen] = useState(false)
+  const [showInstall, setShowInstall] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
 
   // Close dropdown on outside click
@@ -24,14 +26,15 @@ export function WalletButton() {
 
   if (status === 'not_detected') {
     return (
-      <a
-        href="https://xcpwallet.com"
-        target="_blank"
-        rel="noopener noreferrer"
-        className="rounded-sm border border-zinc-700 px-3 py-1 text-xs text-zinc-400 hover:text-zinc-200 hover:border-zinc-500 transition-colors"
-      >
-        Install Wallet
-      </a>
+      <>
+        <button
+          onClick={() => setShowInstall(true)}
+          className="rounded-sm border border-green-500/30 bg-green-500/10 px-3 py-1 text-xs font-medium text-green-400 hover:bg-green-500/20 transition-colors"
+        >
+          Connect
+        </button>
+        {showInstall && <WalletInstallModal onClose={() => setShowInstall(false)} />}
+      </>
     )
   }
 

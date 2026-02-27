@@ -435,13 +435,27 @@ export async function handleCompleteListingPsbt(
     );
   }
 
-  // Cryptographic signature verification: finalize input 0 on a clone
+  // Verify seller signature exists on input 0.
+  // Note: We cannot use finalizeIdx() here because the seller's SIGHASH_SINGLE|ANYONECANPAY
+  // PSBT is intentionally unbalanced (output value > input value). The buyer adds inputs
+  // later to cover the payment. Full cryptographic verification happens in mergeAndFinalize
+  // when the buyer completes the fill.
   try {
     const verifyTx = Transaction.fromPSBT(hexCodec.decode(signed_psbt_hex), PSBT_OPTS);
-    verifyTx.finalizeIdx(0);
+    const inp = verifyTx.getInput(0);
+    const hasSig = (inp.partialSig && inp.partialSig.length > 0)
+      || inp.finalScriptSig
+      || inp.finalScriptWitness
+      || inp.tapKeySig;
+    if (!hasSig) {
+      return Response.json(
+        { error: "PSBT is not signed — no signature found on input 0" },
+        { status: 400 }
+      );
+    }
   } catch (e: unknown) {
     return Response.json(
-      { error: "PSBT signature is invalid", details: e instanceof Error ? e.message : String(e) },
+      { error: "Invalid signed PSBT", details: e instanceof Error ? e.message : String(e) },
       { status: 400 }
     );
   }
