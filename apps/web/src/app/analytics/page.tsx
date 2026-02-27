@@ -543,63 +543,71 @@ export default function AnalyticsPage() {
               />
             </div>
 
-            {/* Other Quote Assets */}
+            {/* Quote Volume Marquee Ticker */}
             {quoteVolumes.length > 0 && (
-              <div className="flex gap-2 mb-6">
-                {quoteVolumes.slice(0, 4).map((q) => (
-                  <div key={q.quote_asset} className="flex items-center gap-2 shrink-0 px-3 py-1.5 bg-zinc-900/50 border border-zinc-800 rounded-sm">
-                    <Image
-                      src={`${XCP_IMG_BASE}/icon/${q.quote_asset}`}
-                      alt=""
-                      width={14}
-                      height={14}
-                      className="rounded-sm"
-                      unoptimized
-                    />
-                    <span className="text-xs text-zinc-400 font-mono">{q.quote_asset}</span>
-                    <span className="text-xs text-zinc-200 font-mono font-semibold">{q.trade_count.toLocaleString()} trades</span>
-                    <span className="text-[10px] text-zinc-600 font-mono">{fmtBig(q.volume)} vol</span>
-                  </div>
-                ))}
+              <div className="overflow-hidden mb-6 bg-zinc-900/50 border border-zinc-800 rounded-sm">
+                <div
+                  className="flex gap-4 py-2 hover:[animation-play-state:paused]"
+                  style={{ animation: `marquee ${Math.max(quoteVolumes.length * 3, 15)}s linear infinite` }}
+                >
+                  {[...quoteVolumes, ...quoteVolumes].map((q, i) => (
+                    <div key={`${q.quote_asset}-${i}`} className="flex items-center gap-2 shrink-0 min-w-0 px-3">
+                      <Image
+                        src={`${XCP_IMG_BASE}/icon/${q.quote_asset}`}
+                        alt=""
+                        width={14}
+                        height={14}
+                        className="rounded-sm"
+                        unoptimized
+                      />
+                      <span className="text-xs text-zinc-400 font-mono">{q.quote_asset}</span>
+                      <span className="text-xs text-zinc-200 font-mono font-semibold">{q.trade_count.toLocaleString()} trades</span>
+                      <span className="text-[10px] text-zinc-600 font-mono">{fmtBig(q.volume)} vol</span>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
 
             {/* Leaderboards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-6">
+            <h2 className="text-xs uppercase tracking-wider text-zinc-500 mb-2">Leaderboards</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-8">
               <TopPairsTable pairs={topPairs} tfLabel={tfLabel} />
               <TopDispensersTable dispensers={topDispensers} tfLabel={tfLabel} satsMode={satsMode} />
             </div>
 
-            {/* Volume Charts + Top Traders — XCP left, BTC right */}
+            {/* Volume History */}
+            <h2 className="text-xs uppercase tracking-wider text-zinc-500 mb-2">Volume History</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-8">
+              <ComboVolumeChart
+                data={dailyTradeVolume}
+                color="#22c55e"
+                label="Trade Volume (XCP)"
+              />
+              <ComboVolumeChart
+                data={mergeDailyVolumes(dailyBtcTradeVolume, dailyDispenseVolume)}
+                color="#3b82f6"
+                label="Trade Volume (BTC)"
+              />
+            </div>
+
+            {/* Top Traders */}
+            <h2 className="text-xs uppercase tracking-wider text-zinc-500 mb-2">Top Traders</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-              <div className="flex flex-col gap-2">
-                <ComboVolumeChart
-                  data={dailyTradeVolume}
-                  color="#22c55e"
-                  label="Trade Volume (XCP)"
-                />
-                <TopTradersTable
-                  title="Top Traders (XCP)"
-                  unit="XCP"
-                  tabLabels={['Makers', 'Takers']}
-                  listA={topMakers}
-                  listB={topTakers}
-                />
-              </div>
-              <div className="flex flex-col gap-2">
-                <ComboVolumeChart
-                  data={mergeDailyVolumes(dailyBtcTradeVolume, dailyDispenseVolume)}
-                  color="#3b82f6"
-                  label="Trade Volume (BTC)"
-                />
-                <TopTradersTable
-                  title="Top Traders (BTC)"
-                  unit="BTC"
-                  tabLabels={['Makers', 'Takers']}
-                  listA={topBtcSellers}
-                  listB={topBtcBuyers}
-                />
-              </div>
+              <TopTradersTable
+                title="Top Traders (XCP)"
+                unit="XCP"
+                tabLabels={['Makers', 'Takers']}
+                listA={topMakers}
+                listB={topTakers}
+              />
+              <TopTradersTable
+                title="Top Traders (BTC)"
+                unit="BTC"
+                tabLabels={['Makers', 'Takers']}
+                listA={topBtcSellers}
+                listB={topBtcBuyers}
+              />
             </div>
           </>
         )}

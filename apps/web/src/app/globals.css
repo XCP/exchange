@@ -34,3 +34,9 @@ button, [role="button"] {
 ::-webkit-scrollbar-thumb:hover {
   background: #3f3f46;
 }
+
+/* Marquee ticker animation */
+@keyframes marquee {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
