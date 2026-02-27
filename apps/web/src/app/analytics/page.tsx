@@ -16,10 +16,8 @@ import type {
   Timeframe,
   AnalyticsTopPair,
   AnalyticsTopDispenser,
-  AnalyticsTrending,
   AnalyticsTopTrader,
 } from '@/lib/hooks/useAnalytics'
-import { formatAmount } from '@/utils/format-amount'
 import { formatPrice } from '@/utils/format-price'
 import { useSatsMode } from '@/lib/sats-context'
 import { XCP_IMG_BASE } from '@/utils/constants'
@@ -263,13 +261,13 @@ function ComboVolumeChart({
 function TopPairsTable({ pairs, tfLabel }: { pairs: AnalyticsTopPair[]; tfLabel: string }) {
   return (
     <div className="bg-zinc-900/50 border border-zinc-800 rounded-sm">
-      <div className="px-3 py-2 text-xs text-zinc-500">Top Pairs ({tfLabel} Volume)</div>
+      <div className="px-3 py-2 text-xs text-zinc-500">Top Pairs ({tfLabel} Trades)</div>
       <table className="w-full text-xs">
         <thead>
           <tr className="text-zinc-600 border-b border-zinc-800">
             <th className="text-left font-normal px-3 py-1.5">#</th>
             <th className="text-left font-normal px-3 py-1.5">Pair</th>
-            <th className="text-right font-normal px-3 py-1.5">Volume</th>
+            <th className="text-right font-normal px-3 py-1.5">Trades</th>
             <th className="text-right font-normal px-3 py-1.5">Chg</th>
           </tr>
         </thead>
@@ -290,7 +288,7 @@ function TopPairsTable({ pairs, tfLabel }: { pairs: AnalyticsTopPair[]; tfLabel:
                   <span className="text-zinc-200">{(p.base_asset_longname ?? p.base_asset)}/{p.quote_asset}</span>
                 </Link>
               </td>
-              <td className="text-right text-zinc-400 font-mono px-3 py-1.5">{formatAmount(p.volume)}</td>
+              <td className="text-right text-zinc-400 font-mono px-3 py-1.5">{p.trade_count.toLocaleString()}</td>
               <td className={`text-right font-mono px-3 py-1.5 ${pctColor(p.price_change)}`}>
                 {fmtPct(p.price_change)}
               </td>
@@ -342,51 +340,6 @@ function TopDispensersTable({ dispensers, tfLabel, satsMode }: { dispensers: Ana
             </tr>
           ))}
           {dispensers.length === 0 && (
-            <tr><td colSpan={4} className="text-center py-6 text-zinc-600">No data</td></tr>
-          )}
-        </tbody>
-      </table>
-    </div>
-  )
-}
-
-function TrendingTable({ trending }: { trending: AnalyticsTrending[] }) {
-  return (
-    <div className="bg-zinc-900/50 border border-zinc-800 rounded-sm">
-      <div className="px-3 py-2 text-xs text-zinc-500">Trending</div>
-      <table className="w-full text-xs">
-        <thead>
-          <tr className="text-zinc-600 border-b border-zinc-800">
-            <th className="text-left font-normal px-3 py-1.5">#</th>
-            <th className="text-left font-normal px-3 py-1.5">Pair</th>
-            <th className="text-right font-normal px-3 py-1.5">Trades</th>
-            <th className="text-right font-normal px-3 py-1.5">Chg</th>
-          </tr>
-        </thead>
-        <tbody>
-          {trending.map((t, i) => (
-            <tr key={t.pair} className="hover:bg-zinc-800/50 transition-colors border-b border-zinc-800/30 last:border-0">
-              <td className="px-3 py-1.5 text-zinc-600">{i + 1}</td>
-              <td className="px-3 py-1.5">
-                <Link href={`/trade/${t.pair}`} className="flex items-center gap-1.5 hover:underline">
-                  <Image
-                    src={`${XCP_IMG_BASE}/icon/${t.base_asset}`}
-                    alt=""
-                    width={14}
-                    height={14}
-                    className="rounded-sm"
-                    unoptimized
-                  />
-                  <span className="text-zinc-200">{(t.base_asset_longname ?? t.base_asset)}/{t.quote_asset}</span>
-                </Link>
-              </td>
-              <td className="text-right text-zinc-400 font-mono px-3 py-1.5">{t.trade_count_24h}</td>
-              <td className={`text-right font-mono px-3 py-1.5 ${pctColor(t.price_change_24h)}`}>
-                {fmtPct(t.price_change_24h)}
-              </td>
-            </tr>
-          ))}
-          {trending.length === 0 && (
             <tr><td colSpan={4} className="text-center py-6 text-zinc-600">No data</td></tr>
           )}
         </tbody>
@@ -479,7 +432,7 @@ function TopTradersTable({
 export default function AnalyticsPage() {
   const { satsMode } = useSatsMode()
   const btcLabel = satsMode ? 'sats' : 'BTC'
-  const [timeframe, setTimeframe] = useState<Timeframe>('24h')
+  const [timeframe, setTimeframe] = useState<Timeframe>('all')
   const [hideLowQuality, setHideLowQuality] = useState(true)
 
   const {
@@ -490,7 +443,6 @@ export default function AnalyticsPage() {
     dailyBtcTradeVolume,
     topPairs,
     topDispensers,
-    trending,
     topMakers,
     topTakers,
     topBtcBuyers,
@@ -507,7 +459,7 @@ export default function AnalyticsPage() {
         {/* Header + Controls */}
         <div className="flex items-start justify-between mb-6 gap-4 flex-wrap">
           <div>
-            <h1 className="text-lg font-semibold text-zinc-100 mb-1">XCP DEX Analytics</h1>
+            <h1 className="text-lg font-semibold text-zinc-100 mb-1">DEX Analytics</h1>
             <p className="text-xs text-zinc-500">Global exchange metrics, volume trends, and leaderboards</p>
           </div>
           <div className="flex items-center gap-3">
@@ -546,49 +498,50 @@ export default function AnalyticsPage() {
           <>
             {/* Counter Cards */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-6">
+              {/* Row 1: Order book trading */}
               <CounterCard
-                label="Total Trade Volume"
-                value={tradeSummary ? fmtBig(tradeSummary.total_volume) + ' XCP' : '—'}
-                sub={!isAll && tradeSummary ? `${tfLabel}: ${fmtBig(tradeSummary.tf_volume)} XCP` : undefined}
+                label="Trade Volume"
+                value={tradeSummary ? fmtBig(tradeSummary.tf_volume) + ' XCP' : '—'}
+                sub={!isAll && tradeSummary ? `All: ${fmtBig(tradeSummary.total_volume)} XCP` : undefined}
               />
               <CounterCard
-                label="Total Trades"
-                value={tradeSummary ? tradeSummary.total_trade_count.toLocaleString() : '—'}
-                sub={!isAll && tradeSummary ? `${tfLabel}: ${tradeSummary.tf_trades.toLocaleString()}` : undefined}
+                label="Trades"
+                value={tradeSummary ? tradeSummary.tf_trades.toLocaleString() : '—'}
+                sub={!isAll && tradeSummary ? `All: ${tradeSummary.total_trade_count.toLocaleString()}` : undefined}
               />
               <CounterCard
                 label="Trading Pairs"
                 value={tradeSummary ? tradeSummary.total_pairs.toLocaleString() : '—'}
               />
               <CounterCard
-                label={`Active Pairs (${tfLabel})`}
-                value={tradeSummary ? tradeSummary.active_pairs.toLocaleString() : '—'}
+                label="Open Orders"
+                value={tradeSummary ? tradeSummary.open_orders.toLocaleString() : '—'}
               />
+              {/* Row 2: Dispensers */}
               <CounterCard
                 label="Dispense Volume"
-                value={dispenseSummary ? fmtBig(dispenseSummary.total_btc_spent) + ` ${btcLabel.toUpperCase()}` : '—'}
-                sub={!isAll && dispenseSummary ? `${tfLabel}: ${fmtBig(dispenseSummary.tf_volume)} ${btcLabel.toUpperCase()}` : undefined}
+                value={dispenseSummary ? fmtBig(dispenseSummary.tf_volume) + ` ${btcLabel.toUpperCase()}` : '—'}
+                sub={!isAll && dispenseSummary ? `All: ${fmtBig(dispenseSummary.total_btc_spent)} ${btcLabel.toUpperCase()}` : undefined}
               />
               <CounterCard
-                label="Total Dispenses"
-                value={dispenseSummary ? dispenseSummary.total_dispense_count.toLocaleString() : '—'}
-                sub={!isAll && dispenseSummary ? `${tfLabel}: ${dispenseSummary.tf_dispenses.toLocaleString()}` : undefined}
+                label="Dispenses"
+                value={dispenseSummary ? dispenseSummary.tf_dispenses.toLocaleString() : '—'}
+                sub={!isAll && dispenseSummary ? `All: ${dispenseSummary.total_dispense_count.toLocaleString()}` : undefined}
+              />
+              <CounterCard
+                label="Dispenser Assets"
+                value={dispenseSummary ? dispenseSummary.total_assets.toLocaleString() : '—'}
               />
               <CounterCard
                 label="Open Dispensers"
                 value={dispenseSummary ? dispenseSummary.open_dispensers.toLocaleString() : '—'}
               />
-              <CounterCard
-                label="Open Orders"
-                value={tradeSummary ? tradeSummary.open_orders.toLocaleString() : '—'}
-              />
             </div>
 
             {/* Leaderboards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mb-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-6">
               <TopPairsTable pairs={topPairs} tfLabel={tfLabel} />
               <TopDispensersTable dispensers={topDispensers} tfLabel={tfLabel} satsMode={satsMode} />
-              <TrendingTable trending={trending} />
             </div>
 
             {/* Volume Charts + Top Traders — XCP left, BTC right */}

@@ -41,7 +41,6 @@ export async function handleAnalytics(
   let dailyBtcTradeVolumeResults: unknown[] = [];
   let topPairsResults: unknown[] = [];
   let topDispensersResults: unknown[] = [];
-  let trending: unknown[] = [];
   let topMakersResults: unknown[] = [];
   let topTakersResults: unknown[] = [];
   let topBtcBuyersResults: unknown[] = [];
@@ -54,7 +53,6 @@ export async function handleAnalytics(
       dispenseSummary,
       topPairs,
       topDispensers,
-      trendingCandidates,
     ] = await db.batch([
       db.prepare(
         `SELECT
@@ -64,7 +62,8 @@ export async function handleAnalytics(
           SUM(CASE WHEN ${tradeCountCol} > 0 THEN 1 ELSE 0 END) AS active_pairs,
           COALESCE(SUM(CASE WHEN quote_asset = 'XCP' THEN ${volCol} ELSE 0 END), 0) AS tf_volume,
           COALESCE(SUM(${tradeCountCol}), 0) AS tf_trades,
-          (SELECT COUNT(*) FROM orders WHERE status = 'open') AS open_orders
+          (SELECT COUNT(*) FROM orders WHERE status = 'open') AS open_orders,
+          (SELECT COUNT(*) FROM orders WHERE 1=1${timeFilt}) AS tf_orders
          FROM pair_stats
          WHERE 1=1${pairHidden}`
       ),
@@ -74,17 +73,20 @@ export async function handleAnalytics(
           COALESCE(SUM(total_dispense_count), 0) AS total_dispense_count,
           (SELECT COUNT(*) FROM dispensers WHERE status < 10) AS open_dispensers,
           COALESCE(SUM(${dispVolCol}), 0) AS tf_volume,
-          COALESCE(SUM(${dispCountCol}), 0) AS tf_dispenses
+          COALESCE(SUM(${dispCountCol}), 0) AS tf_dispenses,
+          SUM(CASE WHEN ${dispCountCol} > 0 THEN 1 ELSE 0 END) AS active_assets,
+          COUNT(*) AS total_assets,
+          (SELECT COUNT(*) FROM dispensers WHERE 1=1${timeFilt}) AS tf_dispensers_created
          FROM dispenser_stats ds
          WHERE 1=1${dispHidden}`
       ),
       db.prepare(
         `SELECT pair, base_asset, quote_asset, base_asset_longname, last_price,
-                ${volCol} AS volume, ${tradeCountCol} AS trade_count,
+                ${tradeCountCol} AS trade_count,
                 ${pctCol} AS price_change
          FROM pair_stats
-         WHERE ${volCol} > 0${pairHidden}
-         ORDER BY ${volCol} DESC
+         WHERE ${tradeCountCol} > 0${pairHidden}
+         ORDER BY ${tradeCountCol} DESC
          LIMIT 10`
       ),
       db.prepare(
@@ -97,42 +99,12 @@ export async function handleAnalytics(
          ORDER BY ds.${dispVolCol} DESC
          LIMIT 10`
       ),
-      db.prepare(
-        `SELECT pair, base_asset, quote_asset, base_asset_longname, last_price, last_trade_time,
-                price_change_24h, volume_24h, trade_count_24h
-         FROM pair_stats
-         WHERE trade_count_24h > 0${pairHidden}
-         ORDER BY trade_count_24h DESC
-         LIMIT 100`
-      ),
     ]);
 
     tradeSummaryData = tradeSummary.results[0] as Record<string, number> | undefined;
     dispenseSummaryData = dispenseSummary.results[0] as Record<string, number> | undefined;
     topPairsResults = topPairs.results;
     topDispensersResults = topDispensers.results;
-
-    // Score trending
-    const candidates = trendingCandidates.results as {
-      pair: string; base_asset: string; quote_asset: string;
-      base_asset_longname: string | null; last_price: number | null;
-      last_trade_time: number | null; price_change_24h: number;
-      volume_24h: number; trade_count_24h: number;
-    }[];
-
-    if (candidates.length > 0) {
-      const maxVolume = Math.max(...candidates.map((p) => p.volume_24h));
-      const maxTrades = Math.max(...candidates.map((p) => p.trade_count_24h));
-      const scored = candidates.map((p) => {
-        const normVolume = maxVolume > 0 ? p.volume_24h / maxVolume : 0;
-        const normTrades = maxTrades > 0 ? p.trade_count_24h / maxTrades : 0;
-        const normChange = Math.min(Math.abs(p.price_change_24h) / 100, 1);
-        const score = normTrades * 0.4 + normVolume * 0.4 + normChange * 0.2;
-        return { ...p, score };
-      });
-      scored.sort((a, b) => b.score - a.score);
-      trending = scored.slice(0, 10).map(({ score, ...rest }) => rest);
-    }
   }
 
   // Section: charts — volume timeseries from raw tables
@@ -228,6 +200,7 @@ export async function handleAnalytics(
         tf_volume: tradeSummaryData?.tf_volume ?? 0,
         tf_trades: tradeSummaryData?.tf_trades ?? 0,
         open_orders: tradeSummaryData?.open_orders ?? 0,
+        tf_orders: tradeSummaryData?.tf_orders ?? 0,
       },
       dispense_summary: {
         total_btc_spent: dispenseSummaryData?.total_btc_spent ?? 0,
@@ -235,13 +208,15 @@ export async function handleAnalytics(
         open_dispensers: dispenseSummaryData?.open_dispensers ?? 0,
         tf_volume: dispenseSummaryData?.tf_volume ?? 0,
         tf_dispenses: dispenseSummaryData?.tf_dispenses ?? 0,
+        active_assets: dispenseSummaryData?.active_assets ?? 0,
+        total_assets: dispenseSummaryData?.total_assets ?? 0,
+        tf_dispensers_created: dispenseSummaryData?.tf_dispensers_created ?? 0,
       },
       daily_trade_volume: dailyTradeVolumeResults,
       daily_dispense_volume: dailyDispenseVolumeResults,
       daily_btc_trade_volume: dailyBtcTradeVolumeResults,
       top_pairs: topPairsResults,
       top_dispensers: topDispensersResults,
-      trending,
       top_makers: topMakersResults,
       top_takers: topTakersResults,
       top_btc_buyers: topBtcBuyersResults,

@@ -11,6 +11,7 @@ export interface TradeSummary {
   tf_volume: number
   tf_trades: number
   open_orders: number
+  tf_orders: number
 }
 
 export interface DispenseSummary {
@@ -19,6 +20,9 @@ export interface DispenseSummary {
   open_dispensers: number
   tf_volume: number
   tf_dispenses: number
+  active_assets: number
+  total_assets: number
+  tf_dispensers_created: number
 }
 
 export interface DailyTradeVolume {
@@ -39,7 +43,6 @@ export interface AnalyticsTopPair {
   quote_asset: string
   base_asset_longname: string | null
   last_price: number | null
-  volume: number
   trade_count: number
   price_change: number
 }
@@ -60,18 +63,6 @@ export interface AnalyticsTopTrader {
   trades: number
 }
 
-export interface AnalyticsTrending {
-  pair: string
-  base_asset: string
-  quote_asset: string
-  base_asset_longname: string | null
-  last_price: number | null
-  last_trade_time: number | null
-  price_change_24h: number
-  volume_24h: number
-  trade_count_24h: number
-}
-
 interface AnalyticsResponse {
   timeframe: string
   trade_summary: TradeSummary
@@ -81,7 +72,6 @@ interface AnalyticsResponse {
   daily_btc_trade_volume: DailyTradeVolume[]
   top_pairs: AnalyticsTopPair[]
   top_dispensers: AnalyticsTopDispenser[]
-  trending: AnalyticsTrending[]
   top_makers: AnalyticsTopTrader[]
   top_takers: AnalyticsTopTrader[]
   top_btc_buyers: AnalyticsTopTrader[]
@@ -112,7 +102,6 @@ export function useAnalytics(timeframe: Timeframe = '24h', includeHidden: boolea
     dispenseSummary: summary.data?.dispense_summary ?? null,
     topPairs: summary.data?.top_pairs ?? [],
     topDispensers: summary.data?.top_dispensers ?? [],
-    trending: summary.data?.trending ?? [],
     dailyTradeVolume: charts.data?.daily_trade_volume ?? [],
     dailyDispenseVolume: charts.data?.daily_dispense_volume ?? [],
     dailyBtcTradeVolume: charts.data?.daily_btc_trade_volume ?? [],
