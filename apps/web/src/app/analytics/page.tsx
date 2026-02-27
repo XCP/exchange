@@ -511,12 +511,14 @@ export default function AnalyticsPage() {
                 sub={!isAll && tradeSummary ? `All: ${tradeSummary.total_trade_count.toLocaleString()}` : undefined}
               />
               <CounterCard
-                label="Trading Pairs"
-                value={tradeSummary ? tradeSummary.total_pairs.toLocaleString() : '—'}
+                label="Active Pairs"
+                value={tradeSummary ? tradeSummary.active_pairs.toLocaleString() : '—'}
+                sub={!isAll && tradeSummary ? `${tradeSummary.total_pairs.toLocaleString()} total` : undefined}
               />
               <CounterCard
-                label="Open Orders"
-                value={tradeSummary ? tradeSummary.open_orders.toLocaleString() : '—'}
+                label="Orders Placed"
+                value={tradeSummary ? tradeSummary.tf_orders.toLocaleString() : '—'}
+                sub={tradeSummary ? `${tradeSummary.open_orders.toLocaleString()} open` : undefined}
               />
               {/* Row 2: Dispensers */}
               <CounterCard
@@ -530,12 +532,14 @@ export default function AnalyticsPage() {
                 sub={!isAll && dispenseSummary ? `All: ${dispenseSummary.total_dispense_count.toLocaleString()}` : undefined}
               />
               <CounterCard
-                label="Dispenser Assets"
-                value={dispenseSummary ? dispenseSummary.total_assets.toLocaleString() : '—'}
+                label="Active Dispenser Assets"
+                value={dispenseSummary ? dispenseSummary.active_assets.toLocaleString() : '—'}
+                sub={!isAll && dispenseSummary ? `${dispenseSummary.total_assets.toLocaleString()} total` : undefined}
               />
               <CounterCard
-                label="Open Dispensers"
-                value={dispenseSummary ? dispenseSummary.open_dispensers.toLocaleString() : '—'}
+                label="Dispensers Created"
+                value={dispenseSummary ? dispenseSummary.tf_dispensers_created.toLocaleString() : '—'}
+                sub={dispenseSummary ? `${dispenseSummary.open_dispensers.toLocaleString()} open` : undefined}
               />
             </div>
 
