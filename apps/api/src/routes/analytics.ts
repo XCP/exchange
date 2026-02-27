@@ -105,9 +105,9 @@ export async function handleAnalytics(
         `SELECT quote_asset, ROUND(SUM(${volCol}), 2) AS volume,
                 SUM(${tradeCountCol}) AS trade_count
          FROM pair_stats
-         WHERE ${volCol} > 0${pairHidden}
+         WHERE ${tradeCountCol} > 0 AND quote_asset NOT IN ('XCP', 'BTC')${pairHidden}
          GROUP BY quote_asset
-         ORDER BY volume DESC`
+         ORDER BY trade_count DESC`
       ),
     ]);
 

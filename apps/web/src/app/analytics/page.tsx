@@ -543,7 +543,7 @@ export default function AnalyticsPage() {
               />
             </div>
 
-            {/* Quote Asset Volume Ticker */}
+            {/* Other Quote Assets Ticker */}
             {quoteVolumes.length > 0 && (
               <div className="flex gap-2 overflow-x-auto pb-1 mb-6 scrollbar-thin">
                 {quoteVolumes.map((q) => (
@@ -557,8 +557,8 @@ export default function AnalyticsPage() {
                       unoptimized
                     />
                     <span className="text-xs text-zinc-400 font-mono">{q.quote_asset}</span>
-                    <span className="text-xs text-zinc-200 font-mono font-semibold">{fmtBig(q.volume)}</span>
-                    <span className="text-[10px] text-zinc-600 font-mono">{q.trade_count.toLocaleString()} trades</span>
+                    <span className="text-xs text-zinc-200 font-mono font-semibold">{q.trade_count.toLocaleString()} trades</span>
+                    <span className="text-[10px] text-zinc-600 font-mono">{fmtBig(q.volume)} vol</span>
                   </div>
                 ))}
               </div>
