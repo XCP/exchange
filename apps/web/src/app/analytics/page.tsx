@@ -547,7 +547,7 @@ export default function AnalyticsPage() {
             {quoteVolumes.length > 0 && (
               <div className="overflow-hidden mb-6 bg-zinc-900/50 border border-zinc-800 rounded-sm">
                 <div
-                  className="flex gap-4 py-2 hover:[animation-play-state:paused]"
+                  className="flex w-max gap-4 py-2 hover:[animation-play-state:paused]"
                   style={{ animation: `marquee ${Math.max(quoteVolumes.length * 3, 15)}s linear infinite` }}
                 >
                   {[...quoteVolumes, ...quoteVolumes].map((q, i) => (
