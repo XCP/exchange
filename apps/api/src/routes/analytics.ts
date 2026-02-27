@@ -33,6 +33,14 @@ export async function handleAnalytics(
   const dispCountCol = tf === "all" ? "total_dispense_count" : `dispense_count_${tf}`;
   const dispPctCol = tf === "all" ? "0" : `price_change_${tf}`;
 
+  // All-time totals use complete tables (trades/dispenser_stats) instead of snapshot tables (orders/dispensers)
+  const tfOrdersExpr = tf === "all"
+    ? `(SELECT COUNT(DISTINCT tx0_hash) + COUNT(DISTINCT tx1_hash) FROM trades)`
+    : `(SELECT COUNT(*) FROM orders WHERE 1=1${timeFilt})`;
+  const tfDispCreatedExpr = tf === "all"
+    ? `COALESCE(SUM(total_dispensers_created), 0)`
+    : `(SELECT COUNT(*) FROM dispensers WHERE 1=1${timeFilt})`;
+
   // Default empty results
   let tradeSummaryData: Record<string, number> | undefined;
   let dispenseSummaryData: Record<string, number> | undefined;
@@ -65,7 +73,7 @@ export async function handleAnalytics(
           COALESCE(SUM(CASE WHEN quote_asset = 'XCP' THEN ${volCol} ELSE 0 END), 0) AS tf_volume,
           COALESCE(SUM(${tradeCountCol}), 0) AS tf_trades,
           (SELECT COUNT(*) FROM orders WHERE status = 'open') AS open_orders,
-          (SELECT COUNT(*) FROM orders WHERE 1=1${timeFilt}) AS tf_orders
+          ${tfOrdersExpr} AS tf_orders
          FROM pair_stats
          WHERE 1=1${pairHidden}`
       ),
@@ -78,7 +86,7 @@ export async function handleAnalytics(
           COALESCE(SUM(${dispCountCol}), 0) AS tf_dispenses,
           SUM(CASE WHEN ${dispCountCol} > 0 THEN 1 ELSE 0 END) AS active_assets,
           COUNT(*) AS total_assets,
-          (SELECT COUNT(*) FROM dispensers WHERE 1=1${timeFilt}) AS tf_dispensers_created
+          ${tfDispCreatedExpr} AS tf_dispensers_created
          FROM dispenser_stats ds
          WHERE 1=1${dispHidden}`
       ),

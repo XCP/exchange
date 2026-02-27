@@ -503,7 +503,6 @@ export default function AnalyticsPage() {
               <CounterCard
                 label="Trade Volume"
                 value={tradeSummary ? fmtBig(tradeSummary.tf_volume) + ' XCP' : '—'}
-                sub={!isAll && tradeSummary ? `All: ${fmtBig(tradeSummary.total_volume)} XCP` : undefined}
               />
               <CounterCard
                 label="Orders Placed"
@@ -513,7 +512,6 @@ export default function AnalyticsPage() {
               <CounterCard
                 label="Trades"
                 value={tradeSummary ? tradeSummary.tf_trades.toLocaleString() : '—'}
-                sub={!isAll && tradeSummary ? `All: ${tradeSummary.total_trade_count.toLocaleString()}` : undefined}
               />
               <CounterCard
                 label="Active Pairs"
@@ -524,7 +522,6 @@ export default function AnalyticsPage() {
               <CounterCard
                 label="Dispense Volume"
                 value={dispenseSummary ? fmtBig(dispenseSummary.tf_volume) + ` ${btcLabel.toUpperCase()}` : '—'}
-                sub={!isAll && dispenseSummary ? `All: ${fmtBig(dispenseSummary.total_btc_spent)} ${btcLabel.toUpperCase()}` : undefined}
               />
               <CounterCard
                 label="Dispensers Created"
@@ -534,7 +531,6 @@ export default function AnalyticsPage() {
               <CounterCard
                 label="Dispenses"
                 value={dispenseSummary ? dispenseSummary.tf_dispenses.toLocaleString() : '—'}
-                sub={!isAll && dispenseSummary ? `All: ${dispenseSummary.total_dispense_count.toLocaleString()}` : undefined}
               />
               <CounterCard
                 label="Active Dispensers"
