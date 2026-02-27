@@ -68,7 +68,8 @@ export async function handleAnalytics(
           COALESCE(SUM(${tradeCountCol}), 0) AS tf_trades,
           (SELECT COUNT(*) FROM orders WHERE status = 'open') AS open_orders,
           ${tfOrdersExpr} AS tf_orders,
-          (SELECT COUNT(*) FROM (SELECT maker AS a FROM trades WHERE 1=1${timeFilt}${tradeHidden} UNION SELECT taker FROM trades WHERE 1=1${timeFilt}${tradeHidden})) AS tf_unique_traders
+          (SELECT COUNT(*) FROM (SELECT maker AS a FROM trades WHERE 1=1${timeFilt}${tradeHidden} UNION SELECT taker FROM trades WHERE 1=1${timeFilt}${tradeHidden})) AS tf_unique_traders,
+          ${cutoff > 0 ? `(SELECT COUNT(*) FROM (SELECT pair FROM trades GROUP BY pair HAVING MIN(block_time) >= ${cutoff}))` : "0"} AS new_pairs
          FROM pair_stats
          WHERE 1=1${pairHidden}`
       ),
@@ -82,7 +83,8 @@ export async function handleAnalytics(
           SUM(CASE WHEN ${dispCountCol} > 0 THEN 1 ELSE 0 END) AS active_assets,
           COUNT(*) AS total_assets,
           ${tfDispCreatedExpr} AS tf_dispensers_created,
-          (SELECT COUNT(DISTINCT destination) FROM dispenses WHERE 1=1${timeFilt}${dispenseHidden}) AS tf_unique_buyers
+          (SELECT COUNT(DISTINCT destination) FROM dispenses WHERE 1=1${timeFilt}${dispenseHidden}) AS tf_unique_buyers,
+          ${cutoff > 0 ? `(SELECT COUNT(*) FROM (SELECT asset FROM dispenses GROUP BY asset HAVING MIN(block_time) >= ${cutoff}))` : "0"} AS new_assets
          FROM dispenser_stats ds
          WHERE 1=1${dispHidden}`
       ),
@@ -240,6 +242,7 @@ export async function handleAnalytics(
         open_orders: tradeSummaryData?.open_orders ?? 0,
         tf_orders: tradeSummaryData?.tf_orders ?? 0,
         tf_unique_traders: tradeSummaryData?.tf_unique_traders ?? 0,
+        new_pairs: tradeSummaryData?.new_pairs ?? 0,
       },
       dispense_summary: {
         total_btc_spent: dispenseSummaryData?.total_btc_spent ?? 0,
@@ -251,6 +254,7 @@ export async function handleAnalytics(
         total_assets: dispenseSummaryData?.total_assets ?? 0,
         tf_dispensers_created: dispenseSummaryData?.tf_dispensers_created ?? 0,
         tf_unique_buyers: dispenseSummaryData?.tf_unique_buyers ?? 0,
+        new_assets: dispenseSummaryData?.new_assets ?? 0,
       },
       daily_trade_volume: dailyTradeVolumeResults,
       daily_dispense_volume: dailyDispenseVolumeResults,

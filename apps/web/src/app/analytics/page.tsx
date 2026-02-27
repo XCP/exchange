@@ -517,6 +517,7 @@ export default function AnalyticsPage() {
               <CounterCard
                 label="Active Pairs"
                 value={tradeSummary ? tradeSummary.active_pairs.toLocaleString() : '—'}
+                sub={tradeSummary?.new_pairs ? `${tradeSummary.new_pairs.toLocaleString()} new` : undefined}
               />
               {/* Row 2: Dispensers */}
               <CounterCard
@@ -537,6 +538,7 @@ export default function AnalyticsPage() {
               <CounterCard
                 label="Active Dispensers"
                 value={dispenseSummary ? dispenseSummary.active_assets.toLocaleString() : '—'}
+                sub={dispenseSummary?.new_assets ? `${dispenseSummary.new_assets.toLocaleString()} new` : undefined}
               />
             </div>
 
