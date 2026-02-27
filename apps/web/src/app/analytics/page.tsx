@@ -532,7 +532,7 @@ export default function AnalyticsPage() {
                 sub={!isAll && dispenseSummary ? `All: ${dispenseSummary.total_dispense_count.toLocaleString()}` : undefined}
               />
               <CounterCard
-                label="Active Dispenser Assets"
+                label="Active Dispensers"
                 value={dispenseSummary ? dispenseSummary.active_assets.toLocaleString() : '—'}
                 sub={!isAll && dispenseSummary ? `${dispenseSummary.total_assets.toLocaleString()} total` : undefined}
               />
