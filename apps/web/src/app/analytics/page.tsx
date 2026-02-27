@@ -516,9 +516,9 @@ export default function AnalyticsPage() {
                 sub={!isAll && tradeSummary ? `${tradeSummary.total_pairs.toLocaleString()} total` : undefined}
               />
               <CounterCard
-                label={isAll ? 'Open Orders' : 'Orders Placed'}
-                value={tradeSummary ? (isAll ? tradeSummary.open_orders : tradeSummary.tf_orders).toLocaleString() : '—'}
-                sub={!isAll && tradeSummary ? `${tradeSummary.open_orders.toLocaleString()} open` : undefined}
+                label="Orders Placed"
+                value={tradeSummary ? tradeSummary.tf_orders.toLocaleString() : '—'}
+                sub={tradeSummary ? `${tradeSummary.open_orders.toLocaleString()} open` : undefined}
               />
               {/* Row 2: Dispensers */}
               <CounterCard
@@ -537,9 +537,9 @@ export default function AnalyticsPage() {
                 sub={!isAll && dispenseSummary ? `${dispenseSummary.total_assets.toLocaleString()} total` : undefined}
               />
               <CounterCard
-                label={isAll ? 'Open Dispensers' : 'Dispensers Created'}
-                value={dispenseSummary ? (isAll ? dispenseSummary.open_dispensers : dispenseSummary.tf_dispensers_created).toLocaleString() : '—'}
-                sub={!isAll && dispenseSummary ? `${dispenseSummary.open_dispensers.toLocaleString()} open` : undefined}
+                label="Dispensers Created"
+                value={dispenseSummary ? dispenseSummary.tf_dispensers_created.toLocaleString() : '—'}
+                sub={dispenseSummary ? `${dispenseSummary.open_dispensers.toLocaleString()} open` : undefined}
               />
             </div>
 
