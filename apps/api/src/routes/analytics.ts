@@ -33,12 +33,12 @@ export async function handleAnalytics(
   const dispCountCol = tf === "all" ? "total_dispense_count" : `dispense_count_${tf}`;
   const dispPctCol = tf === "all" ? "0" : `price_change_${tf}`;
 
-  // All-time totals use complete tables (trades/dispenser_stats) instead of snapshot tables (orders/dispensers)
+  // For "all" timeframe, SQL returns 0 — overridden by Counterparty API result_count
   const tfOrdersExpr = tf === "all"
-    ? `(SELECT COUNT(DISTINCT tx0_hash) + COUNT(DISTINCT tx1_hash) FROM trades)`
+    ? "0"
     : `(SELECT COUNT(*) FROM orders WHERE 1=1${timeFilt})`;
   const tfDispCreatedExpr = tf === "all"
-    ? `COALESCE(SUM(total_dispensers_created), 0)`
+    ? "0"
     : `(SELECT COUNT(*) FROM dispensers WHERE 1=1${timeFilt})`;
 
   // Default empty results
@@ -57,13 +57,7 @@ export async function handleAnalytics(
 
   // Section: summary — counter cards + leaderboards (all from pre-computed stats tables, fast)
   if (!section || section === "summary") {
-    const [
-      tradeSummary,
-      dispenseSummary,
-      topPairs,
-      topDispensers,
-      quoteVolumes,
-    ] = await db.batch([
+    const dbPromise = db.batch([
       db.prepare(
         `SELECT
           COALESCE(SUM(CASE WHEN quote_asset = 'XCP' THEN total_volume ELSE 0 END), 0) AS total_volume,
@@ -121,8 +115,31 @@ export async function handleAnalytics(
       ),
     ]);
 
+    // For "all" timeframe, fetch true all-time totals from Counterparty API in parallel
+    // cf.cacheTtl caches at the Cloudflare edge for 6 hours
+    const cpFetchOpts = { cf: { cacheTtl: 21600 } };
+    const cpPromise = tf === "all"
+      ? Promise.all([
+          fetch("https://api.counterparty.io:4000/v2/orders?limit=1", cpFetchOpts).then(r => r.json()).catch(() => null),
+          fetch("https://api.counterparty.io:4000/v2/dispensers?limit=1", cpFetchOpts).then(r => r.json()).catch(() => null),
+        ])
+      : null;
+
+    const [tradeSummary, dispenseSummary, topPairs, topDispensers, quoteVolumes] = await dbPromise;
+
     tradeSummaryData = tradeSummary.results[0] as Record<string, number> | undefined;
     dispenseSummaryData = dispenseSummary.results[0] as Record<string, number> | undefined;
+
+    if (cpPromise) {
+      const [cpOrders, cpDispensers] = await cpPromise as [{ result_count?: number } | null, { result_count?: number } | null];
+      if (tradeSummaryData && cpOrders?.result_count != null) {
+        tradeSummaryData.tf_orders = cpOrders.result_count;
+      }
+      if (dispenseSummaryData && cpDispensers?.result_count != null) {
+        dispenseSummaryData.tf_dispensers_created = cpDispensers.result_count;
+      }
+    }
+
     topPairsResults = topPairs.results;
     topDispensersResults = topDispensers.results;
     quoteVolumeResults = quoteVolumes.results;
