@@ -552,7 +552,7 @@ export default function AnalyticsPage() {
               <div className="overflow-hidden mb-6 bg-zinc-900/50 border border-zinc-800 rounded-sm">
                 <div
                   className="flex w-max gap-4 py-2 hover:[animation-play-state:paused]"
-                  style={{ animation: `marquee ${Math.max(strip.length * 3, 20)}s linear infinite` }}
+                  style={{ animation: `marquee ${Math.max(strip.length * 6, 40)}s linear infinite` }}
                 >
                   {[...strip, ...strip].map((q, i) => (
                     <div key={`${q.quote_asset}-${i}`} className="flex items-center gap-2 shrink-0 min-w-0 px-3">
