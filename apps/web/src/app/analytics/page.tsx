@@ -213,6 +213,7 @@ function ComboVolumeChart({
       priceFormat: { type: 'custom', formatter: (v: number) => fmtBig(v) },
       priceScaleId: 'left',
       lastValueVisible: false,
+      priceLineVisible: false,
     })
     lineSeries.setData(cumulativeData)
 
@@ -221,6 +222,7 @@ function ComboVolumeChart({
       priceFormat: { type: 'custom', formatter: (v: number) => fmtBig(v) },
       priceScaleId: 'right',
       lastValueVisible: false,
+      priceLineVisible: false,
     })
     histSeries.setData(
       monthlyData.map((d) => ({ ...d, color: color + '99' }))
