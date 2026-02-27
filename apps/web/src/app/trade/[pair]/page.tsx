@@ -20,7 +20,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     base,
     quote,
     displayBase,
-    stats?.best_ask,
+    stats?.best_bid,
     stats?.last_price,
     stats?.price_change_24h,
   )
