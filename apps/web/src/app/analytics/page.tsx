@@ -506,6 +506,11 @@ export default function AnalyticsPage() {
                 sub={!isAll && tradeSummary ? `All: ${fmtBig(tradeSummary.total_volume)} XCP` : undefined}
               />
               <CounterCard
+                label="Orders Placed"
+                value={tradeSummary ? tradeSummary.tf_orders.toLocaleString() : '—'}
+                sub={tradeSummary ? `${tradeSummary.open_orders.toLocaleString()} open` : undefined}
+              />
+              <CounterCard
                 label="Trades"
                 value={tradeSummary ? tradeSummary.tf_trades.toLocaleString() : '—'}
                 sub={!isAll && tradeSummary ? `All: ${tradeSummary.total_trade_count.toLocaleString()}` : undefined}
@@ -515,16 +520,16 @@ export default function AnalyticsPage() {
                 value={tradeSummary ? tradeSummary.active_pairs.toLocaleString() : '—'}
                 sub={!isAll && tradeSummary ? `${tradeSummary.total_pairs.toLocaleString()} total` : undefined}
               />
-              <CounterCard
-                label="Orders Placed"
-                value={tradeSummary ? tradeSummary.tf_orders.toLocaleString() : '—'}
-                sub={tradeSummary ? `${tradeSummary.open_orders.toLocaleString()} open` : undefined}
-              />
               {/* Row 2: Dispensers */}
               <CounterCard
                 label="Dispense Volume"
                 value={dispenseSummary ? fmtBig(dispenseSummary.tf_volume) + ` ${btcLabel.toUpperCase()}` : '—'}
                 sub={!isAll && dispenseSummary ? `All: ${fmtBig(dispenseSummary.total_btc_spent)} ${btcLabel.toUpperCase()}` : undefined}
+              />
+              <CounterCard
+                label="Dispensers Created"
+                value={dispenseSummary ? dispenseSummary.tf_dispensers_created.toLocaleString() : '—'}
+                sub={dispenseSummary ? `${dispenseSummary.open_dispensers.toLocaleString()} open` : undefined}
               />
               <CounterCard
                 label="Dispenses"
@@ -535,11 +540,6 @@ export default function AnalyticsPage() {
                 label="Active Dispensers"
                 value={dispenseSummary ? dispenseSummary.active_assets.toLocaleString() : '—'}
                 sub={!isAll && dispenseSummary ? `${dispenseSummary.total_assets.toLocaleString()} total` : undefined}
-              />
-              <CounterCard
-                label="Dispensers Created"
-                value={dispenseSummary ? dispenseSummary.tf_dispensers_created.toLocaleString() : '—'}
-                sub={dispenseSummary ? `${dispenseSummary.open_dispensers.toLocaleString()} open` : undefined}
               />
             </div>
 
