@@ -35,8 +35,18 @@ button, [role="button"] {
   background: #3f3f46;
 }
 
-/* Marquee ticker animation */
+/* Marquee ticker */
 @keyframes marquee {
-  0% { transform: translateX(0); }
-  100% { transform: translateX(-50%); }
+  0% { transform: translate3d(0, 0, 0); }
+  100% { transform: translate3d(-50%, 0, 0); }
+}
+
+.marquee-strip {
+  will-change: transform;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+}
+
+.marquee-container:hover .marquee-strip {
+  animation-play-state: paused;
 }
