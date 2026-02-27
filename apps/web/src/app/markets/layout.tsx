@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import { buildStaticMetadata } from '@/lib/metadata'
 
-export const metadata: Metadata = buildStaticMetadata('Analytics', 'Trade volume, top pairs, and market statistics for the Counterparty DEX.', '/analytics')
+export const metadata: Metadata = buildStaticMetadata('Markets', 'Active markets on the Counterparty DEX with open orders.', '/markets')
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   return children
