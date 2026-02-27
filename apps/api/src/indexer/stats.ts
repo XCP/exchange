@@ -411,13 +411,45 @@ export async function updatePairStats(
 }
 
 /**
+ * Close orders that have expired (expire_index <= current chain tip).
+ * These should be caught by ORDER_EXPIRATION events during block sync,
+ * but this acts as a safety net for any missed events.
+ */
+export async function closeExpiredOrders(
+  db: D1Database,
+  now: number
+): Promise<number> {
+  const lastBlockRow = await db
+    .prepare(`SELECT value FROM indexer_state WHERE key = 'last_block_index'`)
+    .first<{ value: string }>();
+  if (!lastBlockRow) return 0;
+
+  const lastBlock = parseInt(lastBlockRow.value, 10);
+  const result = await db
+    .prepare(
+      `UPDATE orders SET status = 'closed', closed_at = ?
+       WHERE status = 'open' AND expire_index <= ?`
+    )
+    .bind(now, lastBlock)
+    .run();
+
+  return result.meta.changes ?? 0;
+}
+
+/**
  * Update pair_stats with order book metrics (bid/ask counts, best prices, spread).
- * Only recalculates for pairs that have open orders.
+ * First closes any expired orders, then recalculates for pairs with open orders.
  */
 export async function updateOrderBookStats(
   db: D1Database,
   now: number
 ): Promise<void> {
+  // Close expired orders before computing stats
+  const expired = await closeExpiredOrders(db, now);
+  if (expired > 0) {
+    console.log(`Closed ${expired} expired orders`);
+  }
+
   const pairsWithOrders = await db
     .prepare(
       `SELECT pair, base_asset, quote_asset,

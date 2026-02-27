@@ -534,13 +534,38 @@ export default {
                 console.error("Swap monitor error:", e);
               }
 
+              const now = Math.floor(Date.now() / 1000);
+
+              // Periodic order reconciliation: re-sync open orders with CP API every 24 hours.
+              // Catches stale orders (filled/cancelled) that were missed by block events.
+              const ORDER_RECONCILE_INTERVAL = 24 * 3600;
+              const lastReconcileRow = await env.DB
+                .prepare(`SELECT value FROM indexer_state WHERE key = 'last_order_reconcile'`)
+                .first<{ value: string }>();
+              const lastReconcile = lastReconcileRow ? parseInt(lastReconcileRow.value, 10) : 0;
+
+              if (now - lastReconcile >= ORDER_RECONCILE_INTERVAL) {
+                try {
+                  const reconciled = await syncOrders(env.DB, env.CP_API_BASE);
+                  await env.DB
+                    .prepare(
+                      `INSERT INTO indexer_state (key, value) VALUES ('last_order_reconcile', ?)
+                       ON CONFLICT (key) DO UPDATE SET value = excluded.value`
+                    )
+                    .bind(String(now))
+                    .run();
+                  console.log(`Order reconciliation: synced=${reconciled.synced} closed=${reconciled.closed}`);
+                } catch (e) {
+                  console.error("Order reconciliation error:", e);
+                }
+              }
+
               // Periodic stats refresh: recalculate stale 24h/7d windows every 6 hours
               const STATS_REFRESH_INTERVAL = 6 * 3600;
               const lastRefreshRow = await env.DB
                 .prepare(`SELECT value FROM indexer_state WHERE key = 'last_stats_refresh'`)
                 .first<{ value: string }>();
               const lastRefresh = lastRefreshRow ? parseInt(lastRefreshRow.value, 10) : 0;
-              const now = Math.floor(Date.now() / 1000);
 
               if (now - lastRefresh >= STATS_REFRESH_INTERVAL) {
                 const stalePairs = await refreshStalePairStats(env.DB);
