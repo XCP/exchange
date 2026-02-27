@@ -452,7 +452,6 @@ export default function AnalyticsPage() {
   } = useAnalytics(timeframe, !hideLowQuality)
 
   const tfLabel = TF_LABELS[timeframe]
-  const isAll = timeframe === 'all'
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
@@ -503,6 +502,7 @@ export default function AnalyticsPage() {
               <CounterCard
                 label="Trade Volume"
                 value={tradeSummary ? fmtBig(tradeSummary.tf_volume) + ' XCP' : '—'}
+                sub={tradeSummary && tradeSummary.tf_trades > 0 ? `Avg: ${fmtBig(tradeSummary.tf_volume / tradeSummary.tf_trades)} XCP` : undefined}
               />
               <CounterCard
                 label="Orders Placed"
@@ -512,16 +512,17 @@ export default function AnalyticsPage() {
               <CounterCard
                 label="Trades"
                 value={tradeSummary ? tradeSummary.tf_trades.toLocaleString() : '—'}
+                sub={tradeSummary ? `${tradeSummary.tf_unique_traders.toLocaleString()} unique addresses` : undefined}
               />
               <CounterCard
                 label="Active Pairs"
                 value={tradeSummary ? tradeSummary.active_pairs.toLocaleString() : '—'}
-                sub={!isAll && tradeSummary ? `${tradeSummary.total_pairs.toLocaleString()} total` : undefined}
               />
               {/* Row 2: Dispensers */}
               <CounterCard
                 label="Dispense Volume"
                 value={dispenseSummary ? fmtBig(dispenseSummary.tf_volume) + ` ${btcLabel.toUpperCase()}` : '—'}
+                sub={dispenseSummary && dispenseSummary.tf_dispenses > 0 ? `Avg: ${fmtBig(dispenseSummary.tf_volume / dispenseSummary.tf_dispenses)} ${btcLabel.toUpperCase()}` : undefined}
               />
               <CounterCard
                 label="Dispensers Created"
@@ -531,11 +532,11 @@ export default function AnalyticsPage() {
               <CounterCard
                 label="Dispenses"
                 value={dispenseSummary ? dispenseSummary.tf_dispenses.toLocaleString() : '—'}
+                sub={dispenseSummary ? `${dispenseSummary.tf_unique_buyers.toLocaleString()} unique addresses` : undefined}
               />
               <CounterCard
                 label="Active Dispensers"
                 value={dispenseSummary ? dispenseSummary.active_assets.toLocaleString() : '—'}
-                sub={!isAll && dispenseSummary ? `${dispenseSummary.total_assets.toLocaleString()} total` : undefined}
               />
             </div>
 

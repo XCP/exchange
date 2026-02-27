@@ -12,6 +12,7 @@ export interface TradeSummary {
   tf_trades: number
   open_orders: number
   tf_orders: number
+  tf_unique_traders: number
 }
 
 export interface DispenseSummary {
@@ -23,6 +24,7 @@ export interface DispenseSummary {
   active_assets: number
   total_assets: number
   tf_dispensers_created: number
+  tf_unique_buyers: number
 }
 
 export interface DailyTradeVolume {
