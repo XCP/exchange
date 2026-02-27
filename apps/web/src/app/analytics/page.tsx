@@ -544,13 +544,17 @@ export default function AnalyticsPage() {
             </div>
 
             {/* Quote Volume Marquee Ticker */}
-            {quoteVolumes.length > 0 && (
+            {quoteVolumes.length > 0 && (() => {
+              // Repeat enough to guarantee overflow, then duplicate for seamless loop
+              const reps = Math.max(2, Math.ceil(8 / quoteVolumes.length))
+              const strip = Array(reps).fill(quoteVolumes).flat()
+              return (
               <div className="overflow-hidden mb-6 bg-zinc-900/50 border border-zinc-800 rounded-sm">
                 <div
                   className="flex w-max gap-4 py-2 hover:[animation-play-state:paused]"
-                  style={{ animation: `marquee ${Math.max(quoteVolumes.length * 3, 15)}s linear infinite` }}
+                  style={{ animation: `marquee ${Math.max(strip.length * 3, 20)}s linear infinite` }}
                 >
-                  {[...quoteVolumes, ...quoteVolumes].map((q, i) => (
+                  {[...strip, ...strip].map((q, i) => (
                     <div key={`${q.quote_asset}-${i}`} className="flex items-center gap-2 shrink-0 min-w-0 px-3">
                       <Image
                         src={`${XCP_IMG_BASE}/icon/${q.quote_asset}`}
@@ -567,7 +571,8 @@ export default function AnalyticsPage() {
                   ))}
                 </div>
               </div>
-            )}
+              )
+            })()}
 
             {/* Leaderboards */}
             <h2 className="text-xs uppercase tracking-wider text-zinc-500 mb-2">Leaderboards</h2>
