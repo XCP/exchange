@@ -549,9 +549,9 @@ export default function AnalyticsPage() {
               const reps = Math.max(2, Math.ceil(8 / quoteVolumes.length))
               const strip = Array(reps).fill(quoteVolumes).flat()
               return (
-              <div className="overflow-hidden mb-6 bg-zinc-900/50 border border-zinc-800 rounded-sm">
+              <div className="group overflow-hidden mb-6 bg-zinc-900/50 border border-zinc-800 rounded-sm">
                 <div
-                  className="flex w-max gap-4 py-2 hover:[animation-play-state:paused]"
+                  className="flex w-max gap-4 py-2 group-hover:[animation-play-state:paused]"
                   style={{ animation: `marquee ${Math.max(strip.length * 6, 40)}s linear infinite` }}
                 >
                   {[...strip, ...strip].map((q, i) => (
