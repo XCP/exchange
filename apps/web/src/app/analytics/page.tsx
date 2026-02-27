@@ -512,7 +512,7 @@ export default function AnalyticsPage() {
               <CounterCard
                 label="Trades"
                 value={tradeSummary ? tradeSummary.tf_trades.toLocaleString() : '—'}
-                sub={tradeSummary?.tf_unique_traders ? `${tradeSummary.tf_unique_traders.toLocaleString()} unique addresses` : undefined}
+                sub={tradeSummary?.tf_unique_traders ? `${tradeSummary.tf_unique_traders.toLocaleString()} addresses` : undefined}
               />
               <CounterCard
                 label="Active Pairs"
@@ -532,7 +532,7 @@ export default function AnalyticsPage() {
               <CounterCard
                 label="Dispenses"
                 value={dispenseSummary ? dispenseSummary.tf_dispenses.toLocaleString() : '—'}
-                sub={dispenseSummary?.tf_unique_buyers ? `${dispenseSummary.tf_unique_buyers.toLocaleString()} unique addresses` : undefined}
+                sub={dispenseSummary?.tf_unique_buyers ? `${dispenseSummary.tf_unique_buyers.toLocaleString()} addresses` : undefined}
               />
               <CounterCard
                 label="Active Dispensers"
