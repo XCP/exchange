@@ -452,6 +452,7 @@ export default function AnalyticsPage() {
   } = useAnalytics(timeframe, !hideLowQuality)
 
   const tfLabel = TF_LABELS[timeframe]
+  const isAll = timeframe === 'all'
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
@@ -517,7 +518,7 @@ export default function AnalyticsPage() {
               <CounterCard
                 label="Active Pairs"
                 value={tradeSummary ? tradeSummary.active_pairs.toLocaleString() : '—'}
-                sub={tradeSummary?.new_pairs ? `${tradeSummary.new_pairs.toLocaleString()} new` : undefined}
+                sub={tradeSummary ? (isAll ? `${tradeSummary.total_pairs.toLocaleString()} total` : tradeSummary.new_pairs ? `${tradeSummary.new_pairs.toLocaleString()} new` : undefined) : undefined}
               />
               {/* Row 2: Dispensers */}
               <CounterCard
@@ -538,7 +539,7 @@ export default function AnalyticsPage() {
               <CounterCard
                 label="Active Dispensers"
                 value={dispenseSummary ? dispenseSummary.active_assets.toLocaleString() : '—'}
-                sub={dispenseSummary?.new_assets ? `${dispenseSummary.new_assets.toLocaleString()} new` : undefined}
+                sub={dispenseSummary ? (isAll ? `${dispenseSummary.total_assets.toLocaleString()} total` : dispenseSummary.new_assets ? `${dispenseSummary.new_assets.toLocaleString()} new` : undefined) : undefined}
               />
             </div>
 
