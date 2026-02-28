@@ -41,7 +41,7 @@ export function mempoolDispensesUrl(addresses?: string): string {
 
 // Global feeds
 export function globalOrdersUrl(limit: number = 50): string {
-  return counterpartyUrl(`/orders?status=open&verbose=true&limit=${limit}&sort=block_index:desc`)
+  return counterpartyUrl(`/orders?verbose=true&limit=${limit}&sort=block_index:desc`)
 }
 
 export function globalDispensersUrl(limit: number = 50): string {
