@@ -148,13 +148,13 @@ function OrdersTable({ orders, isLoading }: { orders: Order[]; isLoading: boolea
         <tr className="text-zinc-600 border-b border-zinc-800">
           <th className="text-left font-normal px-2 py-1.5 w-8">Time</th>
           <th className="text-left font-normal px-2 py-1.5 w-10">Side</th>
-          <th className="text-left font-normal px-2 py-1.5">Asset</th>
-          <th className="text-right font-normal px-2 py-1.5">Price</th>
-          <th className="text-left font-normal px-2 py-1.5">Quote</th>
           <th className="text-right font-normal px-2 py-1.5">Amount</th>
+          <th className="text-left font-normal px-2 py-1.5">Amount</th>
+          <th className="text-right font-normal px-2 py-1.5">Price</th>
           <th className="text-left font-normal px-2 py-1.5"></th>
-          <th className="text-right font-normal px-2 py-1.5 max-sm:hidden">Address</th>
-          <th className="text-right font-normal px-2 py-1.5 max-sm:hidden">Status</th>
+          <th className="text-left font-normal px-2 py-1.5 max-sm:hidden">Address</th>
+          <th className="text-left font-normal px-2 py-1.5 max-sm:hidden">Status</th>
+          <th className="text-right font-normal px-2 py-1.5 max-sm:hidden">Expires</th>
         </tr>
       </thead>
       <tbody>
@@ -168,6 +168,7 @@ function OrdersTable({ orders, isLoading }: { orders: Order[]; isLoading: boolea
             const pairSlug = getTradingPairSlugFromSymbols(giveSymbol, getSymbol)
             const { price, baseAmount, side } = orderPriceAndSide(order)
             const baseAsset = giveSymbol === base ? order.give_asset : order.get_asset
+            const quoteAsset = giveSymbol === base ? order.get_asset : order.give_asset
 
             return (
               <tr key={order.tx_hash} className="hover:bg-zinc-800/50 transition-colors border-b border-zinc-800/30 last:border-0">
@@ -176,6 +177,9 @@ function OrdersTable({ orders, isLoading }: { orders: Order[]; isLoading: boolea
                 </td>
                 <td className={`font-medium px-2 py-px ${side === 'Buy' ? 'text-green-400' : 'text-red-400'}`}>
                   {side}
+                </td>
+                <td className="text-right text-zinc-400 font-mono px-2 py-px">
+                  {formatPrice(baseAmount)}
                 </td>
                 <td className="px-2 py-px">
                   <Link href={`/trade/${pairSlug}`} className="flex items-center gap-1.5 hover:underline">
@@ -186,20 +190,20 @@ function OrdersTable({ orders, isLoading }: { orders: Order[]; isLoading: boolea
                 <td className="text-right text-zinc-300 font-mono px-2 py-px">
                   {isFinite(price) ? formatPrice(price) : '—'}
                 </td>
-                <td className="text-left text-zinc-500 px-2 py-px">
-                  {quote}
+                <td className="px-2 py-px">
+                  <Link href={`/trade/${pairSlug}`} className="flex items-center gap-1.5 hover:underline">
+                    <Image src={`${XCP_IMG_BASE}/icon/${quoteAsset}`} alt="" width={14} height={14} className="rounded-sm" unoptimized />
+                    <span className="text-zinc-500 truncate">{quote}</span>
+                  </Link>
                 </td>
-                <td className="text-right text-zinc-400 font-mono px-2 py-px">
-                  {formatPrice(baseAmount)}
+                <td className="text-left text-zinc-500 font-mono px-2 py-px max-sm:hidden break-all text-[11px]">
+                  {order.source}
                 </td>
-                <td className="text-left text-zinc-500 px-2 py-px">
-                  {base}
-                </td>
-                <td className="text-right text-zinc-500 font-mono px-2 py-px max-sm:hidden">
-                  {formatAddress(order.source)}
-                </td>
-                <td className="text-right text-zinc-500 font-mono px-2 py-px max-sm:hidden capitalize">
+                <td className="text-left text-zinc-500 font-mono px-2 py-px max-sm:hidden capitalize">
                   {order.status.replace(/_/g, ' ')}
+                </td>
+                <td className="text-right text-zinc-600 font-mono px-2 py-px max-sm:hidden">
+                  {order.expire_index.toLocaleString()}
                 </td>
               </tr>
             )
@@ -217,18 +221,17 @@ function TradesTable({ trades, isLoading }: { trades: GlobalOrderMatch[]; isLoad
         <tr className="text-zinc-600 border-b border-zinc-800">
           <th className="text-left font-normal px-2 py-1.5 w-8">Time</th>
           <th className="text-left font-normal px-2 py-1.5 w-10">Side</th>
-          <th className="text-left font-normal px-2 py-1.5">Asset</th>
-          <th className="text-right font-normal px-2 py-1.5">Price</th>
-          <th className="text-left font-normal px-2 py-1.5">Quote</th>
           <th className="text-right font-normal px-2 py-1.5">Amount</th>
+          <th className="text-left font-normal px-2 py-1.5">Amount</th>
+          <th className="text-right font-normal px-2 py-1.5">Price</th>
           <th className="text-left font-normal px-2 py-1.5"></th>
-          <th className="text-right font-normal px-2 py-1.5 max-sm:hidden">Maker</th>
-          <th className="text-right font-normal px-2 py-1.5 max-sm:hidden">Taker</th>
+          <th className="text-left font-normal px-2 py-1.5 max-sm:hidden">Maker</th>
+          <th className="text-left font-normal px-2 py-1.5 max-sm:hidden">Taker</th>
         </tr>
       </thead>
       <tbody>
         {isLoading || trades.length === 0 ? (
-          <EmptyRows loading={isLoading} label="trades" cols={9} />
+          <EmptyRows loading={isLoading} label="trades" cols={8} />
         ) : (
           trades.map((trade) => {
             const fwdSymbol = trade.forward_asset_info?.asset_longname ?? trade.forward_asset
@@ -237,6 +240,7 @@ function TradesTable({ trades, isLoading }: { trades: GlobalOrderMatch[]; isLoad
             const pairSlug = getTradingPairSlugFromSymbols(fwdSymbol, bwdSymbol)
             const { price, baseAmount, side } = tradePriceAndSide(trade)
             const baseAsset = fwdSymbol === base ? trade.forward_asset : trade.backward_asset
+            const quoteAsset = fwdSymbol === base ? trade.backward_asset : trade.forward_asset
 
             return (
               <tr key={trade.id} className="hover:bg-zinc-800/50 transition-colors border-b border-zinc-800/30 last:border-0">
@@ -245,6 +249,9 @@ function TradesTable({ trades, isLoading }: { trades: GlobalOrderMatch[]; isLoad
                 </td>
                 <td className={`font-medium px-2 py-px ${side === 'Buy' ? 'text-green-400' : 'text-red-400'}`}>
                   {side}
+                </td>
+                <td className="text-right text-zinc-400 font-mono px-2 py-px">
+                  {formatPrice(baseAmount)}
                 </td>
                 <td className="px-2 py-px">
                   <Link href={`/trade/${pairSlug}`} className="flex items-center gap-1.5 hover:underline">
@@ -255,20 +262,17 @@ function TradesTable({ trades, isLoading }: { trades: GlobalOrderMatch[]; isLoad
                 <td className="text-right text-zinc-300 font-mono px-2 py-px">
                   {isFinite(price) ? formatPrice(price) : '—'}
                 </td>
-                <td className="text-left text-zinc-500 px-2 py-px">
-                  {quote}
+                <td className="px-2 py-px">
+                  <Link href={`/trade/${pairSlug}`} className="flex items-center gap-1.5 hover:underline">
+                    <Image src={`${XCP_IMG_BASE}/icon/${quoteAsset}`} alt="" width={14} height={14} className="rounded-sm" unoptimized />
+                    <span className="text-zinc-500 truncate">{quote}</span>
+                  </Link>
                 </td>
-                <td className="text-right text-zinc-400 font-mono px-2 py-px">
-                  {formatPrice(baseAmount)}
+                <td className="text-left text-zinc-500 font-mono px-2 py-px max-sm:hidden break-all text-[11px]">
+                  {trade.tx0_address}
                 </td>
-                <td className="text-left text-zinc-500 px-2 py-px">
-                  {base}
-                </td>
-                <td className="text-right text-zinc-500 font-mono px-2 py-px max-sm:hidden">
-                  {formatAddress(trade.tx0_address)}
-                </td>
-                <td className="text-right text-zinc-500 font-mono px-2 py-px max-sm:hidden">
-                  {formatAddress(trade.tx1_address)}
+                <td className="text-left text-zinc-500 font-mono px-2 py-px max-sm:hidden break-all text-[11px]">
+                  {trade.tx1_address}
                 </td>
               </tr>
             )
