@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { useGlobalOrders } from '@/lib/hooks/useGlobalOrders'
 import { useGlobalTrades } from '@/lib/hooks/useGlobalTrades'
 import { useGlobalDispensers, useGlobalDispenses } from '@/lib/hooks/useGlobalDispensers'
+import { formatAddress } from '@/utils/format-address'
 import { formatPrice } from '@/utils/format-price'
 import { assetsToTradingPairFromSymbols, getTradingPairSlugFromSymbols } from '@/utils/trading-pair'
 import { XCP_IMG_BASE } from '@/utils/constants'
@@ -34,7 +35,7 @@ function orderPriceAndSide(order: Order) {
   return { price, baseAmount, side }
 }
 
-function tradePriceAndAmount(trade: GlobalOrderMatch) {
+function tradePriceAndSide(trade: GlobalOrderMatch) {
   const fwdSymbol = trade.forward_asset_info?.asset_longname ?? trade.forward_asset
   const bwdSymbol = trade.backward_asset_info?.asset_longname ?? trade.backward_asset
   const [base] = assetsToTradingPairFromSymbols(fwdSymbol, bwdSymbol)
@@ -43,7 +44,8 @@ function tradePriceAndAmount(trade: GlobalOrderMatch) {
     ? parseFloat(trade.backward_quantity_normalized) / parseFloat(trade.forward_quantity_normalized)
     : parseFloat(trade.forward_quantity_normalized) / parseFloat(trade.backward_quantity_normalized)
   const baseAmount = isForwardBase ? trade.forward_quantity_normalized : trade.backward_quantity_normalized
-  return { price, baseAmount }
+  const side = isForwardBase ? 'Buy' : 'Sell'
+  return { price, baseAmount, side }
 }
 
 type Section = 'orders' | 'dispensers'
@@ -149,11 +151,13 @@ function OrdersTable({ orders, isLoading }: { orders: Order[]; isLoading: boolea
           <th className="text-left font-normal px-2 py-1.5">Pair</th>
           <th className="text-right font-normal px-2 py-1.5">Price</th>
           <th className="text-right font-normal px-2 py-1.5">Amount</th>
+          <th className="text-right font-normal px-2 py-1.5 max-sm:hidden">Address</th>
+          <th className="text-right font-normal px-2 py-1.5 max-sm:hidden">Status</th>
         </tr>
       </thead>
       <tbody>
         {isLoading || orders.length === 0 ? (
-          <EmptyRows loading={isLoading} label="orders" cols={5} />
+          <EmptyRows loading={isLoading} label="orders" cols={7} />
         ) : (
           orders.map((order) => {
             const giveSymbol = order.give_asset_info?.asset_longname ?? order.give_asset
@@ -183,6 +187,12 @@ function OrdersTable({ orders, isLoading }: { orders: Order[]; isLoading: boolea
                 <td className="text-right text-zinc-400 font-mono px-2 py-px">
                   {formatPrice(baseAmount)}
                 </td>
+                <td className="text-right text-zinc-500 font-mono px-2 py-px max-sm:hidden">
+                  {formatAddress(order.source)}
+                </td>
+                <td className="text-right text-zinc-500 font-mono px-2 py-px max-sm:hidden capitalize">
+                  {order.status.replace(/_/g, ' ')}
+                </td>
               </tr>
             )
           })
@@ -198,27 +208,33 @@ function TradesTable({ trades, isLoading }: { trades: GlobalOrderMatch[]; isLoad
       <thead>
         <tr className="text-zinc-600 border-b border-zinc-800">
           <th className="text-left font-normal px-2 py-1.5 w-8">Time</th>
+          <th className="text-left font-normal px-2 py-1.5 w-10">Side</th>
           <th className="text-left font-normal px-2 py-1.5">Pair</th>
           <th className="text-right font-normal px-2 py-1.5">Price</th>
           <th className="text-right font-normal px-2 py-1.5">Amount</th>
+          <th className="text-right font-normal px-2 py-1.5 max-sm:hidden">Maker</th>
+          <th className="text-right font-normal px-2 py-1.5 max-sm:hidden">Taker</th>
         </tr>
       </thead>
       <tbody>
         {isLoading || trades.length === 0 ? (
-          <EmptyRows loading={isLoading} label="trades" cols={4} />
+          <EmptyRows loading={isLoading} label="trades" cols={7} />
         ) : (
           trades.map((trade) => {
             const fwdSymbol = trade.forward_asset_info?.asset_longname ?? trade.forward_asset
             const bwdSymbol = trade.backward_asset_info?.asset_longname ?? trade.backward_asset
             const [base, quote] = assetsToTradingPairFromSymbols(fwdSymbol, bwdSymbol)
             const pairSlug = getTradingPairSlugFromSymbols(fwdSymbol, bwdSymbol)
-            const { price, baseAmount } = tradePriceAndAmount(trade)
+            const { price, baseAmount, side } = tradePriceAndSide(trade)
             const baseAsset = fwdSymbol === base ? trade.forward_asset : trade.backward_asset
 
             return (
               <tr key={trade.id} className="hover:bg-zinc-800/50 transition-colors border-b border-zinc-800/30 last:border-0">
                 <td className="text-zinc-600 font-mono px-2 py-px">
                   {trade.block_time ? compactTime(trade.block_time) : '—'}
+                </td>
+                <td className={`font-medium px-2 py-px ${side === 'Buy' ? 'text-green-400' : 'text-red-400'}`}>
+                  {side}
                 </td>
                 <td className="px-2 py-px">
                   <Link href={`/trade/${pairSlug}`} className="flex items-center gap-1.5 hover:underline">
@@ -231,6 +247,12 @@ function TradesTable({ trades, isLoading }: { trades: GlobalOrderMatch[]; isLoad
                 </td>
                 <td className="text-right text-zinc-400 font-mono px-2 py-px">
                   {formatPrice(baseAmount)}
+                </td>
+                <td className="text-right text-zinc-500 font-mono px-2 py-px max-sm:hidden">
+                  {formatAddress(trade.tx0_address)}
+                </td>
+                <td className="text-right text-zinc-500 font-mono px-2 py-px max-sm:hidden">
+                  {formatAddress(trade.tx1_address)}
                 </td>
               </tr>
             )
@@ -289,11 +311,13 @@ function DispensersTable({ dispensers, isLoading }: { dispensers: Dispenser[]; i
           <th className="text-left font-normal px-2 py-1.5">Asset</th>
           <th className="text-right font-normal px-2 py-1.5">Price</th>
           <th className="text-right font-normal px-2 py-1.5">Available</th>
+          <th className="text-right font-normal px-2 py-1.5 max-sm:hidden">Address</th>
+          <th className="text-right font-normal px-2 py-1.5 max-sm:hidden">Dispenses</th>
         </tr>
       </thead>
       <tbody>
         {isLoading || dispensers.length === 0 ? (
-          <EmptyRows loading={isLoading} label="dispensers" cols={4} />
+          <EmptyRows loading={isLoading} label="dispensers" cols={6} />
         ) : (
           dispensers.map((dispenser) => {
             const assetSymbol = dispenser.asset_info?.asset_longname ?? dispenser.asset
@@ -315,6 +339,12 @@ function DispensersTable({ dispensers, isLoading }: { dispensers: Dispenser[]; i
                 <td className="text-right text-zinc-400 font-mono px-2 py-px">
                   {formatPrice(dispenser.give_remaining_normalized)}
                 </td>
+                <td className="text-right text-zinc-500 font-mono px-2 py-px max-sm:hidden">
+                  {formatAddress(dispenser.source)}
+                </td>
+                <td className="text-right text-zinc-500 font-mono px-2 py-px max-sm:hidden">
+                  {dispenser.dispense_count}
+                </td>
               </tr>
             )
           })
@@ -333,11 +363,13 @@ function DispensesTable({ dispenses, isLoading }: { dispenses: Dispense[]; isLoa
           <th className="text-left font-normal px-2 py-1.5">Asset</th>
           <th className="text-right font-normal px-2 py-1.5">Price</th>
           <th className="text-right font-normal px-2 py-1.5">Qty</th>
+          <th className="text-right font-normal px-2 py-1.5 max-sm:hidden">Buyer</th>
+          <th className="text-right font-normal px-2 py-1.5 max-sm:hidden">Seller</th>
         </tr>
       </thead>
       <tbody>
         {isLoading || dispenses.length === 0 ? (
-          <EmptyRows loading={isLoading} label="dispenses" cols={4} />
+          <EmptyRows loading={isLoading} label="dispenses" cols={6} />
         ) : (
           dispenses.map((dispense) => {
             const assetSymbol = dispense.asset_info?.asset_longname ?? dispense.asset
@@ -360,6 +392,12 @@ function DispensesTable({ dispenses, isLoading }: { dispenses: Dispense[]; isLoa
                 </td>
                 <td className="text-right text-zinc-400 font-mono px-2 py-px">
                   {formatPrice(dispense.dispense_quantity_normalized)}
+                </td>
+                <td className="text-right text-zinc-500 font-mono px-2 py-px max-sm:hidden">
+                  {formatAddress(dispense.destination)}
+                </td>
+                <td className="text-right text-zinc-500 font-mono px-2 py-px max-sm:hidden">
+                  {formatAddress(dispense.source)}
                 </td>
               </tr>
             )
