@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
+import { useBlockHeight } from '@/lib/hooks/useNetworkInfo'
 import { useGlobalOrders } from '@/lib/hooks/useGlobalOrders'
 import { useGlobalTrades } from '@/lib/hooks/useGlobalTrades'
 import { useGlobalDispensers, useGlobalDispenses } from '@/lib/hooks/useGlobalDispensers'
@@ -52,6 +53,7 @@ type Section = 'orders' | 'dispensers'
 
 export default function LatestPage() {
   const [section, setSection] = useState<Section>('orders')
+  const blockHeight = useBlockHeight()
   const { orders, isLoading: ordersLoading } = useGlobalOrders(50)
   const { trades, isLoading: tradesLoading } = useGlobalTrades(50)
   const { dispensers, isLoading: dispensersLoading } = useGlobalDispensers(50)
@@ -83,7 +85,7 @@ export default function LatestPage() {
         </div>
 
         {section === 'orders' ? (
-          <OrdersSection orders={orders} trades={trades} ordersLoading={ordersLoading} tradesLoading={tradesLoading} />
+          <OrdersSection orders={orders} trades={trades} ordersLoading={ordersLoading} tradesLoading={tradesLoading} blockHeight={blockHeight} />
         ) : (
           <DispensersSection dispensers={dispensers} dispenses={dispenses} dispensersLoading={dispensersLoading} dispensesLoading={dispensesLoading} />
         )}
@@ -104,25 +106,32 @@ function EmptyRows({ loading, label, cols }: { loading: boolean; label: string; 
 
 // ── Orders Section ──────────────────────────────────────────────────
 
-function OrdersSection({ orders, trades, ordersLoading, tradesLoading }: {
+type OrderTab = 'new' | 'ending' | 'matched'
+
+function OrdersSection({ orders, trades, ordersLoading, tradesLoading, blockHeight }: {
   orders: Order[]
   trades: GlobalOrderMatch[]
   ordersLoading: boolean
   tradesLoading: boolean
+  blockHeight: number | null
 }) {
-  const [tab, setTab] = useState<0 | 1>(0)
+  const [tab, setTab] = useState<OrderTab>('new')
+
+  const endingOrders = orders
+    .filter((o) => o.status === 'open' && blockHeight != null)
+    .sort((a, b) => a.expire_index - b.expire_index)
 
   return (
     <div className="bg-zinc-900/50 border border-zinc-800 rounded-sm">
       <div className="px-3 py-2 flex items-center gap-2">
         <span className="text-xs text-zinc-500">DEX Orders</span>
         <div className="flex gap-0.5 ml-auto">
-          {['New', 'Matched'].map((label, i) => (
+          {([['new', 'New'], ['ending', 'Ending'], ['matched', 'Matched']] as const).map(([key, label]) => (
             <button
-              key={label}
-              onClick={() => setTab(i as 0 | 1)}
+              key={key}
+              onClick={() => setTab(key)}
               className={`px-2 py-0.5 text-[10px] font-mono rounded-sm transition-colors ${
-                tab === i
+                tab === key
                   ? 'bg-zinc-700 text-zinc-100'
                   : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900'
               }`}
@@ -132,8 +141,10 @@ function OrdersSection({ orders, trades, ordersLoading, tradesLoading }: {
           ))}
         </div>
       </div>
-      {tab === 0 ? (
-        <OrdersTable orders={orders} isLoading={ordersLoading} />
+      {tab === 'new' ? (
+        <OrdersTable orders={orders} isLoading={ordersLoading} blockHeight={blockHeight} />
+      ) : tab === 'ending' ? (
+        <OrdersTable orders={endingOrders} isLoading={ordersLoading} blockHeight={blockHeight} />
       ) : (
         <TradesTable trades={trades} isLoading={tradesLoading} />
       )}
@@ -141,7 +152,7 @@ function OrdersSection({ orders, trades, ordersLoading, tradesLoading }: {
   )
 }
 
-function OrdersTable({ orders, isLoading }: { orders: Order[]; isLoading: boolean }) {
+function OrdersTable({ orders, isLoading, blockHeight }: { orders: Order[]; isLoading: boolean; blockHeight: number | null }) {
   return (
     <table className="w-full text-xs">
       <thead>
@@ -204,7 +215,7 @@ function OrdersTable({ orders, isLoading }: { orders: Order[]; isLoading: boolea
                   {order.status.replace(/_/g, ' ')}
                 </td>
                 <td className="text-right text-zinc-600 font-mono px-2 py-px max-sm:hidden">
-                  {order.expire_index.toLocaleString()}
+                  {blockHeight != null ? `${Math.max(0, order.expire_index - blockHeight).toLocaleString()} blks` : '—'}
                 </td>
               </tr>
             )
