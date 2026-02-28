@@ -54,8 +54,6 @@ type Section = 'orders' | 'dispensers'
 export default function LatestPage() {
   const [section, setSection] = useState<Section>('orders')
   const blockHeight = useBlockHeight()
-  const { orders, isLoading: ordersLoading } = useGlobalOrders(50)
-  const { trades, isLoading: tradesLoading } = useGlobalTrades(50)
   const { dispensers, isLoading: dispensersLoading } = useGlobalDispensers(50)
   const { dispenses, isLoading: dispensesLoading } = useGlobalDispenses(50)
 
@@ -85,7 +83,7 @@ export default function LatestPage() {
         </div>
 
         {section === 'orders' ? (
-          <OrdersSection orders={orders} trades={trades} ordersLoading={ordersLoading} tradesLoading={tradesLoading} blockHeight={blockHeight} />
+          <OrdersSection blockHeight={blockHeight} />
         ) : (
           <DispensersSection dispensers={dispensers} dispenses={dispenses} dispensersLoading={dispensersLoading} dispensesLoading={dispensesLoading} />
         )}
@@ -108,31 +106,25 @@ function EmptyRows({ loading, label, cols }: { loading: boolean; label: string; 
 
 type OrderTab = 'open' | 'expiring' | 'expired' | 'filled' | 'cancelled'
 
-function OrdersSection({ orders, trades, ordersLoading, tradesLoading, blockHeight }: {
-  orders: Order[]
-  trades: GlobalOrderMatch[]
-  ordersLoading: boolean
-  tradesLoading: boolean
-  blockHeight: number | null
-}) {
+function OrdersSection({ blockHeight }: { blockHeight: number | null }) {
   const [tab, setTab] = useState<OrderTab>('open')
 
-  const filteredOrders = (() => {
-    switch (tab) {
-      case 'open':
-        return orders.filter((o) => o.status === 'open')
-      case 'expiring':
-        return orders
-          .filter((o) => o.status === 'open')
-          .sort((a, b) => a.expire_index - b.expire_index)
-      case 'expired':
-        return orders.filter((o) => o.status === 'expired')
-      case 'cancelled':
-        return orders.filter((o) => o.status === 'cancelled')
-      default:
-        return orders
-    }
-  })()
+  // Each tab gets its own API query with the right status/sort
+  const { orders: openOrders, isLoading: openLoading } = useGlobalOrders(50, 'open')
+  const { orders: expiringOrders, isLoading: expiringLoading } = useGlobalOrders(50, 'open', 'expire_index:asc')
+  const { orders: expiredOrders, isLoading: expiredLoading } = useGlobalOrders(50, 'expired')
+  const { trades, isLoading: filledLoading } = useGlobalTrades(50)
+  const { orders: cancelledOrders, isLoading: cancelledLoading } = useGlobalOrders(50, 'cancelled')
+
+  const tabData: Record<OrderTab, { orders?: Order[]; trades?: GlobalOrderMatch[]; isLoading: boolean }> = {
+    open: { orders: openOrders, isLoading: openLoading },
+    expiring: { orders: expiringOrders, isLoading: expiringLoading },
+    expired: { orders: expiredOrders, isLoading: expiredLoading },
+    filled: { trades, isLoading: filledLoading },
+    cancelled: { orders: cancelledOrders, isLoading: cancelledLoading },
+  }
+
+  const current = tabData[tab]
 
   return (
     <div className="bg-zinc-900/50 border border-zinc-800 rounded-sm">
@@ -155,9 +147,9 @@ function OrdersSection({ orders, trades, ordersLoading, tradesLoading, blockHeig
         </div>
       </div>
       {tab === 'filled' ? (
-        <TradesTable trades={trades} isLoading={tradesLoading} />
+        <TradesTable trades={current.trades ?? []} isLoading={current.isLoading} />
       ) : (
-        <OrdersTable orders={filteredOrders} isLoading={ordersLoading} blockHeight={blockHeight} />
+        <OrdersTable orders={current.orders ?? []} isLoading={current.isLoading} blockHeight={blockHeight} />
       )}
     </div>
   )

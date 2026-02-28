@@ -4,9 +4,9 @@ import { globalOrdersUrl } from '@/lib/api/counterparty'
 import type { Order } from '@/types/trading'
 import type { CounterpartyResponse } from '@/types/api'
 
-export function useGlobalOrders(limit: number = 50) {
+export function useGlobalOrders(limit: number = 50, status?: string, sort?: string) {
   const { data, error, isLoading } = useSWR<CounterpartyResponse<Order[]>>(
-    globalOrdersUrl(limit),
+    globalOrdersUrl(limit, status, sort),
     fetcher,
     { refreshInterval: 30_000 }
   )

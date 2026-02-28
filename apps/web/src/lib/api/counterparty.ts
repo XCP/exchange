@@ -40,8 +40,10 @@ export function mempoolDispensesUrl(addresses?: string): string {
 }
 
 // Global feeds
-export function globalOrdersUrl(limit: number = 50): string {
-  return counterpartyUrl(`/orders?verbose=true&limit=${limit}&sort=block_index:desc`)
+export function globalOrdersUrl(limit: number = 50, status?: string, sort: string = 'block_index:desc'): string {
+  const params = new URLSearchParams({ verbose: 'true', limit: String(limit), sort })
+  if (status) params.set('status', status)
+  return counterpartyUrl(`/orders?${params.toString()}`)
 }
 
 export function globalDispensersUrl(limit: number = 50): string {
