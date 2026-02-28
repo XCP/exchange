@@ -169,6 +169,7 @@ function OrdersTable({ orders, isLoading }: { orders: Order[]; isLoading: boolea
             const { price, baseAmount, side } = orderPriceAndSide(order)
             const baseAsset = giveSymbol === base ? order.give_asset : order.get_asset
             const quoteAsset = giveSymbol === base ? order.get_asset : order.give_asset
+            const isFilled = order.status !== 'open'
 
             return (
               <tr key={order.tx_hash} className="hover:bg-zinc-800/50 transition-colors border-b border-zinc-800/30 last:border-0">
@@ -178,7 +179,7 @@ function OrdersTable({ orders, isLoading }: { orders: Order[]; isLoading: boolea
                 <td className={`font-medium px-2 py-px ${side === 'Buy' ? 'text-green-400' : 'text-red-400'}`}>
                   {side}
                 </td>
-                <td className="text-right text-zinc-300 font-mono px-2 py-px">
+                <td className="text-right text-zinc-400 font-mono px-2 py-px">
                   {formatPrice(baseAmount)}
                 </td>
                 <td className="px-2 py-px">
@@ -187,19 +188,19 @@ function OrdersTable({ orders, isLoading }: { orders: Order[]; isLoading: boolea
                     <span className="text-zinc-200 truncate">{base}</span>
                   </Link>
                 </td>
-                <td className="text-right text-zinc-300 font-mono px-2 py-px">
+                <td className="text-right text-zinc-400 font-mono px-2 py-px">
                   {isFinite(price) ? formatPrice(price) : '—'}
                 </td>
                 <td className="px-2 py-px">
                   <Link href={`/trade/${pairSlug}`} className="flex items-center gap-1.5 hover:underline">
                     <Image src={`${XCP_IMG_BASE}/icon/${quoteAsset}`} alt="" width={14} height={14} className="rounded-sm" unoptimized />
-                    <span className="text-zinc-200 truncate">{quote}</span>
+                    <span className="text-zinc-400 truncate">{quote}</span>
                   </Link>
                 </td>
-                <td className="text-left text-zinc-500 font-mono px-2 py-px max-sm:hidden break-all text-[11px]">
-                  {order.source}
+                <td className="text-left text-zinc-600 font-mono px-2 py-px max-sm:hidden">
+                  {formatAddress(order.source)}
                 </td>
-                <td className="text-left text-zinc-500 font-mono px-2 py-px max-sm:hidden capitalize">
+                <td className={`text-left font-mono px-2 py-px max-sm:hidden capitalize ${isFilled ? 'text-zinc-700' : 'text-zinc-500'}`}>
                   {order.status.replace(/_/g, ' ')}
                 </td>
                 <td className="text-right text-zinc-600 font-mono px-2 py-px max-sm:hidden">
@@ -250,7 +251,7 @@ function TradesTable({ trades, isLoading }: { trades: GlobalOrderMatch[]; isLoad
                 <td className={`font-medium px-2 py-px ${side === 'Buy' ? 'text-green-400' : 'text-red-400'}`}>
                   {side}
                 </td>
-                <td className="text-right text-zinc-300 font-mono px-2 py-px">
+                <td className="text-right text-zinc-400 font-mono px-2 py-px">
                   {formatPrice(baseAmount)}
                 </td>
                 <td className="px-2 py-px">
@@ -259,20 +260,20 @@ function TradesTable({ trades, isLoading }: { trades: GlobalOrderMatch[]; isLoad
                     <span className="text-zinc-200 truncate">{base}</span>
                   </Link>
                 </td>
-                <td className="text-right text-zinc-300 font-mono px-2 py-px">
+                <td className="text-right text-zinc-400 font-mono px-2 py-px">
                   {isFinite(price) ? formatPrice(price) : '—'}
                 </td>
                 <td className="px-2 py-px">
                   <Link href={`/trade/${pairSlug}`} className="flex items-center gap-1.5 hover:underline">
                     <Image src={`${XCP_IMG_BASE}/icon/${quoteAsset}`} alt="" width={14} height={14} className="rounded-sm" unoptimized />
-                    <span className="text-zinc-200 truncate">{quote}</span>
+                    <span className="text-zinc-400 truncate">{quote}</span>
                   </Link>
                 </td>
-                <td className="text-left text-zinc-500 font-mono px-2 py-px max-sm:hidden break-all text-[11px]">
-                  {trade.tx0_address}
+                <td className="text-left text-zinc-600 font-mono px-2 py-px max-sm:hidden">
+                  {formatAddress(trade.tx0_address)}
                 </td>
-                <td className="text-left text-zinc-500 font-mono px-2 py-px max-sm:hidden break-all text-[11px]">
-                  {trade.tx1_address}
+                <td className="text-left text-zinc-600 font-mono px-2 py-px max-sm:hidden">
+                  {formatAddress(trade.tx1_address)}
                 </td>
               </tr>
             )
@@ -331,7 +332,7 @@ function DispensersTable({ dispensers, isLoading }: { dispensers: Dispenser[]; i
           <th className="text-left font-normal px-2 py-1.5">Asset</th>
           <th className="text-right font-normal px-2 py-1.5">Price</th>
           <th className="text-right font-normal px-2 py-1.5">Available</th>
-          <th className="text-right font-normal px-2 py-1.5 max-sm:hidden">Address</th>
+          <th className="text-left font-normal px-2 py-1.5 max-sm:hidden">Address</th>
           <th className="text-right font-normal px-2 py-1.5 max-sm:hidden">Dispenses</th>
         </tr>
       </thead>
@@ -353,16 +354,16 @@ function DispensersTable({ dispensers, isLoading }: { dispensers: Dispenser[]; i
                     <span className="text-zinc-200 truncate">{assetSymbol}</span>
                   </Link>
                 </td>
-                <td className="text-right text-zinc-300 font-mono px-2 py-px">
+                <td className="text-right text-zinc-400 font-mono px-2 py-px">
                   {formatPrice(dispenser.satoshirate_normalized)}
                 </td>
-                <td className="text-right text-zinc-300 font-mono px-2 py-px">
+                <td className="text-right text-zinc-400 font-mono px-2 py-px">
                   {formatPrice(dispenser.give_remaining_normalized)}
                 </td>
-                <td className="text-right text-zinc-500 font-mono px-2 py-px max-sm:hidden">
+                <td className="text-left text-zinc-600 font-mono px-2 py-px max-sm:hidden">
                   {formatAddress(dispenser.source)}
                 </td>
-                <td className="text-right text-zinc-500 font-mono px-2 py-px max-sm:hidden">
+                <td className="text-right text-zinc-600 font-mono px-2 py-px max-sm:hidden">
                   {dispenser.dispense_count}
                 </td>
               </tr>
@@ -383,8 +384,8 @@ function DispensesTable({ dispenses, isLoading }: { dispenses: Dispense[]; isLoa
           <th className="text-left font-normal px-2 py-1.5">Asset</th>
           <th className="text-right font-normal px-2 py-1.5">Price</th>
           <th className="text-right font-normal px-2 py-1.5">Qty</th>
-          <th className="text-right font-normal px-2 py-1.5 max-sm:hidden">Buyer</th>
-          <th className="text-right font-normal px-2 py-1.5 max-sm:hidden">Seller</th>
+          <th className="text-left font-normal px-2 py-1.5 max-sm:hidden">Buyer</th>
+          <th className="text-left font-normal px-2 py-1.5 max-sm:hidden">Seller</th>
         </tr>
       </thead>
       <tbody>
@@ -407,16 +408,16 @@ function DispensesTable({ dispenses, isLoading }: { dispenses: Dispense[]; isLoa
                     <span className="text-zinc-200 truncate">{assetSymbol}</span>
                   </Link>
                 </td>
-                <td className="text-right text-zinc-300 font-mono px-2 py-px">
+                <td className="text-right text-zinc-400 font-mono px-2 py-px">
                   {isFinite(price) && price > 0 ? formatPrice(price) : '—'}
                 </td>
-                <td className="text-right text-zinc-300 font-mono px-2 py-px">
+                <td className="text-right text-zinc-400 font-mono px-2 py-px">
                   {formatPrice(dispense.dispense_quantity_normalized)}
                 </td>
-                <td className="text-right text-zinc-500 font-mono px-2 py-px max-sm:hidden">
+                <td className="text-left text-zinc-600 font-mono px-2 py-px max-sm:hidden">
                   {formatAddress(dispense.destination)}
                 </td>
-                <td className="text-right text-zinc-500 font-mono px-2 py-px max-sm:hidden">
+                <td className="text-left text-zinc-600 font-mono px-2 py-px max-sm:hidden">
                   {formatAddress(dispense.source)}
                 </td>
               </tr>
