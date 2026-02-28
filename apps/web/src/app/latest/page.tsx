@@ -148,16 +148,18 @@ function OrdersTable({ orders, isLoading }: { orders: Order[]; isLoading: boolea
         <tr className="text-zinc-600 border-b border-zinc-800">
           <th className="text-left font-normal px-2 py-1.5 w-8">Time</th>
           <th className="text-left font-normal px-2 py-1.5 w-10">Side</th>
-          <th className="text-left font-normal px-2 py-1.5">Pair</th>
+          <th className="text-left font-normal px-2 py-1.5">Asset</th>
           <th className="text-right font-normal px-2 py-1.5">Price</th>
+          <th className="text-left font-normal px-2 py-1.5">Quote</th>
           <th className="text-right font-normal px-2 py-1.5">Amount</th>
+          <th className="text-left font-normal px-2 py-1.5"></th>
           <th className="text-right font-normal px-2 py-1.5 max-sm:hidden">Address</th>
           <th className="text-right font-normal px-2 py-1.5 max-sm:hidden">Status</th>
         </tr>
       </thead>
       <tbody>
         {isLoading || orders.length === 0 ? (
-          <EmptyRows loading={isLoading} label="orders" cols={7} />
+          <EmptyRows loading={isLoading} label="orders" cols={9} />
         ) : (
           orders.map((order) => {
             const giveSymbol = order.give_asset_info?.asset_longname ?? order.give_asset
@@ -178,14 +180,20 @@ function OrdersTable({ orders, isLoading }: { orders: Order[]; isLoading: boolea
                 <td className="px-2 py-px">
                   <Link href={`/trade/${pairSlug}`} className="flex items-center gap-1.5 hover:underline">
                     <Image src={`${XCP_IMG_BASE}/icon/${baseAsset}`} alt="" width={14} height={14} className="rounded-sm" unoptimized />
-                    <span className="text-zinc-200 truncate">{base}/{quote}</span>
+                    <span className="text-zinc-200 truncate">{base}</span>
                   </Link>
                 </td>
                 <td className="text-right text-zinc-300 font-mono px-2 py-px">
                   {isFinite(price) ? formatPrice(price) : '—'}
                 </td>
+                <td className="text-left text-zinc-500 px-2 py-px">
+                  {quote}
+                </td>
                 <td className="text-right text-zinc-400 font-mono px-2 py-px">
                   {formatPrice(baseAmount)}
+                </td>
+                <td className="text-left text-zinc-500 px-2 py-px">
+                  {base}
                 </td>
                 <td className="text-right text-zinc-500 font-mono px-2 py-px max-sm:hidden">
                   {formatAddress(order.source)}
@@ -209,16 +217,18 @@ function TradesTable({ trades, isLoading }: { trades: GlobalOrderMatch[]; isLoad
         <tr className="text-zinc-600 border-b border-zinc-800">
           <th className="text-left font-normal px-2 py-1.5 w-8">Time</th>
           <th className="text-left font-normal px-2 py-1.5 w-10">Side</th>
-          <th className="text-left font-normal px-2 py-1.5">Pair</th>
+          <th className="text-left font-normal px-2 py-1.5">Asset</th>
           <th className="text-right font-normal px-2 py-1.5">Price</th>
+          <th className="text-left font-normal px-2 py-1.5">Quote</th>
           <th className="text-right font-normal px-2 py-1.5">Amount</th>
+          <th className="text-left font-normal px-2 py-1.5"></th>
           <th className="text-right font-normal px-2 py-1.5 max-sm:hidden">Maker</th>
           <th className="text-right font-normal px-2 py-1.5 max-sm:hidden">Taker</th>
         </tr>
       </thead>
       <tbody>
         {isLoading || trades.length === 0 ? (
-          <EmptyRows loading={isLoading} label="trades" cols={7} />
+          <EmptyRows loading={isLoading} label="trades" cols={9} />
         ) : (
           trades.map((trade) => {
             const fwdSymbol = trade.forward_asset_info?.asset_longname ?? trade.forward_asset
@@ -239,14 +249,20 @@ function TradesTable({ trades, isLoading }: { trades: GlobalOrderMatch[]; isLoad
                 <td className="px-2 py-px">
                   <Link href={`/trade/${pairSlug}`} className="flex items-center gap-1.5 hover:underline">
                     <Image src={`${XCP_IMG_BASE}/icon/${baseAsset}`} alt="" width={14} height={14} className="rounded-sm" unoptimized />
-                    <span className="text-zinc-200 truncate">{base}/{quote}</span>
+                    <span className="text-zinc-200 truncate">{base}</span>
                   </Link>
                 </td>
                 <td className="text-right text-zinc-300 font-mono px-2 py-px">
                   {isFinite(price) ? formatPrice(price) : '—'}
                 </td>
+                <td className="text-left text-zinc-500 px-2 py-px">
+                  {quote}
+                </td>
                 <td className="text-right text-zinc-400 font-mono px-2 py-px">
                   {formatPrice(baseAmount)}
+                </td>
+                <td className="text-left text-zinc-500 px-2 py-px">
+                  {base}
                 </td>
                 <td className="text-right text-zinc-500 font-mono px-2 py-px max-sm:hidden">
                   {formatAddress(trade.tx0_address)}
