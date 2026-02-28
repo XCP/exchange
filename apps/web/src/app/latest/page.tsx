@@ -149,7 +149,7 @@ function OrdersTable({ orders, isLoading }: { orders: Order[]; isLoading: boolea
           <th className="text-left font-normal px-2 py-1.5 w-8">Time</th>
           <th className="text-left font-normal px-2 py-1.5 w-10">Side</th>
           <th className="text-right font-normal px-2 py-1.5">Amount</th>
-          <th className="text-left font-normal px-2 py-1.5">Amount</th>
+          <th className="text-left font-normal px-2 py-1.5">Asset</th>
           <th className="text-right font-normal px-2 py-1.5">Price</th>
           <th className="text-left font-normal px-2 py-1.5"></th>
           <th className="text-left font-normal px-2 py-1.5 max-sm:hidden">Address</th>
@@ -178,7 +178,7 @@ function OrdersTable({ orders, isLoading }: { orders: Order[]; isLoading: boolea
                 <td className={`font-medium px-2 py-px ${side === 'Buy' ? 'text-green-400' : 'text-red-400'}`}>
                   {side}
                 </td>
-                <td className="text-right text-zinc-400 font-mono px-2 py-px">
+                <td className="text-right text-zinc-300 font-mono px-2 py-px">
                   {formatPrice(baseAmount)}
                 </td>
                 <td className="px-2 py-px">
@@ -193,7 +193,7 @@ function OrdersTable({ orders, isLoading }: { orders: Order[]; isLoading: boolea
                 <td className="px-2 py-px">
                   <Link href={`/trade/${pairSlug}`} className="flex items-center gap-1.5 hover:underline">
                     <Image src={`${XCP_IMG_BASE}/icon/${quoteAsset}`} alt="" width={14} height={14} className="rounded-sm" unoptimized />
-                    <span className="text-zinc-500 truncate">{quote}</span>
+                    <span className="text-zinc-200 truncate">{quote}</span>
                   </Link>
                 </td>
                 <td className="text-left text-zinc-500 font-mono px-2 py-px max-sm:hidden break-all text-[11px]">
@@ -222,7 +222,7 @@ function TradesTable({ trades, isLoading }: { trades: GlobalOrderMatch[]; isLoad
           <th className="text-left font-normal px-2 py-1.5 w-8">Time</th>
           <th className="text-left font-normal px-2 py-1.5 w-10">Side</th>
           <th className="text-right font-normal px-2 py-1.5">Amount</th>
-          <th className="text-left font-normal px-2 py-1.5">Amount</th>
+          <th className="text-left font-normal px-2 py-1.5">Asset</th>
           <th className="text-right font-normal px-2 py-1.5">Price</th>
           <th className="text-left font-normal px-2 py-1.5"></th>
           <th className="text-left font-normal px-2 py-1.5 max-sm:hidden">Maker</th>
@@ -250,7 +250,7 @@ function TradesTable({ trades, isLoading }: { trades: GlobalOrderMatch[]; isLoad
                 <td className={`font-medium px-2 py-px ${side === 'Buy' ? 'text-green-400' : 'text-red-400'}`}>
                   {side}
                 </td>
-                <td className="text-right text-zinc-400 font-mono px-2 py-px">
+                <td className="text-right text-zinc-300 font-mono px-2 py-px">
                   {formatPrice(baseAmount)}
                 </td>
                 <td className="px-2 py-px">
@@ -265,7 +265,7 @@ function TradesTable({ trades, isLoading }: { trades: GlobalOrderMatch[]; isLoad
                 <td className="px-2 py-px">
                   <Link href={`/trade/${pairSlug}`} className="flex items-center gap-1.5 hover:underline">
                     <Image src={`${XCP_IMG_BASE}/icon/${quoteAsset}`} alt="" width={14} height={14} className="rounded-sm" unoptimized />
-                    <span className="text-zinc-500 truncate">{quote}</span>
+                    <span className="text-zinc-200 truncate">{quote}</span>
                   </Link>
                 </td>
                 <td className="text-left text-zinc-500 font-mono px-2 py-px max-sm:hidden break-all text-[11px]">
@@ -356,7 +356,7 @@ function DispensersTable({ dispensers, isLoading }: { dispensers: Dispenser[]; i
                 <td className="text-right text-zinc-300 font-mono px-2 py-px">
                   {formatPrice(dispenser.satoshirate_normalized)}
                 </td>
-                <td className="text-right text-zinc-400 font-mono px-2 py-px">
+                <td className="text-right text-zinc-300 font-mono px-2 py-px">
                   {formatPrice(dispenser.give_remaining_normalized)}
                 </td>
                 <td className="text-right text-zinc-500 font-mono px-2 py-px max-sm:hidden">
@@ -410,7 +410,7 @@ function DispensesTable({ dispenses, isLoading }: { dispenses: Dispense[]; isLoa
                 <td className="text-right text-zinc-300 font-mono px-2 py-px">
                   {isFinite(price) && price > 0 ? formatPrice(price) : '—'}
                 </td>
-                <td className="text-right text-zinc-400 font-mono px-2 py-px">
+                <td className="text-right text-zinc-300 font-mono px-2 py-px">
                   {formatPrice(dispense.dispense_quantity_normalized)}
                 </td>
                 <td className="text-right text-zinc-500 font-mono px-2 py-px max-sm:hidden">
