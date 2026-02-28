@@ -106,7 +106,7 @@ function EmptyRows({ loading, label, cols }: { loading: boolean; label: string; 
 
 // ── Orders Section ──────────────────────────────────────────────────
 
-type OrderTab = 'new' | 'ending' | 'matched'
+type OrderTab = 'open' | 'expiring' | 'expired' | 'filled' | 'cancelled'
 
 function OrdersSection({ orders, trades, ordersLoading, tradesLoading, blockHeight }: {
   orders: Order[]
@@ -115,18 +115,31 @@ function OrdersSection({ orders, trades, ordersLoading, tradesLoading, blockHeig
   tradesLoading: boolean
   blockHeight: number | null
 }) {
-  const [tab, setTab] = useState<OrderTab>('new')
+  const [tab, setTab] = useState<OrderTab>('open')
 
-  const endingOrders = orders
-    .filter((o) => o.status === 'open' && blockHeight != null)
-    .sort((a, b) => a.expire_index - b.expire_index)
+  const filteredOrders = (() => {
+    switch (tab) {
+      case 'open':
+        return orders.filter((o) => o.status === 'open')
+      case 'expiring':
+        return orders
+          .filter((o) => o.status === 'open')
+          .sort((a, b) => a.expire_index - b.expire_index)
+      case 'expired':
+        return orders.filter((o) => o.status === 'expired')
+      case 'cancelled':
+        return orders.filter((o) => o.status === 'cancelled')
+      default:
+        return orders
+    }
+  })()
 
   return (
     <div className="bg-zinc-900/50 border border-zinc-800 rounded-sm">
       <div className="px-3 py-2 flex items-center gap-2">
         <span className="text-xs text-zinc-500">DEX Orders</span>
         <div className="flex gap-0.5 ml-auto">
-          {([['new', 'New'], ['ending', 'Ending'], ['matched', 'Matched']] as const).map(([key, label]) => (
+          {([['open', 'Open'], ['expiring', 'Expiring'], ['expired', 'Expired'], ['filled', 'Filled'], ['cancelled', 'Cancelled']] as const).map(([key, label]) => (
             <button
               key={key}
               onClick={() => setTab(key)}
@@ -141,12 +154,10 @@ function OrdersSection({ orders, trades, ordersLoading, tradesLoading, blockHeig
           ))}
         </div>
       </div>
-      {tab === 'new' ? (
-        <OrdersTable orders={orders} isLoading={ordersLoading} blockHeight={blockHeight} />
-      ) : tab === 'ending' ? (
-        <OrdersTable orders={endingOrders} isLoading={ordersLoading} blockHeight={blockHeight} />
-      ) : (
+      {tab === 'filled' ? (
         <TradesTable trades={trades} isLoading={tradesLoading} />
+      ) : (
+        <OrdersTable orders={filteredOrders} isLoading={ordersLoading} blockHeight={blockHeight} />
       )}
     </div>
   )
@@ -203,7 +214,7 @@ function OrdersTable({ orders, isLoading, blockHeight }: { orders: Order[]; isLo
                   {isFinite(price) ? formatPrice(price) : '—'}
                 </td>
                 <td className="px-2 py-px">
-                  <Link href={`/trade/${pairSlug}`} className="flex items-center gap-1.5 hover:underline">
+                  <Link href={`/trade/${pairSlug}`} className="flex items-center gap-1.5 hover:underline decoration-zinc-400">
                     <Image src={`${XCP_IMG_BASE}/icon/${quoteAsset}`} alt="" width={14} height={14} className="rounded-sm" unoptimized />
                     <span className="text-zinc-400 truncate">{quote}</span>
                   </Link>
@@ -275,7 +286,7 @@ function TradesTable({ trades, isLoading }: { trades: GlobalOrderMatch[]; isLoad
                   {isFinite(price) ? formatPrice(price) : '—'}
                 </td>
                 <td className="px-2 py-px">
-                  <Link href={`/trade/${pairSlug}`} className="flex items-center gap-1.5 hover:underline">
+                  <Link href={`/trade/${pairSlug}`} className="flex items-center gap-1.5 hover:underline decoration-zinc-400">
                     <Image src={`${XCP_IMG_BASE}/icon/${quoteAsset}`} alt="" width={14} height={14} className="rounded-sm" unoptimized />
                     <span className="text-zinc-400 truncate">{quote}</span>
                   </Link>
