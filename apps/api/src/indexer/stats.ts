@@ -212,7 +212,8 @@ export async function updatePairStats(
   pair: string,
   baseAsset: string,
   quoteAsset: string,
-  baseLongname?: string | null
+  baseLongname?: string | null,
+  quoteLongname?: string | null
 ): Promise<void> {
   const now = Math.floor(Date.now() / 1000);
   const t24h = now - 86400;
@@ -330,7 +331,7 @@ export async function updatePairStats(
 
   await db
     .prepare(
-      `INSERT INTO pair_stats (pair, base_asset, quote_asset, base_asset_longname, last_price, last_trade_time, last_side,
+      `INSERT INTO pair_stats (pair, base_asset, quote_asset, base_asset_longname, quote_asset_longname, last_price, last_trade_time, last_side,
          price_change_24h, price_change_7d, price_change_30d,
          volume_24h, volume_7d, volume_30d,
          base_volume_24h, base_volume_7d, base_volume_30d,
@@ -339,9 +340,10 @@ export async function updatePairStats(
          first_trade_time,
          total_volume, total_base_volume, total_trade_count, unique_traders, all_time_high, all_time_low,
          updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT (pair) DO UPDATE SET
          base_asset_longname = COALESCE(pair_stats.base_asset_longname, excluded.base_asset_longname),
+         quote_asset_longname = COALESCE(pair_stats.quote_asset_longname, excluded.quote_asset_longname),
          last_price = excluded.last_price,
          last_trade_time = excluded.last_trade_time,
          last_side = excluded.last_side,
@@ -377,6 +379,7 @@ export async function updatePairStats(
       baseAsset,
       quoteAsset,
       baseLongname ?? null,
+      quoteLongname ?? null,
       lastPrice,
       stats?.last_trade_time ?? null,
       stats?.last_side ?? null,

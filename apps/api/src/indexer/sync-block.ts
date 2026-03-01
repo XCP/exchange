@@ -112,6 +112,7 @@ function processOrderMatch(
   base: string;
   quote: string;
   baseLongname: string | null;
+  quoteLongname: string | null;
   earliestTime: number;
 } {
   const match: OrderMatch = {
@@ -137,12 +138,14 @@ function processOrderMatch(
   const fwdLongname = extractAssetLongname(params.forward_asset_info);
   const bwdLongname = extractAssetLongname(params.backward_asset_info);
   const baseLongname = t.base_asset === match.forward_asset ? fwdLongname : bwdLongname;
+  const quoteLongname = t.quote_asset === match.forward_asset ? fwdLongname : bwdLongname;
 
   return {
     pair: t.pair,
     base: t.base_asset,
     quote: t.quote_asset,
     baseLongname,
+    quoteLongname,
     earliestTime: blockTime,
     stmt: (db) =>
       db
@@ -501,7 +504,7 @@ export async function syncBlocks(
   // Track affected pairs/assets for post-processing
   const affectedPairs = new Map<
     string,
-    { base: string; quote: string; baseLongname: string | null; earliestTime: number }
+    { base: string; quote: string; baseLongname: string | null; quoteLongname: string | null; earliestTime: number }
   >();
   const affectedDispenseAssets = new Map<string, string | null>();
 
@@ -539,10 +542,16 @@ export async function syncBlocks(
                 base: trade.base,
                 quote: trade.quote,
                 baseLongname: trade.baseLongname ?? existing?.baseLongname ?? null,
+                quoteLongname: trade.quoteLongname ?? existing?.quoteLongname ?? null,
                 earliestTime: blockTime,
               });
-            } else if (trade.baseLongname && !existing.baseLongname) {
-              existing.baseLongname = trade.baseLongname;
+            } else {
+              if (trade.baseLongname && !existing.baseLongname) {
+                existing.baseLongname = trade.baseLongname;
+              }
+              if (trade.quoteLongname && !existing.quoteLongname) {
+                existing.quoteLongname = trade.quoteLongname;
+              }
             }
             break;
           }
@@ -658,7 +667,7 @@ export async function syncBlocks(
   // Post-processing: aggregate candles + update stats for affected pairs
   for (const [pair, info] of affectedPairs) {
     await aggregateCandlesForPair(db, pair, info.earliestTime);
-    await updatePairStats(db, pair, info.base, info.quote, info.baseLongname);
+    await updatePairStats(db, pair, info.base, info.quote, info.baseLongname, info.quoteLongname);
   }
 
   // Post-processing: update dispenser stats for affected assets

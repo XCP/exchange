@@ -168,6 +168,7 @@ function OrdersTable({ orders, isLoading, blockHeight, baseSearch, quoteSearch, 
           orders.map((order) => {
             const [base, quote] = order.pair.split('_')
             const baseDisplay = order.base_asset_longname ?? base
+            const quoteDisplay = order.quote_asset_longname ?? quote
             const isClosed = order.status !== 'open'
             const isBid = /^(buy|bid)$/i.test(order.side)
             // Open orders: show remaining amount; closed orders: show original amount
@@ -196,7 +197,7 @@ function OrdersTable({ orders, isLoading, blockHeight, baseSearch, quoteSearch, 
                 <td className="px-3 py-1.5">
                   <Link href={`/trade/${order.pair}`} className="flex items-center gap-1.5 hover:underline decoration-zinc-400">
                     <Image src={`${XCP_IMG_BASE}/icon/${order.quote_asset}`} alt="" width={14} height={14} className="rounded-sm" unoptimized />
-                    <span className="text-zinc-400 truncate">{quote}</span>
+                    <span className="text-zinc-400 truncate">{quoteDisplay}</span>
                   </Link>
                 </td>
                 <td className="text-left font-mono px-3 py-1.5 max-sm:hidden">

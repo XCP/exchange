@@ -20,6 +20,7 @@ export interface LatestOrder {
   block_time: number
   status: string
   base_asset_longname: string | null
+  quote_asset_longname: string | null
 }
 
 interface LatestOrdersResponse {
