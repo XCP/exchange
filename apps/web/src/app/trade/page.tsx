@@ -120,23 +120,33 @@ function OrdersTable({ orders, isLoading, blockHeight, baseSearch, quoteSearch, 
           <th className="text-left font-normal px-2 py-1.5 w-10">Side</th>
           <th className="text-right font-normal px-2 py-1.5">Amount</th>
           <th className="text-left font-normal px-2 py-0.5">
-            <input
-              type="text"
-              value={baseSearch}
-              onChange={(e) => onBaseSearch(e.target.value)}
-              placeholder="Asset"
-              className="w-full px-1.5 py-0.5 text-[11px] font-mono bg-zinc-800 border border-zinc-700 rounded-sm text-zinc-200 placeholder:text-zinc-600 outline-none focus:border-zinc-500"
-            />
+            <span className="relative flex items-center">
+              <input
+                type="text"
+                value={baseSearch}
+                onChange={(e) => onBaseSearch(e.target.value)}
+                placeholder="Asset"
+                className="w-full px-1.5 py-0.5 pr-5 text-[11px] font-mono bg-zinc-800 border border-zinc-700 rounded-sm text-zinc-200 placeholder:text-zinc-600 outline-none focus:border-zinc-500"
+              />
+              {baseSearch && (
+                <button onClick={() => onBaseSearch('')} className="absolute right-1 text-zinc-600 hover:text-zinc-300 transition-colors text-[10px]">&times;</button>
+              )}
+            </span>
           </th>
           <th className="text-right font-normal px-2 py-1.5">Price</th>
           <th className="text-left font-normal px-2 py-0.5">
-            <input
-              type="text"
-              value={quoteSearch}
-              onChange={(e) => onQuoteSearch(e.target.value)}
-              placeholder="Quote"
-              className="w-full px-1.5 py-0.5 text-[11px] font-mono bg-zinc-800 border border-zinc-700 rounded-sm text-zinc-200 placeholder:text-zinc-600 outline-none focus:border-zinc-500"
-            />
+            <span className="relative flex items-center">
+              <input
+                type="text"
+                value={quoteSearch}
+                onChange={(e) => onQuoteSearch(e.target.value)}
+                placeholder="Quote"
+                className="w-full px-1.5 py-0.5 pr-5 text-[11px] font-mono bg-zinc-800 border border-zinc-700 rounded-sm text-zinc-200 placeholder:text-zinc-600 outline-none focus:border-zinc-500"
+              />
+              {quoteSearch && (
+                <button onClick={() => onQuoteSearch('')} className="absolute right-1 text-zinc-600 hover:text-zinc-300 transition-colors text-[10px]">&times;</button>
+              )}
+            </span>
           </th>
           <th className="text-left font-normal px-2 py-1.5 max-sm:hidden">Address</th>
           <th className="text-left font-normal px-2 py-1.5 max-sm:hidden">Status</th>
