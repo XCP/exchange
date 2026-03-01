@@ -37,9 +37,9 @@ export default function DispensePage() {
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
       <div className="max-w-6xl mx-auto px-4 py-8">
+        <h1 className="text-lg font-semibold text-zinc-100 mb-4">Dispensers</h1>
         <div className="bg-zinc-900/50 border border-zinc-800 rounded-sm">
           <div className="px-3 py-2 flex items-center gap-2">
-            <span className="text-xs text-zinc-500">Dispensers</span>
             <div className="flex gap-0.5 ml-auto">
               {['New', 'Dispenses'].map((label, i) => (
                 <button
