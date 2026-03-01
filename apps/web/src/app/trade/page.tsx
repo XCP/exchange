@@ -64,13 +64,12 @@ export default function TradePage() {
         <div className="bg-zinc-900/50 border border-zinc-800 rounded-sm">
           <div className="px-3 py-2 flex items-center gap-2">
             <span className="text-xs text-zinc-500">DEX Orders</span>
-            <input
-              type="text"
-              value={assetSearch}
-              onChange={(e) => setAssetSearch(e.target.value)}
-              placeholder="Filter by asset..."
-              className="ml-2 px-2 py-0.5 text-[11px] font-mono bg-zinc-800 border border-zinc-700 rounded-sm text-zinc-200 placeholder:text-zinc-600 outline-none focus:border-zinc-500 w-36"
-            />
+            {sourceFilter && (
+              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 text-[10px] font-mono bg-zinc-800 border border-zinc-700 rounded-sm text-zinc-300 ml-2">
+                {formatAddress(sourceFilter)}
+                <button onClick={() => setSourceFilter(null)} className="text-zinc-500 hover:text-zinc-200 transition-colors">&times;</button>
+              </span>
+            )}
             <div className="flex gap-0.5 ml-auto">
               {ORDER_TABS.map(([key, label]) => (
                 <button
@@ -88,26 +87,19 @@ export default function TradePage() {
             </div>
           </div>
 
-          {sourceFilter && (
-            <div className="px-3 pb-1">
-              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 text-[10px] font-mono bg-zinc-800 border border-zinc-700 rounded-sm text-zinc-300">
-                {formatAddress(sourceFilter)}
-                <button onClick={() => setSourceFilter(null)} className="text-zinc-500 hover:text-zinc-200 transition-colors">&times;</button>
-              </span>
-            </div>
-          )}
-
-          <OrdersTable orders={orders} isLoading={isLoading} blockHeight={blockHeight} onFilterAddress={setSourceFilter} />
+          <OrdersTable orders={orders} isLoading={isLoading} blockHeight={blockHeight} assetSearch={assetSearch} onAssetSearch={setAssetSearch} onFilterAddress={setSourceFilter} />
         </div>
       </div>
     </div>
   )
 }
 
-function OrdersTable({ orders, isLoading, blockHeight, onFilterAddress }: {
+function OrdersTable({ orders, isLoading, blockHeight, assetSearch, onAssetSearch, onFilterAddress }: {
   orders: LatestOrder[]
   isLoading: boolean
   blockHeight: number | null
+  assetSearch: string
+  onAssetSearch: (v: string) => void
   onFilterAddress: (addr: string) => void
 }) {
   return (
@@ -117,9 +109,25 @@ function OrdersTable({ orders, isLoading, blockHeight, onFilterAddress }: {
           <th className="text-left font-normal px-2 py-1.5 w-8">Time</th>
           <th className="text-left font-normal px-2 py-1.5 w-10">Side</th>
           <th className="text-right font-normal px-2 py-1.5">Amount</th>
-          <th className="text-left font-normal px-2 py-1.5">Asset</th>
+          <th className="text-left font-normal px-2 py-0.5">
+            <input
+              type="text"
+              value={assetSearch}
+              onChange={(e) => onAssetSearch(e.target.value)}
+              placeholder="Asset"
+              className="w-full px-1.5 py-0.5 text-[11px] font-mono bg-zinc-800 border border-zinc-700 rounded-sm text-zinc-200 placeholder:text-zinc-600 outline-none focus:border-zinc-500"
+            />
+          </th>
           <th className="text-right font-normal px-2 py-1.5">Price</th>
-          <th className="text-left font-normal px-2 py-1.5"></th>
+          <th className="text-left font-normal px-2 py-0.5">
+            <input
+              type="text"
+              value={assetSearch}
+              onChange={(e) => onAssetSearch(e.target.value)}
+              placeholder=""
+              className="w-full px-1.5 py-0.5 text-[11px] font-mono bg-zinc-800 border border-zinc-700 rounded-sm text-zinc-200 placeholder:text-zinc-600 outline-none focus:border-zinc-500"
+            />
+          </th>
           <th className="text-left font-normal px-2 py-1.5 max-sm:hidden">Address</th>
           <th className="text-left font-normal px-2 py-1.5 max-sm:hidden">Status</th>
           <th className="text-right font-normal px-2 py-1.5 max-sm:hidden">Expires</th>
