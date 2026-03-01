@@ -214,7 +214,7 @@ function OrdersTable({ orders, isLoading, blockHeight, baseSearch, quoteSearch, 
                   {order.status}
                 </td>
                 <td className="text-right text-zinc-500 font-mono px-3 py-1.5 max-sm:hidden">
-                  {blockHeight != null ? `${Math.max(0, order.expire_index - blockHeight).toLocaleString()} blks` : '—'}
+                  {blockHeight != null ? `${Math.max(0, order.expire_index - blockHeight).toLocaleString()} blocks` : '—'}
                 </td>
               </tr>
             )

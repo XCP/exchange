@@ -37,8 +37,11 @@ export interface OrderFilters {
 function buildUrl(tab: OrderTab, filters?: OrderFilters): string {
   const params = new URLSearchParams()
 
-  if (tab === 'open' || tab === 'filled' || tab === 'expired' || tab === 'cancelled') {
+  if (tab === 'open' || tab === 'filled' || tab === 'cancelled') {
     params.set('status', tab)
+  } else if (tab === 'expired') {
+    params.set('status', 'expired')
+    params.set('sort', 'expire_index:desc')
   } else if (tab === 'expiring') {
     params.set('status', 'open')
     params.set('sort', 'expire_index:asc')

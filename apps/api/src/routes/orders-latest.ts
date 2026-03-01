@@ -58,6 +58,8 @@ export async function handleOrdersLatest(
 
   if (sort === "expire_index:asc") {
     query += ` ORDER BY expire_index ASC`;
+  } else if (sort === "expire_index:desc") {
+    query += ` ORDER BY expire_index DESC`;
   } else {
     query += ` ORDER BY block_index DESC`;
   }
