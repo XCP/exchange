@@ -108,6 +108,8 @@ export function Chart({ pairSlug, pairLabel }: ChartProps) {
       borderUpColor: '#22c55e',
       wickDownColor: '#ef444480',
       wickUpColor: '#22c55e80',
+      lastValueVisible: false,
+      priceLineVisible: false,
       priceFormat: {
         type: 'custom',
         minMove: 0.00000001,
