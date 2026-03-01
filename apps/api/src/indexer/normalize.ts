@@ -91,6 +91,15 @@ export function normalizeOrder(order: Order): NormalizedOrder {
   const { base, quote } = determineBaseQuote(order.give_asset, order.get_asset);
   const pair = makePairString(base, quote);
 
+  // Use original quantities for amount/price (immutable initial order size).
+  // Fall back to remaining when originals aren't available (e.g. OPEN_ORDER events
+  // where remaining == initial).
+  const giveQty = order.give_quantity_normalized
+    ? parseFloat(order.give_quantity_normalized)
+    : parseFloat(order.give_remaining_normalized);
+  const getQty = order.get_quantity_normalized
+    ? parseFloat(order.get_quantity_normalized)
+    : parseFloat(order.get_remaining_normalized);
   const giveRemaining = parseFloat(order.give_remaining_normalized);
   const getRemaining = parseFloat(order.get_remaining_normalized);
 
@@ -101,13 +110,13 @@ export function normalizeOrder(order: Order): NormalizedOrder {
   if (order.give_asset === quote) {
     // Giving quote to get base → bid
     side = "bid";
-    amount = getRemaining;
-    price = getRemaining > 0 ? giveRemaining / getRemaining : 0;
+    amount = getQty;
+    price = getQty > 0 ? giveQty / getQty : 0;
   } else {
     // Giving base to get quote → ask
     side = "ask";
-    amount = giveRemaining;
-    price = giveRemaining > 0 ? getRemaining / giveRemaining : 0;
+    amount = giveQty;
+    price = giveQty > 0 ? getQty / giveQty : 0;
   }
 
   price = parseFloat(price.toFixed(8));
@@ -212,7 +221,6 @@ export function buildOrderUpsertStmt(
         status, first_seen_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?)
        ON CONFLICT (tx_hash) DO UPDATE SET
-         amount = excluded.amount,
          give_remaining = excluded.give_remaining,
          get_remaining = excluded.get_remaining,
          status = 'open',

@@ -181,8 +181,8 @@ function processOpenOrder(
     block_index: blockIndex,
     block_time: blockTime,
     status: "open",
-    give_quantity_normalized: "",
-    get_quantity_normalized: "",
+    give_quantity_normalized: (params.give_quantity_normalized as string) ?? "",
+    get_quantity_normalized: (params.get_quantity_normalized as string) ?? "",
     give_remaining_normalized: params.give_remaining_normalized as string,
     get_remaining_normalized: params.get_remaining_normalized as string,
   };

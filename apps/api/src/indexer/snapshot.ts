@@ -300,6 +300,8 @@ export async function reindexOrders(
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT (tx_hash) DO UPDATE SET
              status = excluded.status,
+             price = excluded.price,
+             amount = excluded.amount,
              give_remaining = excluded.give_remaining,
              get_remaining = excluded.get_remaining`
         ).bind(

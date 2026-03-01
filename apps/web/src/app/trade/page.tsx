@@ -161,17 +161,22 @@ function OrdersTable({ orders, isLoading, blockHeight, baseSearch, quoteSearch, 
           orders.map((order) => {
             const [base, quote] = order.pair.split('_')
             const isClosed = order.status !== 'open'
+            const isBid = /^(buy|bid)$/i.test(order.side)
+            // Open orders: show remaining amount; closed orders: show original amount
+            const displayAmount = isClosed
+              ? order.amount
+              : (isBid ? order.get_remaining : order.give_remaining)
 
             return (
               <tr key={order.tx_hash} className="hover:bg-zinc-800/50 transition-colors border-b border-zinc-800/30 last:border-0">
                 <td className="text-zinc-600 font-mono px-2 py-px">
                   {order.block_time ? compactTime(order.block_time) : '—'}
                 </td>
-                <td className={`font-medium px-2 py-px ${/^(buy|bid)$/i.test(order.side) ? 'text-green-400' : 'text-red-400'}`}>
-                  {/^(buy|bid)$/i.test(order.side) ? 'Buy' : 'Sell'}
+                <td className={`font-medium px-2 py-px ${isBid ? 'text-green-400' : 'text-red-400'}`}>
+                  {isBid ? 'Buy' : 'Sell'}
                 </td>
                 <td className="text-right text-zinc-400 font-mono px-2 py-px">
-                  {formatPrice(order.amount)}
+                  {formatPrice(displayAmount)}
                 </td>
                 <td className="px-2 py-px">
                   <Link href={`/trade/${order.pair}`} className="flex items-center gap-1.5 hover:underline">
