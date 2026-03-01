@@ -14,7 +14,7 @@ export async function handleOrdersLatest(
     500
   );
 
-  const validStatuses = ["open", "filled", "expired", "cancelled"];
+  const validStatuses = ["open", "filled", "expired", "cancelled", "invalid"];
   if (status && !validStatuses.includes(status)) {
     return Response.json({ error: "Invalid status" }, { status: 400 });
   }

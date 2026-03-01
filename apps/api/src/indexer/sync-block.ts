@@ -564,6 +564,9 @@ export async function syncBlocks(
             ) {
               stmts.push(processOrderClose(params, now, orderStatus));
               result.orders_closed++;
+            } else if (orderStatus.toLowerCase().startsWith("invalid")) {
+              stmts.push(processOrderClose(params, now, "invalid"));
+              result.orders_closed++;
             }
             break;
           }

@@ -37,6 +37,7 @@ const ORDER_TABS: [OrderTab, string][] = [
   ['expiring', 'Expiring'],
   ['expired', 'Expired'],
   ['cancelled', 'Cancelled'],
+  ['invalid', 'Invalid'],
 ]
 
 export default function TradePage() {

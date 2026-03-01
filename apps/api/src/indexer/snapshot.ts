@@ -288,6 +288,7 @@ export async function reindexOrders(
         : order.status === "expired" ? "expired"
         : order.status === "cancelled" ? "cancelled"
         : order.status === "filled" ? "filled"
+        : order.status.toLowerCase().startsWith("invalid") ? "invalid"
         : order.status;
       stmts.push(
         db.prepare(
