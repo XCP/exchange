@@ -25,7 +25,7 @@ interface LatestOrdersResponse {
   orders: LatestOrder[]
 }
 
-export type OrderTab = 'all' | 'open' | 'filled' | 'expiring' | 'expired' | 'cancelled' | 'invalid'
+export type OrderTab = 'all' | 'open' | 'filled' | 'expiring' | 'expired' | 'cancelled'
 
 export interface OrderFilters {
   asset?: string
@@ -37,7 +37,7 @@ export interface OrderFilters {
 function buildUrl(tab: OrderTab, filters?: OrderFilters): string {
   const params = new URLSearchParams()
 
-  if (tab === 'open' || tab === 'filled' || tab === 'expired' || tab === 'cancelled' || tab === 'invalid') {
+  if (tab === 'open' || tab === 'filled' || tab === 'expired' || tab === 'cancelled') {
     params.set('status', tab)
   } else if (tab === 'expiring') {
     params.set('status', 'open')
