@@ -117,10 +117,10 @@ function OrdersTable({ orders, isLoading, blockHeight, baseSearch, quoteSearch, 
     <table className="w-full text-xs">
       <thead>
         <tr className="text-zinc-600 border-b border-zinc-800">
-          <th className="text-left font-normal px-2 py-1.5 w-8">Time</th>
-          <th className="text-left font-normal px-2 py-1.5 w-10">Side</th>
-          <th className="text-right font-normal px-2 py-1.5">Amount</th>
-          <th className="text-left font-normal px-2 py-0.5">
+          <th className="text-left font-normal px-3 py-1.5 w-8">Time</th>
+          <th className="text-left font-normal px-3 py-1.5 w-10">Side</th>
+          <th className="text-right font-normal px-3 py-1.5">Amount</th>
+          <th className="text-left font-normal px-3 py-0.5">
             <span className="relative flex items-center">
               <input
                 type="text"
@@ -134,8 +134,8 @@ function OrdersTable({ orders, isLoading, blockHeight, baseSearch, quoteSearch, 
               )}
             </span>
           </th>
-          <th className="text-right font-normal px-2 py-1.5">Price</th>
-          <th className="text-left font-normal px-2 py-0.5">
+          <th className="text-right font-normal px-3 py-1.5">Price</th>
+          <th className="text-left font-normal px-3 py-0.5">
             <span className="relative flex items-center">
               <input
                 type="text"
@@ -149,9 +149,9 @@ function OrdersTable({ orders, isLoading, blockHeight, baseSearch, quoteSearch, 
               )}
             </span>
           </th>
-          <th className="text-left font-normal px-2 py-1.5 max-sm:hidden">Address</th>
-          <th className="text-left font-normal px-2 py-1.5 max-sm:hidden">Status</th>
-          <th className="text-right font-normal px-2 py-1.5 max-sm:hidden">Expires</th>
+          <th className="text-left font-normal px-3 py-1.5 max-sm:hidden">Address</th>
+          <th className="text-left font-normal px-3 py-1.5 max-sm:hidden">Status</th>
+          <th className="text-right font-normal px-3 py-1.5 max-sm:hidden">Expires</th>
         </tr>
       </thead>
       <tbody>
@@ -167,31 +167,31 @@ function OrdersTable({ orders, isLoading, blockHeight, baseSearch, quoteSearch, 
 
             return (
               <tr key={order.tx_hash} className="hover:bg-zinc-800/50 transition-colors border-b border-zinc-800/30 last:border-0">
-                <td className="text-zinc-600 font-mono px-2 py-px">
+                <td className="text-zinc-600 font-mono px-3 py-1.5">
                   {order.block_time ? compactTime(order.block_time) : '—'}
                 </td>
-                <td className={`font-medium px-2 py-px ${isBid ? 'text-green-400' : 'text-red-400'}`}>
+                <td className={`font-medium px-3 py-1.5 ${isBid ? 'text-green-400' : 'text-red-400'}`}>
                   {isBid ? 'Buy' : 'Sell'}
                 </td>
-                <td className="text-right text-zinc-400 font-mono px-2 py-px">
+                <td className="text-right text-zinc-400 font-mono px-3 py-1.5">
                   {formatPrice(displayAmount)}
                 </td>
-                <td className="px-2 py-px">
+                <td className="px-3 py-1.5">
                   <Link href={`/trade/${order.pair}`} className="flex items-center gap-1.5 hover:underline">
                     <Image src={`${XCP_IMG_BASE}/icon/${order.base_asset}`} alt="" width={14} height={14} className="rounded-sm" unoptimized />
                     <span className="text-zinc-200 truncate">{base}</span>
                   </Link>
                 </td>
-                <td className="text-right text-zinc-400 font-mono px-2 py-px">
+                <td className="text-right text-zinc-400 font-mono px-3 py-1.5">
                   {isFinite(order.price) ? formatPrice(order.price) : '—'}
                 </td>
-                <td className="px-2 py-px">
+                <td className="px-3 py-1.5">
                   <Link href={`/trade/${order.pair}`} className="flex items-center gap-1.5 hover:underline decoration-zinc-400">
                     <Image src={`${XCP_IMG_BASE}/icon/${order.quote_asset}`} alt="" width={14} height={14} className="rounded-sm" unoptimized />
                     <span className="text-zinc-400 truncate">{quote}</span>
                   </Link>
                 </td>
-                <td className="text-left font-mono px-2 py-px max-sm:hidden">
+                <td className="text-left font-mono px-3 py-1.5 max-sm:hidden">
                   <span className="inline-flex items-center gap-1">
                     <span className="text-zinc-600">{formatAddress(order.source)}</span>
                     <button
@@ -203,10 +203,10 @@ function OrdersTable({ orders, isLoading, blockHeight, baseSearch, quoteSearch, 
                     </button>
                   </span>
                 </td>
-                <td className={`text-left font-mono px-2 py-px max-sm:hidden capitalize ${isClosed ? 'text-zinc-700' : 'text-zinc-500'}`}>
+                <td className={`text-left font-mono px-3 py-1.5 max-sm:hidden capitalize ${isClosed ? 'text-zinc-700' : 'text-zinc-500'}`}>
                   {order.status}
                 </td>
-                <td className="text-right text-zinc-600 font-mono px-2 py-px max-sm:hidden">
+                <td className="text-right text-zinc-600 font-mono px-3 py-1.5 max-sm:hidden">
                   {blockHeight != null ? `${Math.max(0, order.expire_index - blockHeight).toLocaleString()} blks` : '—'}
                 </td>
               </tr>

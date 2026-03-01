@@ -72,12 +72,12 @@ function DispensersTable({ dispensers, isLoading }: { dispensers: Dispenser[]; i
     <table className="w-full text-xs">
       <thead>
         <tr className="text-zinc-600 border-b border-zinc-800">
-          <th className="text-left font-normal px-2 py-1.5 w-8">Time</th>
-          <th className="text-left font-normal px-2 py-1.5">Asset</th>
-          <th className="text-right font-normal px-2 py-1.5">Price</th>
-          <th className="text-right font-normal px-2 py-1.5">Available</th>
-          <th className="text-left font-normal px-2 py-1.5 max-sm:hidden">Address</th>
-          <th className="text-right font-normal px-2 py-1.5 max-sm:hidden">Dispenses</th>
+          <th className="text-left font-normal px-3 py-1.5 w-8">Time</th>
+          <th className="text-left font-normal px-3 py-1.5">Asset</th>
+          <th className="text-right font-normal px-3 py-1.5">Price</th>
+          <th className="text-right font-normal px-3 py-1.5">Available</th>
+          <th className="text-left font-normal px-3 py-1.5 max-sm:hidden">Address</th>
+          <th className="text-right font-normal px-3 py-1.5 max-sm:hidden">Dispenses</th>
         </tr>
       </thead>
       <tbody>
@@ -89,25 +89,25 @@ function DispensersTable({ dispensers, isLoading }: { dispensers: Dispenser[]; i
 
             return (
               <tr key={dispenser.tx_hash} className="hover:bg-zinc-800/50 transition-colors border-b border-zinc-800/30 last:border-0">
-                <td className="text-zinc-600 font-mono px-2 py-px">
+                <td className="text-zinc-600 font-mono px-3 py-1.5">
                   {dispenser.block_time ? compactTime(dispenser.block_time) : '—'}
                 </td>
-                <td className="px-2 py-px">
+                <td className="px-3 py-1.5">
                   <Link href={`/dispense/${encodeURIComponent(assetSymbol)}`} className="flex items-center gap-1.5 hover:underline">
                     <Image src={`${XCP_IMG_BASE}/icon/${dispenser.asset}`} alt="" width={14} height={14} className="rounded-sm" unoptimized />
                     <span className="text-zinc-200 truncate">{assetSymbol}</span>
                   </Link>
                 </td>
-                <td className="text-right text-zinc-400 font-mono px-2 py-px">
+                <td className="text-right text-zinc-400 font-mono px-3 py-1.5">
                   {formatPrice(dispenser.satoshirate_normalized)}
                 </td>
-                <td className="text-right text-zinc-400 font-mono px-2 py-px">
+                <td className="text-right text-zinc-400 font-mono px-3 py-1.5">
                   {formatPrice(dispenser.give_remaining_normalized)}
                 </td>
-                <td className="text-left text-zinc-600 font-mono px-2 py-px max-sm:hidden">
+                <td className="text-left text-zinc-600 font-mono px-3 py-1.5 max-sm:hidden">
                   {formatAddress(dispenser.source)}
                 </td>
-                <td className="text-right text-zinc-600 font-mono px-2 py-px max-sm:hidden">
+                <td className="text-right text-zinc-600 font-mono px-3 py-1.5 max-sm:hidden">
                   {dispenser.dispense_count}
                 </td>
               </tr>
@@ -124,12 +124,12 @@ function DispensesTable({ dispenses, isLoading }: { dispenses: Dispense[]; isLoa
     <table className="w-full text-xs">
       <thead>
         <tr className="text-zinc-600 border-b border-zinc-800">
-          <th className="text-left font-normal px-2 py-1.5 w-8">Time</th>
-          <th className="text-left font-normal px-2 py-1.5">Asset</th>
-          <th className="text-right font-normal px-2 py-1.5">Price</th>
-          <th className="text-right font-normal px-2 py-1.5">Qty</th>
-          <th className="text-left font-normal px-2 py-1.5 max-sm:hidden">Buyer</th>
-          <th className="text-left font-normal px-2 py-1.5 max-sm:hidden">Seller</th>
+          <th className="text-left font-normal px-3 py-1.5 w-8">Time</th>
+          <th className="text-left font-normal px-3 py-1.5">Asset</th>
+          <th className="text-right font-normal px-3 py-1.5">Price</th>
+          <th className="text-right font-normal px-3 py-1.5">Qty</th>
+          <th className="text-left font-normal px-3 py-1.5 max-sm:hidden">Buyer</th>
+          <th className="text-left font-normal px-3 py-1.5 max-sm:hidden">Seller</th>
         </tr>
       </thead>
       <tbody>
@@ -143,25 +143,25 @@ function DispensesTable({ dispenses, isLoading }: { dispenses: Dispense[]; isLoa
 
             return (
               <tr key={`${dispense.tx_hash}-${dispense.dispense_index}`} className="hover:bg-zinc-800/50 transition-colors border-b border-zinc-800/30 last:border-0">
-                <td className="text-zinc-600 font-mono px-2 py-px">
+                <td className="text-zinc-600 font-mono px-3 py-1.5">
                   {dispense.block_time ? compactTime(dispense.block_time) : '—'}
                 </td>
-                <td className="px-2 py-px">
+                <td className="px-3 py-1.5">
                   <Link href={`/dispense/${encodeURIComponent(assetSymbol)}`} className="flex items-center gap-1.5 hover:underline">
                     <Image src={`${XCP_IMG_BASE}/icon/${dispense.asset}`} alt="" width={14} height={14} className="rounded-sm" unoptimized />
                     <span className="text-zinc-200 truncate">{assetSymbol}</span>
                   </Link>
                 </td>
-                <td className="text-right text-zinc-400 font-mono px-2 py-px">
+                <td className="text-right text-zinc-400 font-mono px-3 py-1.5">
                   {isFinite(price) && price > 0 ? formatPrice(price) : '—'}
                 </td>
-                <td className="text-right text-zinc-400 font-mono px-2 py-px">
+                <td className="text-right text-zinc-400 font-mono px-3 py-1.5">
                   {formatPrice(dispense.dispense_quantity_normalized)}
                 </td>
-                <td className="text-left text-zinc-600 font-mono px-2 py-px max-sm:hidden">
+                <td className="text-left text-zinc-600 font-mono px-3 py-1.5 max-sm:hidden">
                   {formatAddress(dispense.destination)}
                 </td>
-                <td className="text-left text-zinc-600 font-mono px-2 py-px max-sm:hidden">
+                <td className="text-left text-zinc-600 font-mono px-3 py-1.5 max-sm:hidden">
                   {formatAddress(dispense.source)}
                 </td>
               </tr>
