@@ -26,6 +26,8 @@ export type OrderTab = 'all' | 'open' | 'filled' | 'expiring' | 'expired' | 'can
 
 export interface OrderFilters {
   asset?: string
+  baseAsset?: string
+  quoteAsset?: string
   source?: string
 }
 
@@ -41,6 +43,12 @@ function buildUrl(tab: OrderTab, filters?: OrderFilters): string {
 
   if (filters?.asset) {
     params.set('asset', filters.asset)
+  }
+  if (filters?.baseAsset) {
+    params.set('base_asset', filters.baseAsset)
+  }
+  if (filters?.quoteAsset) {
+    params.set('quote_asset', filters.quoteAsset)
   }
   if (filters?.source) {
     params.set('source', filters.source)

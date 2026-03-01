@@ -41,18 +41,26 @@ const ORDER_TABS: [OrderTab, string][] = [
 
 export default function TradePage() {
   const [tab, setTab] = useState<OrderTab>('open')
-  const [assetSearch, setAssetSearch] = useState('')
-  const [debouncedAsset, setDebouncedAsset] = useState('')
+  const [baseSearch, setBaseSearch] = useState('')
+  const [quoteSearch, setQuoteSearch] = useState('')
+  const [debouncedBase, setDebouncedBase] = useState('')
+  const [debouncedQuote, setDebouncedQuote] = useState('')
   const [sourceFilter, setSourceFilter] = useState<string | null>(null)
   const blockHeight = useBlockHeight()
 
   useEffect(() => {
-    const timer = setTimeout(() => setDebouncedAsset(assetSearch), 300)
+    const timer = setTimeout(() => setDebouncedBase(baseSearch), 300)
     return () => clearTimeout(timer)
-  }, [assetSearch])
+  }, [baseSearch])
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedQuote(quoteSearch), 300)
+    return () => clearTimeout(timer)
+  }, [quoteSearch])
 
   const filters = {
-    ...(debouncedAsset ? { asset: debouncedAsset } : {}),
+    ...(debouncedBase ? { baseAsset: debouncedBase } : {}),
+    ...(debouncedQuote ? { quoteAsset: debouncedQuote } : {}),
     ...(sourceFilter ? { source: sourceFilter } : {}),
   }
 
@@ -87,19 +95,21 @@ export default function TradePage() {
             </div>
           </div>
 
-          <OrdersTable orders={orders} isLoading={isLoading} blockHeight={blockHeight} assetSearch={assetSearch} onAssetSearch={setAssetSearch} onFilterAddress={setSourceFilter} />
+          <OrdersTable orders={orders} isLoading={isLoading} blockHeight={blockHeight} baseSearch={baseSearch} quoteSearch={quoteSearch} onBaseSearch={setBaseSearch} onQuoteSearch={setQuoteSearch} onFilterAddress={setSourceFilter} />
         </div>
       </div>
     </div>
   )
 }
 
-function OrdersTable({ orders, isLoading, blockHeight, assetSearch, onAssetSearch, onFilterAddress }: {
+function OrdersTable({ orders, isLoading, blockHeight, baseSearch, quoteSearch, onBaseSearch, onQuoteSearch, onFilterAddress }: {
   orders: LatestOrder[]
   isLoading: boolean
   blockHeight: number | null
-  assetSearch: string
-  onAssetSearch: (v: string) => void
+  baseSearch: string
+  quoteSearch: string
+  onBaseSearch: (v: string) => void
+  onQuoteSearch: (v: string) => void
   onFilterAddress: (addr: string) => void
 }) {
   return (
@@ -112,8 +122,8 @@ function OrdersTable({ orders, isLoading, blockHeight, assetSearch, onAssetSearc
           <th className="text-left font-normal px-2 py-0.5">
             <input
               type="text"
-              value={assetSearch}
-              onChange={(e) => onAssetSearch(e.target.value)}
+              value={baseSearch}
+              onChange={(e) => onBaseSearch(e.target.value)}
               placeholder="Asset"
               className="w-full px-1.5 py-0.5 text-[11px] font-mono bg-zinc-800 border border-zinc-700 rounded-sm text-zinc-200 placeholder:text-zinc-600 outline-none focus:border-zinc-500"
             />
@@ -122,9 +132,9 @@ function OrdersTable({ orders, isLoading, blockHeight, assetSearch, onAssetSearc
           <th className="text-left font-normal px-2 py-0.5">
             <input
               type="text"
-              value={assetSearch}
-              onChange={(e) => onAssetSearch(e.target.value)}
-              placeholder=""
+              value={quoteSearch}
+              onChange={(e) => onQuoteSearch(e.target.value)}
+              placeholder="Quote"
               className="w-full px-1.5 py-0.5 text-[11px] font-mono bg-zinc-800 border border-zinc-700 rounded-sm text-zinc-200 placeholder:text-zinc-600 outline-none focus:border-zinc-500"
             />
           </th>

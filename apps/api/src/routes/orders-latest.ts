@@ -5,6 +5,8 @@ export async function handleOrdersLatest(
   const url = new URL(request.url);
   const status = url.searchParams.get("status");
   const asset = url.searchParams.get("asset");
+  const baseAsset = url.searchParams.get("base_asset");
+  const quoteAsset = url.searchParams.get("quote_asset");
   const source = url.searchParams.get("source");
   const sort = url.searchParams.get("sort") ?? "block_index:desc";
   const limit = Math.min(
@@ -31,6 +33,16 @@ export async function handleOrdersLatest(
   if (asset) {
     conditions.push(`(base_asset LIKE ? OR quote_asset LIKE ?)`);
     binds.push(`%${asset}%`, `%${asset}%`);
+  }
+
+  if (baseAsset) {
+    conditions.push(`base_asset LIKE ?`);
+    binds.push(`%${baseAsset}%`);
+  }
+
+  if (quoteAsset) {
+    conditions.push(`quote_asset LIKE ?`);
+    binds.push(`%${quoteAsset}%`);
   }
 
   if (source) {
