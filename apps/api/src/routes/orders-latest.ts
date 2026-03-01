@@ -19,49 +19,50 @@ export async function handleOrdersLatest(
     return Response.json({ error: "Invalid status" }, { status: 400 });
   }
 
-  const columns = `tx_hash, pair, base_asset, quote_asset, source, side, price, amount,
-                    give_quantity, get_quantity, give_remaining, get_remaining, remaining,
-                    expire_index, block_index, block_time, status`;
+  const columns = `o.tx_hash, o.pair, o.base_asset, o.quote_asset, o.source, o.side, o.price, o.amount,
+                    o.give_quantity, o.get_quantity, o.give_remaining, o.get_remaining, o.remaining,
+                    o.expire_index, o.block_index, o.block_time, o.status,
+                    ps.base_asset_longname`;
 
   const conditions: string[] = [];
   const binds: (string | number)[] = [];
 
   if (status) {
-    conditions.push(`status = ?`);
+    conditions.push(`o.status = ?`);
     binds.push(status);
   }
 
   if (asset) {
-    conditions.push(`(base_asset LIKE ? OR quote_asset LIKE ?)`);
-    binds.push(`%${asset}%`, `%${asset}%`);
+    conditions.push(`(o.base_asset LIKE ? OR o.quote_asset LIKE ? OR ps.base_asset_longname LIKE ?)`);
+    binds.push(`%${asset}%`, `%${asset}%`, `%${asset}%`);
   }
 
   if (baseAsset) {
-    conditions.push(`base_asset LIKE ?`);
-    binds.push(`%${baseAsset}%`);
+    conditions.push(`(o.base_asset LIKE ? OR ps.base_asset_longname LIKE ?)`);
+    binds.push(`%${baseAsset}%`, `%${baseAsset}%`);
   }
 
   if (quoteAsset) {
-    conditions.push(`quote_asset LIKE ?`);
+    conditions.push(`o.quote_asset LIKE ?`);
     binds.push(`%${quoteAsset}%`);
   }
 
   if (source) {
-    conditions.push(`source = ?`);
+    conditions.push(`o.source = ?`);
     binds.push(source);
   }
 
-  let query = `SELECT ${columns} FROM orders`;
+  let query = `SELECT ${columns} FROM orders o LEFT JOIN pair_stats ps ON o.pair = ps.pair`;
   if (conditions.length > 0) {
     query += ` WHERE ${conditions.join(" AND ")}`;
   }
 
   if (sort === "expire_index:asc") {
-    query += ` ORDER BY expire_index ASC`;
+    query += ` ORDER BY o.expire_index ASC`;
   } else if (sort === "expire_index:desc") {
-    query += ` ORDER BY expire_index DESC`;
+    query += ` ORDER BY o.expire_index DESC`;
   } else {
-    query += ` ORDER BY block_index DESC`;
+    query += ` ORDER BY o.block_index DESC`;
   }
 
   query += ` LIMIT ?`;

@@ -19,6 +19,7 @@ export interface LatestOrder {
   block_index: number
   block_time: number
   status: string
+  base_asset_longname: string | null
 }
 
 interface LatestOrdersResponse {
