@@ -265,57 +265,59 @@ export async function runSnapshotStep(
 }
 
 /**
- * Migrate legacy 'closed' orders to their real status (filled/expired/cancelled).
- * Processes a batch per call. Returns { fixed, remaining, done }.
+ * Re-index all orders from CP API with real statuses.
+ * Fetches open, filled, expired, cancelled orders and replaces the orders table.
+ * Designed to be called in batches via cursor — one status at a time.
  */
-export async function fixClosedOrderStatuses(
+export async function reindexOrders(
   db: D1Database,
   apiBase: string,
-  batchSize: number = 50
-): Promise<{ fixed: number; remaining: number; done: boolean }> {
+  statusToFetch: string,
+  cursorParam: string | null,
+  batchSize: number = 200
+): Promise<{ inserted: number; nextCursor: string | null; status: string }> {
   const now = Math.floor(Date.now() / 1000);
 
-  // Get last block for expire_index check
-  const lastBlockRow = await db
-    .prepare(`SELECT value FROM indexer_state WHERE key = 'last_block_index'`)
-    .first<{ value: string }>();
-  const lastBlock = lastBlockRow ? parseInt(lastBlockRow.value, 10) : 0;
+  const { orders, nextCursor } = await fetchOrders(apiBase, statusToFetch, cursorParam, batchSize);
 
-  // Phase 1: bulk-fix expired orders (cheap, no API calls)
-  const expiredResult = await db
-    .prepare(
-      `UPDATE orders SET status = 'expired'
-       WHERE status = 'closed' AND expire_index <= ?`
-    )
-    .bind(lastBlock)
-    .run();
-  const expiredFixed = expiredResult.meta.changes ?? 0;
-
-  // Phase 2: look up remaining 'closed' orders via CP API
-  const remaining = await db
-    .prepare(`SELECT tx_hash FROM orders WHERE status = 'closed' LIMIT ?`)
-    .bind(batchSize)
-    .all<{ tx_hash: string }>();
-
-  let apiFixed = 0;
-  for (const r of remaining.results) {
-    const cpOrder = await fetchOrderByHash(apiBase, r.tx_hash);
-    const realStatus = cpOrder?.status ?? "filled";
-    await db
-      .prepare(`UPDATE orders SET status = ? WHERE tx_hash = ?`)
-      .bind(realStatus, r.tx_hash)
-      .run();
-    apiFixed++;
+  const stmts: D1PreparedStatement[] = [];
+  for (const order of orders) {
+    try {
+      const o = normalizeOrder(order);
+      const cpStatus = order.status === "open" ? "open"
+        : order.status === "expired" ? "expired"
+        : order.status === "cancelled" ? "cancelled"
+        : order.status === "filled" ? "filled"
+        : order.status;
+      stmts.push(
+        db.prepare(
+          `INSERT INTO orders
+           (tx_hash, tx_index, pair, base_asset, quote_asset, source, side,
+            price, amount, give_remaining, get_remaining,
+            expiration, expire_index, block_index, block_time,
+            status, first_seen_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT (tx_hash) DO UPDATE SET
+             status = excluded.status,
+             give_remaining = excluded.give_remaining,
+             get_remaining = excluded.get_remaining`
+        ).bind(
+          o.tx_hash, o.tx_index, o.pair, o.base_asset, o.quote_asset,
+          o.source, o.side, o.price, o.amount, o.give_remaining,
+          o.get_remaining, o.expiration, o.expire_index,
+          o.block_index, o.block_time, cpStatus, now
+        )
+      );
+    } catch (e) {
+      console.error(`Failed to normalize order ${order.tx_hash}:`, e);
+    }
   }
 
-  const leftover = await db
-    .prepare(`SELECT COUNT(*) as cnt FROM orders WHERE status = 'closed'`)
-    .first<{ cnt: number }>();
-  const remainingCount = leftover?.cnt ?? 0;
+  await batchExec(db, stmts);
 
   return {
-    fixed: expiredFixed + apiFixed,
-    remaining: remainingCount,
-    done: remainingCount === 0,
+    inserted: stmts.length,
+    nextCursor,
+    status: statusToFetch,
   };
 }

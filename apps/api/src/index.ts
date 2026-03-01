@@ -18,7 +18,7 @@ import { checkPendingFills } from "./lib/swap-monitor";
 import { syncBlocks } from "./indexer/sync-block";
 import { runCatchupAggregation, runCatchupStats, runCatchupDispenserStats, aggregateCandlesForPair } from "./indexer/aggregate";
 import { backfillTrades, backfillDispenses } from "./indexer/backfill";
-import { syncOrders, syncDispensers, runSnapshotStep, fixClosedOrderStatuses } from "./indexer/snapshot";
+import { syncOrders, syncDispensers, runSnapshotStep, reindexOrders } from "./indexer/snapshot";
 import { getMode, setMode, deleteState } from "./indexer/state";
 import { updatePairStats, refreshStalePairStats } from "./indexer/stats";
 import { refreshStaleDispenserStats } from "./indexer/dispenser-stats";
@@ -363,13 +363,15 @@ export default {
         }));
       }
 
-      // POST /indexer/fix-order-statuses — migrate 'closed' → real status
-      if (path === "/indexer/fix-order-statuses" && request.method === "POST") {
+      // POST /indexer/reindex-orders?status=open&cursor=...&batch=200
+      if (path === "/indexer/reindex-orders" && request.method === "POST") {
+        const status = url.searchParams.get("status") ?? "open";
+        const cursor = url.searchParams.get("cursor") || null;
         const batch = Math.min(
-          parseInt(url.searchParams.get("batch") ?? "50", 10),
-          200
+          parseInt(url.searchParams.get("batch") ?? "200", 10),
+          1000
         );
-        const result = await fixClosedOrderStatuses(env.DB, env.CP_API_BASE, batch);
+        const result = await reindexOrders(env.DB, env.CP_API_BASE, status, cursor, batch);
         return await withCors(Response.json(result));
       }
 
