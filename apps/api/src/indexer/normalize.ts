@@ -125,7 +125,7 @@ export function normalizeOrder(order: Order): NormalizedOrder {
   price = parseFloat(price.toFixed(8));
   amount = parseFloat(amount.toFixed(8));
 
-  const remaining = side === "bid" ? getRemaining : giveRemaining;
+  const remaining = Math.max(0, side === "bid" ? getRemaining : giveRemaining);
 
   return {
     tx_hash: order.tx_hash,

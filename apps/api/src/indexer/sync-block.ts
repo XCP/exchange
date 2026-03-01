@@ -203,7 +203,7 @@ function processOrderPartialFill(
     db
       .prepare(
         `UPDATE orders SET give_remaining = ?, get_remaining = ?,
-           remaining = CASE WHEN side = 'bid' THEN ? ELSE ? END
+           remaining = MAX(0, CASE WHEN side = 'bid' THEN ? ELSE ? END)
          WHERE tx_hash = ? AND status = 'open'`
       )
       .bind(giveRemaining, getRemaining, getRemaining, giveRemaining, txHash);
