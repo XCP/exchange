@@ -11,13 +11,14 @@ import { handlePortfolioBids, handlePortfolioDispensers, handlePortfolioOrders }
 import { handleDispenserStats, handleDispenserStatsList } from "./routes/dispenser-stats";
 import { handleTradeSummary } from "./routes/trade-summary";
 import { handleAnalytics } from "./routes/analytics";
+import { handleOrdersLatest } from "./routes/orders-latest";
 import { handleSearch } from "./routes/search";
 import { handleGetSwaps, handleGetSwap, handleCancelSwap, handlePrepareListingPsbt, handleCompleteListingPsbt, handlePrepareFill, handleCompleteFill, handlePrepareCancelSwap } from "./routes/swaps";
 import { checkPendingFills } from "./lib/swap-monitor";
 import { syncBlocks } from "./indexer/sync-block";
 import { runCatchupAggregation, runCatchupStats, runCatchupDispenserStats, aggregateCandlesForPair } from "./indexer/aggregate";
 import { backfillTrades, backfillDispenses } from "./indexer/backfill";
-import { syncOrders, syncDispensers, runSnapshotStep } from "./indexer/snapshot";
+import { syncOrders, syncDispensers, runSnapshotStep, fixClosedOrderStatuses } from "./indexer/snapshot";
 import { getMode, setMode, deleteState } from "./indexer/state";
 import { updatePairStats, refreshStalePairStats } from "./indexer/stats";
 import { refreshStaleDispenserStats } from "./indexer/dispenser-stats";
@@ -181,6 +182,11 @@ export default {
       const dispenserStatsMatch = path.match(/^\/dispenser-stats\/([A-Za-z0-9._]+)$/);
       if (dispenserStatsMatch) {
         return await withCors(await handleDispenserStats(env.DB, dispenserStatsMatch[1]));
+      }
+
+      // Route: GET /orders/latest
+      if (path === "/orders/latest") {
+        return await withCors(await handleOrdersLatest(request, env.DB));
       }
 
       // Route: GET /search?q=...
@@ -355,6 +361,16 @@ export default {
           orders: orderResult.status === "fulfilled" ? orderResult.value : { error: String(orderResult.reason) },
           dispensers: dispenserResult.status === "fulfilled" ? dispenserResult.value : { error: String(dispenserResult.reason) },
         }));
+      }
+
+      // POST /indexer/fix-order-statuses — migrate 'closed' → real status
+      if (path === "/indexer/fix-order-statuses" && request.method === "POST") {
+        const batch = Math.min(
+          parseInt(url.searchParams.get("batch") ?? "50", 10),
+          200
+        );
+        const result = await fixClosedOrderStatuses(env.DB, env.CP_API_BASE, batch);
+        return await withCors(Response.json(result));
       }
 
       // POST /indexer/reset — reset to IDLE (for re-index)

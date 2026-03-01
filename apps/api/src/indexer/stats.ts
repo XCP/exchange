@@ -427,7 +427,7 @@ export async function closeExpiredOrders(
   const lastBlock = parseInt(lastBlockRow.value, 10);
   const result = await db
     .prepare(
-      `UPDATE orders SET status = 'closed', closed_at = ?
+      `UPDATE orders SET status = 'expired', closed_at = ?
        WHERE status = 'open' AND expire_index <= ?`
     )
     .bind(now, lastBlock)

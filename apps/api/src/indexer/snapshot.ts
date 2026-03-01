@@ -1,4 +1,4 @@
-import { fetchOrders, fetchDispensers } from "../lib/counterparty";
+import { fetchOrders, fetchOrderByHash, fetchDispensers } from "../lib/counterparty";
 import { API_TIMEOUT_MS, MAX_PAGINATION_PAGES } from "../lib/constants";
 import { batchExec } from "../lib/batch";
 import { normalizeOrder, NormalizedOrder, normalizeDispenser, NormalizedDispenser, buildOrderUpsertStmt, buildDispenserUpsertStmt } from "./normalize";
@@ -41,15 +41,32 @@ export async function syncOrders(
   // Close orders that were open in our DB but not in the fresh set
   const openHashes = new Set(allOrders.map((o) => o.tx_hash));
   const dbOpen = await db
-    .prepare(`SELECT tx_hash FROM orders WHERE status = 'open'`)
-    .all<{ tx_hash: string }>();
+    .prepare(`SELECT tx_hash, expire_index FROM orders WHERE status = 'open'`)
+    .all<{ tx_hash: string; expire_index: number }>();
+
+  const lastBlockRow = await db
+    .prepare(`SELECT value FROM indexer_state WHERE key = 'last_block_index'`)
+    .first<{ value: string }>();
+  const lastBlock = lastBlockRow ? parseInt(lastBlockRow.value, 10) : 0;
 
   const toClose = dbOpen.results.filter((r) => !openHashes.has(r.tx_hash));
-  const closeStmts = toClose.map((r) =>
-    db
-      .prepare(`UPDATE orders SET status = 'closed', closed_at = ? WHERE tx_hash = ?`)
-      .bind(now, r.tx_hash)
-  );
+  const closeStmts: D1PreparedStatement[] = [];
+
+  for (const r of toClose) {
+    let realStatus: string;
+    if (r.expire_index <= lastBlock) {
+      realStatus = "expired";
+    } else {
+      // Look up the real status from the Counterparty API
+      const cpOrder = await fetchOrderByHash(apiBase, r.tx_hash);
+      realStatus = cpOrder?.status ?? "filled";
+    }
+    closeStmts.push(
+      db
+        .prepare(`UPDATE orders SET status = ?, closed_at = ? WHERE tx_hash = ?`)
+        .bind(realStatus, now, r.tx_hash)
+    );
+  }
   await batchExec(db, closeStmts);
 
   // Update pair_stats with order book metrics
@@ -245,4 +262,60 @@ export async function runSnapshotStep(
   console.error(`Unknown snapshot phase "${phase}", resetting to "orders"`);
   await setState(db, "snapshot_phase", "orders");
   return { step: "reset", previousPhase: phase };
+}
+
+/**
+ * Migrate legacy 'closed' orders to their real status (filled/expired/cancelled).
+ * Processes a batch per call. Returns { fixed, remaining, done }.
+ */
+export async function fixClosedOrderStatuses(
+  db: D1Database,
+  apiBase: string,
+  batchSize: number = 50
+): Promise<{ fixed: number; remaining: number; done: boolean }> {
+  const now = Math.floor(Date.now() / 1000);
+
+  // Get last block for expire_index check
+  const lastBlockRow = await db
+    .prepare(`SELECT value FROM indexer_state WHERE key = 'last_block_index'`)
+    .first<{ value: string }>();
+  const lastBlock = lastBlockRow ? parseInt(lastBlockRow.value, 10) : 0;
+
+  // Phase 1: bulk-fix expired orders (cheap, no API calls)
+  const expiredResult = await db
+    .prepare(
+      `UPDATE orders SET status = 'expired'
+       WHERE status = 'closed' AND expire_index <= ?`
+    )
+    .bind(lastBlock)
+    .run();
+  const expiredFixed = expiredResult.meta.changes ?? 0;
+
+  // Phase 2: look up remaining 'closed' orders via CP API
+  const remaining = await db
+    .prepare(`SELECT tx_hash FROM orders WHERE status = 'closed' LIMIT ?`)
+    .bind(batchSize)
+    .all<{ tx_hash: string }>();
+
+  let apiFixed = 0;
+  for (const r of remaining.results) {
+    const cpOrder = await fetchOrderByHash(apiBase, r.tx_hash);
+    const realStatus = cpOrder?.status ?? "filled";
+    await db
+      .prepare(`UPDATE orders SET status = ? WHERE tx_hash = ?`)
+      .bind(realStatus, r.tx_hash)
+      .run();
+    apiFixed++;
+  }
+
+  const leftover = await db
+    .prepare(`SELECT COUNT(*) as cnt FROM orders WHERE status = 'closed'`)
+    .first<{ cnt: number }>();
+  const remainingCount = leftover?.cnt ?? 0;
+
+  return {
+    fixed: expiredFixed + apiFixed,
+    remaining: remainingCount,
+    done: remainingCount === 0,
+  };
 }

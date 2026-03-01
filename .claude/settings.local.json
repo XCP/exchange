@@ -6,7 +6,8 @@
       "Bash(python -m json.tool:*)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
-      "Bash(git clone:*)"
+      "Bash(git clone:*)",
+      "WebSearch"
     ]
   }
 }

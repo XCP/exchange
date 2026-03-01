@@ -211,6 +211,19 @@ export async function verifyUtxoAsset(
   }
 }
 
+export async function fetchOrderByHash(
+  apiBase: string,
+  txHash: string
+): Promise<Order | null> {
+  try {
+    const res = await fetchWithRetry(`${apiBase}/orders/${txHash}`);
+    const data: { result: Order } = await res.json();
+    return data.result ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export async function fetchOrders(
   apiBase: string,
   status: string = "open",

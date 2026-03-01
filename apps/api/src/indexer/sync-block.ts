@@ -210,7 +210,8 @@ function processOrderPartialFill(
 
 function processOrderClose(
   params: Record<string, unknown>,
-  now: number
+  now: number,
+  closedStatus: string = 'closed'
 ): (db: D1Database) => D1PreparedStatement {
   // ORDER_UPDATE uses tx_hash, CANCEL_ORDER uses offer_hash, ORDER_EXPIRATION uses order_hash
   const txHash = (params.tx_hash ?? params.offer_hash ?? params.order_hash) as string;
@@ -218,10 +219,10 @@ function processOrderClose(
   return (db) =>
     db
       .prepare(
-        `UPDATE orders SET status = 'closed', closed_at = ?
+        `UPDATE orders SET status = ?, closed_at = ?
          WHERE tx_hash = ? AND status = 'open'`
       )
-      .bind(now, txHash);
+      .bind(closedStatus, now, txHash);
 }
 
 function processOpenDispenser(
@@ -452,7 +453,7 @@ export async function syncBlocks(
       // The next sync cycle re-processes replacement blocks and re-closes as needed.
       db.prepare(
         `UPDATE orders SET status = 'open', closed_at = NULL
-         WHERE status = 'closed' AND block_index <= ? AND closed_at >= ?`
+         WHERE status != 'open' AND block_index <= ? AND closed_at >= ?`
       ).bind(rollbackTo, closureCutoff),
       db.prepare(
         `UPDATE dispensers SET status = 0, closed_at = NULL
@@ -561,7 +562,7 @@ export async function syncBlocks(
               orderStatus === "filled" ||
               orderStatus === "cancelled"
             ) {
-              stmts.push(processOrderClose(params, now));
+              stmts.push(processOrderClose(params, now, orderStatus));
               result.orders_closed++;
             }
             break;
@@ -570,14 +571,14 @@ export async function syncBlocks(
           case "CANCEL_ORDER": {
             const cancelStatus = params.status as string;
             if (cancelStatus === "valid") {
-              stmts.push(processOrderClose(params, now));
+              stmts.push(processOrderClose(params, now, "cancelled"));
               result.orders_closed++;
             }
             break;
           }
 
           case "ORDER_EXPIRATION": {
-            stmts.push(processOrderClose(params, now));
+            stmts.push(processOrderClose(params, now, "expired"));
             result.orders_closed++;
             break;
           }
