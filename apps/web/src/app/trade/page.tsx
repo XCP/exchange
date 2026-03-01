@@ -146,8 +146,8 @@ function OrdersTable({ orders, isLoading, blockHeight, assetSearch, onAssetSearc
                 <td className="text-zinc-600 font-mono px-2 py-px">
                   {order.block_time ? compactTime(order.block_time) : '—'}
                 </td>
-                <td className={`font-medium px-2 py-px ${order.side === 'Buy' ? 'text-green-400' : 'text-red-400'}`}>
-                  {order.side}
+                <td className={`font-medium px-2 py-px ${/^(buy|bid)$/i.test(order.side) ? 'text-green-400' : 'text-red-400'}`}>
+                  {/^(buy|bid)$/i.test(order.side) ? 'Buy' : 'Sell'}
                 </td>
                 <td className="text-right text-zinc-400 font-mono px-2 py-px">
                   {formatPrice(order.amount)}
