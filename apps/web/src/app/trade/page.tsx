@@ -23,7 +23,7 @@ function compactTime(ts: number): string {
 function EmptyRows({ loading, label, cols }: { loading: boolean; label: string; cols: number }) {
   return (
     <tr>
-      <td colSpan={cols} className="text-center py-10 text-zinc-600 text-xs">
+      <td colSpan={cols} className="text-center py-10 text-zinc-500 text-xs">
         {loading ? `Loading ${label}...` : `No recent ${label}`}
       </td>
     </tr>
@@ -69,7 +69,15 @@ export default function TradePage() {
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
       <div className="max-w-6xl mx-auto px-4 py-8">
-        <h1 className="text-lg font-semibold text-zinc-100 mb-4">DEX Orders</h1>
+        <div className="flex items-start justify-between mb-4 gap-4 flex-wrap">
+          <div>
+            <h1 className="text-lg font-semibold text-zinc-100 mb-1">DEX Orders</h1>
+            <p className="text-xs text-zinc-500">Order book activity across all trading pairs</p>
+          </div>
+          {blockHeight != null && (
+            <span className="text-xs text-zinc-500 font-mono">Block {blockHeight.toLocaleString()}</span>
+          )}
+        </div>
         <div className="bg-zinc-900/50 border border-zinc-800 rounded-sm">
           <div className="px-3 py-2 flex items-center gap-2">
             {sourceFilter && (
@@ -113,7 +121,7 @@ function OrdersTable({ orders, isLoading, blockHeight, baseSearch, quoteSearch, 
   onFilterAddress: (addr: string) => void
 }) {
   return (
-    <table className="w-full text-xs">
+    <table className="w-full text-xs whitespace-nowrap">
       <thead>
         <tr className="text-zinc-500 border-b border-zinc-800">
           <th className="text-left font-normal px-3 py-1.5 w-8">Time</th>
@@ -202,7 +210,7 @@ function OrdersTable({ orders, isLoading, blockHeight, baseSearch, quoteSearch, 
                     </button>
                   </span>
                 </td>
-                <td className={`text-left font-mono px-3 py-1.5 max-sm:hidden capitalize ${isClosed ? 'text-zinc-600' : 'text-zinc-400'}`}>
+                <td className={`text-left font-mono px-3 py-1.5 max-sm:hidden capitalize ${isClosed ? 'text-zinc-500' : 'text-zinc-400'}`}>
                   {order.status}
                 </td>
                 <td className="text-right text-zinc-500 font-mono px-3 py-1.5 max-sm:hidden">

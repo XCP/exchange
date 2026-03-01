@@ -24,15 +24,15 @@ export function MarketsTable({ asset, currentPair }: MarketsTableProps) {
   if (pairs.length === 0) {
     return (
       <div className="flex items-center justify-center py-12">
-        <span className="text-xs text-zinc-600">No other markets found</span>
+        <span className="text-xs text-zinc-500">No other markets found</span>
       </div>
     )
   }
 
   return (
-    <table className="w-full text-xs">
+    <table className="w-full text-xs whitespace-nowrap">
       <thead className="sticky top-0 bg-zinc-950 z-10">
-        <tr className="text-zinc-600 border-b border-zinc-800">
+        <tr className="text-zinc-500 border-b border-zinc-800">
           <th className="text-left font-normal px-2 py-1.5">Pair</th>
           <th className="text-right font-normal px-2 py-1.5">Price</th>
           <th className="text-right font-normal px-2 py-1.5 max-sm:hidden">24h Vol</th>

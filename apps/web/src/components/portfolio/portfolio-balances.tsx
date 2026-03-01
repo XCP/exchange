@@ -66,7 +66,7 @@ export function PortfolioBalances({ address }: { address: string }) {
   }
 
   if (balances.length === 0) {
-    return <div className="flex items-center justify-center py-12"><span className="text-xs text-zinc-600">No balances</span></div>
+    return <div className="flex items-center justify-center py-12"><span className="text-xs text-zinc-500">No balances</span></div>
   }
 
   const bidCount = bidsByAsset.size
@@ -89,11 +89,11 @@ export function PortfolioBalances({ address }: { address: string }) {
             )}
           </span>
         </label>
-        {bidsLoading && <span className="text-[10px] text-zinc-600">Loading bids...</span>}
+        {bidsLoading && <span className="text-[10px] text-zinc-500">Loading bids...</span>}
       </div>
 
       {/* Header */}
-      <div className={`grid gap-0 px-3 py-1.5 text-xs text-zinc-600 border-b border-zinc-800 ${
+      <div className={`grid gap-0 px-3 py-1.5 text-xs text-zinc-500 border-b border-zinc-800 ${
         showBidsOnly ? 'grid-cols-[1fr_auto_auto_auto]' : 'grid-cols-3'
       }`}>
         <span>Asset</span>
@@ -106,7 +106,7 @@ export function PortfolioBalances({ address }: { address: string }) {
       <div className="px-1">
         {filtered.length === 0 && showBidsOnly && (
           <div className="flex items-center justify-center py-8">
-            <span className="text-xs text-zinc-600">No open bids on your assets</span>
+            <span className="text-xs text-zinc-500">No open bids on your assets</span>
           </div>
         )}
         {filtered.map((b) => {
@@ -135,7 +135,7 @@ export function PortfolioBalances({ address }: { address: string }) {
                   <span className="text-right text-green-400 font-mono pl-4">{summary.bestPriceFormatted} {summary.bestQuote}</span>
                 )}
                 {showBidsOnly && !summary && (
-                  <span className="text-right text-zinc-700 pl-4">—</span>
+                  <span className="text-right text-zinc-600 pl-4">—</span>
                 )}
                 <div className="text-right pl-4">
                   {showBidsOnly && summary ? (
@@ -156,7 +156,7 @@ export function PortfolioBalances({ address }: { address: string }) {
               {/* Expanded bid details */}
               {showBidsOnly && isExpanded && summary && (
                 <div className="bg-zinc-900/50 border-y border-zinc-800/50 mb-1">
-                  <div className="grid grid-cols-[1fr_auto_auto_auto] gap-0 px-4 py-1 text-[10px] text-zinc-600 border-b border-zinc-800/30">
+                  <div className="grid grid-cols-[1fr_auto_auto_auto] gap-0 px-4 py-1 text-[10px] text-zinc-500 border-b border-zinc-800/30">
                     <span>They want</span>
                     <span className="text-right pl-4">They&apos;ll pay</span>
                     <span className="text-right pl-4">Price</span>

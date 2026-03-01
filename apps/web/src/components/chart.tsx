@@ -306,15 +306,15 @@ export function Chart({ pairSlug, pairLabel }: ChartProps) {
         </div>
         {ohlcHeader && (
           <div className="flex items-center gap-2 max-sm:hidden">
-            <span className="text-xs text-zinc-600">Volume</span>
+            <span className="text-xs text-zinc-500">Volume</span>
             <span className="text-xs text-zinc-300 font-mono">{ohlcHeader.v}</span>
-            <span className="text-xs text-zinc-600">O</span>
+            <span className="text-xs text-zinc-500">O</span>
             <span className="text-xs text-zinc-300 font-mono">{ohlcHeader.o}</span>
-            <span className="text-xs text-zinc-600">H</span>
+            <span className="text-xs text-zinc-500">H</span>
             <span className="text-xs text-zinc-300 font-mono">{ohlcHeader.h}</span>
-            <span className="text-xs text-zinc-600">L</span>
+            <span className="text-xs text-zinc-500">L</span>
             <span className="text-xs text-zinc-300 font-mono">{ohlcHeader.l}</span>
-            <span className="text-xs text-zinc-600">C</span>
+            <span className="text-xs text-zinc-500">C</span>
             <span className={`text-xs font-mono ${ohlcHeader.green ? 'text-green-400' : 'text-red-400'}`}>
               {ohlcHeader.c}
             </span>
@@ -325,12 +325,12 @@ export function Chart({ pairSlug, pairLabel }: ChartProps) {
       {/* Chart canvas */}
       <div className="relative" style={{ height: '300px', width: '100%' }}>
         {isLoading && !rawCandles.length && (
-          <div className="absolute inset-0 flex items-center justify-center text-xs text-zinc-600">
+          <div className="absolute inset-0 flex items-center justify-center text-xs text-zinc-500">
             Loading chart data...
           </div>
         )}
         {!isLoading && !rawCandles.length && (
-          <div className="absolute inset-0 flex items-center justify-center text-xs text-zinc-600">
+          <div className="absolute inset-0 flex items-center justify-center text-xs text-zinc-500">
             No candle data available
           </div>
         )}

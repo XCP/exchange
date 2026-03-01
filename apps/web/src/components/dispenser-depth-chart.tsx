@@ -73,7 +73,7 @@ export function DispenserDepthChart({
   if (dispensers.length === 0) {
     return (
       <div className="border-b border-zinc-800 flex items-center justify-center" style={{ minHeight: '300px' }}>
-        <span className="text-sm text-zinc-600">No open dispensers</span>
+        <span className="text-sm text-zinc-500">No open dispensers</span>
       </div>
     )
   }
@@ -133,7 +133,7 @@ export function DispenserDepthChart({
 
                 {/* Price label under bar */}
                 <span className={`mt-1 text-[9px] font-mono whitespace-nowrap ${
-                  isSelected ? 'text-green-400' : 'text-zinc-600'
+                  isSelected ? 'text-green-400' : 'text-zinc-500'
                 }`}>
                   {formatAmount(level.priceLabel)}
                 </span>
@@ -152,7 +152,7 @@ export function DispenserDepthChart({
           ) : (
             /* Multiple dispensers — show list, click opens modal */
             <>
-              <div className="grid grid-cols-4 gap-0 px-3 py-1 text-[10px] text-zinc-600 border-b border-zinc-800/50">
+              <div className="grid grid-cols-4 gap-0 px-3 py-1 text-[10px] text-zinc-500 border-b border-zinc-800/50">
                 <span>{btcLabel.toUpperCase()} Price</span>
                 <span className="text-right">Per Dispense</span>
                 <span className="text-right">Remaining</span>
@@ -215,25 +215,25 @@ function SingleDispenserDetail({ dispenser, satsMode, btcLabel }: { dispenser: D
       {/* Stats row */}
       <div className="flex items-center gap-6 text-[11px]">
         <div>
-          <span className="text-zinc-600 mr-1.5">Per Dispense</span>
+          <span className="text-zinc-500 mr-1.5">Per Dispense</span>
           <span className="text-zinc-300 font-mono">{formatPrice(parseFloat(dispenser.satoshi_price_normalized), satsMode)} {btcLabel}</span>
         </div>
         <div>
-          <span className="text-zinc-600 mr-1.5">Tokens</span>
+          <span className="text-zinc-500 mr-1.5">Tokens</span>
           <span className="text-zinc-300 font-mono">{formatAmount(dispenser.give_quantity_normalized)}</span>
         </div>
         <div>
-          <span className="text-zinc-600 mr-1.5">Dispensed</span>
+          <span className="text-zinc-500 mr-1.5">Dispensed</span>
           <span className="text-zinc-300 font-mono">{dispenser.dispense_count}&times;</span>
         </div>
         {dispenser.block_time && (
           <div>
-            <span className="text-zinc-600 mr-1.5">Created</span>
+            <span className="text-zinc-500 mr-1.5">Created</span>
             <span className="text-zinc-300 font-mono">{formatTimeAgo(dispenser.block_time)}</span>
           </div>
         )}
         <div className="ml-auto">
-          <span className="text-zinc-600 mr-1.5">Source</span>
+          <span className="text-zinc-500 mr-1.5">Source</span>
           <span className="text-zinc-500 font-mono">{formatAddress(dispenser.source)}</span>
         </div>
       </div>

@@ -33,14 +33,14 @@ export function CompactBookStrip({ bids, asks, spread, spreadPct, onRowClick }: 
         <span className="text-xs text-zinc-500">Order Book</span>
         <div className="flex items-center gap-1.5">
           <span className="text-[11px] font-mono text-zinc-400">Spread: {spread}</span>
-          <span className="text-[11px] text-zinc-600">({spreadPct}%)</span>
+          <span className="text-[11px] text-zinc-500">({spreadPct}%)</span>
         </div>
       </div>
 
       <div className="grid grid-cols-2 divide-x divide-zinc-800">
         {/* Bids (left) — highest first, bars grow from right */}
         <div>
-          <div className="grid grid-cols-3 gap-0 px-3 py-1 text-[10px] text-zinc-600">
+          <div className="grid grid-cols-3 gap-0 px-3 py-1 text-[10px] text-zinc-500">
             <span>Price</span>
             <span className="text-right">Amt</span>
             <span className="text-right">Total</span>
@@ -66,14 +66,14 @@ export function CompactBookStrip({ bids, asks, spread, spreadPct, onRowClick }: 
                 )
               })
             ) : (
-              <div className="px-2 py-2 text-[11px] text-zinc-600 text-center">No bids</div>
+              <div className="px-2 py-2 text-[11px] text-zinc-500 text-center">No bids</div>
             )}
           </div>
         </div>
 
         {/* Asks (right) — lowest first, bars grow from left */}
         <div>
-          <div className="grid grid-cols-3 gap-0 px-3 py-1 text-[10px] text-zinc-600">
+          <div className="grid grid-cols-3 gap-0 px-3 py-1 text-[10px] text-zinc-500">
             <span>Price</span>
             <span className="text-right">Amt</span>
             <span className="text-right">Total</span>
@@ -99,7 +99,7 @@ export function CompactBookStrip({ bids, asks, spread, spreadPct, onRowClick }: 
                 )
               })
             ) : (
-              <div className="px-2 py-2 text-[11px] text-zinc-600 text-center">No asks</div>
+              <div className="px-2 py-2 text-[11px] text-zinc-500 text-center">No asks</div>
             )}
           </div>
         </div>

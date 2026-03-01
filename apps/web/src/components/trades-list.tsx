@@ -56,16 +56,16 @@ export function TradesList({ market, baseSymbol, quoteSymbol }: TradesListProps)
   if (trades.length === 0) {
     return (
       <div className="flex items-center justify-center py-12">
-        <span className="text-xs text-zinc-600">No trades found</span>
+        <span className="text-xs text-zinc-500">No trades found</span>
       </div>
     )
   }
 
   return (
     <div>
-      <table className="w-full text-xs">
+      <table className="w-full text-xs whitespace-nowrap">
         <thead className="sticky top-0 bg-zinc-950 z-10">
-          <tr className="text-zinc-600">
+          <tr className="text-zinc-500">
             <th className="text-left font-normal px-2 py-1.5 w-10">Time</th>
             <th className="text-left font-normal px-2 py-1.5 w-10">Type</th>
             <th className="text-right font-normal px-2 py-1.5">Price</th>
@@ -82,7 +82,7 @@ export function TradesList({ market, baseSymbol, quoteSymbol }: TradesListProps)
               key={trade.id ?? `${trade.tx0}-${trade.tx1}`}
               className="hover:bg-zinc-900 cursor-default"
             >
-              <td className="text-zinc-600 font-mono px-2 py-px">
+              <td className="text-zinc-500 font-mono px-2 py-px">
                 {trade.block_time ? compactTime(trade.block_time) : '—'}
               </td>
               <td className={`font-medium px-2 py-px ${trade.side === 'buy' ? 'text-green-400' : 'text-red-400'}`}>
@@ -108,7 +108,7 @@ export function TradesList({ market, baseSymbol, quoteSymbol }: TradesListProps)
                   href={`https://xcp.io/tx/${trade.tx0}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-zinc-600 hover:text-zinc-300 transition-colors"
+                  className="text-zinc-500 hover:text-zinc-300 transition-colors"
                   title="View transaction"
                 >
                   ↗
@@ -125,7 +125,7 @@ export function TradesList({ market, baseSymbol, quoteSymbol }: TradesListProps)
       )}
       {!hasMore && trades.length > 50 && (
         <div className="flex items-center justify-center py-2">
-          <span className="text-xs text-zinc-700">{trades.length} trades loaded</span>
+          <span className="text-xs text-zinc-600">{trades.length} trades loaded</span>
         </div>
       )}
       {hasMore && <div ref={sentinelRef} className="h-px" />}

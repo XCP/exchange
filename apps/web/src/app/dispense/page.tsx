@@ -22,7 +22,7 @@ function compactTime(ts: number): string {
 function EmptyRows({ loading, label, cols }: { loading: boolean; label: string; cols: number }) {
   return (
     <tr>
-      <td colSpan={cols} className="text-center py-10 text-zinc-600 text-xs">
+      <td colSpan={cols} className="text-center py-10 text-zinc-500 text-xs">
         {loading ? `Loading ${label}...` : `No recent ${label}`}
       </td>
     </tr>
@@ -37,7 +37,12 @@ export default function DispensePage() {
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
       <div className="max-w-6xl mx-auto px-4 py-8">
-        <h1 className="text-lg font-semibold text-zinc-100 mb-4">Dispensers</h1>
+        <div className="flex items-start justify-between mb-4 gap-4 flex-wrap">
+          <div>
+            <h1 className="text-lg font-semibold text-zinc-100 mb-1">Dispensers</h1>
+            <p className="text-xs text-zinc-500">BTC-to-asset vending machines on Counterparty</p>
+          </div>
+        </div>
         <div className="bg-zinc-900/50 border border-zinc-800 rounded-sm">
           <div className="px-3 py-2 flex items-center gap-2">
             <div className="flex gap-0.5 ml-auto">
@@ -69,7 +74,7 @@ export default function DispensePage() {
 
 function DispensersTable({ dispensers, isLoading }: { dispensers: Dispenser[]; isLoading: boolean }) {
   return (
-    <table className="w-full text-xs">
+    <table className="w-full text-xs whitespace-nowrap">
       <thead>
         <tr className="text-zinc-500 border-b border-zinc-800">
           <th className="text-left font-normal px-3 py-1.5 w-8">Time</th>
@@ -121,7 +126,7 @@ function DispensersTable({ dispensers, isLoading }: { dispensers: Dispenser[]; i
 
 function DispensesTable({ dispenses, isLoading }: { dispenses: Dispense[]; isLoading: boolean }) {
   return (
-    <table className="w-full text-xs">
+    <table className="w-full text-xs whitespace-nowrap">
       <thead>
         <tr className="text-zinc-500 border-b border-zinc-800">
           <th className="text-left font-normal px-3 py-1.5 w-8">Time</th>

@@ -40,7 +40,7 @@ function fmtPct(v: number | null): string {
 }
 
 function pctColor(v: number | null): string {
-  if (v == null || v === 0) return 'text-zinc-600'
+  if (v == null || v === 0) return 'text-zinc-500'
   return v > 0 ? 'text-green-400' : 'text-red-400'
 }
 
@@ -246,11 +246,11 @@ function ComboVolumeChart({
         <span className="text-xs text-zinc-500">{label}</span>
         <span className="flex items-center gap-1">
           <span className="inline-block w-2 h-2 rounded-sm" style={{ backgroundColor: color + '99' }} />
-          <span className="text-[10px] text-zinc-600">Monthly</span>
+          <span className="text-[10px] text-zinc-500">Monthly</span>
         </span>
         <span className="flex items-center gap-1">
           <span className="inline-block w-4 h-0.5" style={{ backgroundColor: color }} />
-          <span className="text-[10px] text-zinc-600">Cumulative</span>
+          <span className="text-[10px] text-zinc-500">Cumulative</span>
         </span>
       </div>
       <div ref={containerRef} style={{ height, width: '100%' }} />
@@ -264,9 +264,9 @@ function TopPairsTable({ pairs, tfLabel }: { pairs: AnalyticsTopPair[]; tfLabel:
   return (
     <div className="bg-zinc-900/50 border border-zinc-800 rounded-sm">
       <div className="px-3 py-2 text-xs text-zinc-500">Top Pairs ({tfLabel} Trades)</div>
-      <table className="w-full text-xs">
+      <table className="w-full text-xs whitespace-nowrap">
         <thead>
-          <tr className="text-zinc-600 border-b border-zinc-800">
+          <tr className="text-zinc-500 border-b border-zinc-800">
             <th className="text-left font-normal px-3 py-1.5">#</th>
             <th className="text-left font-normal px-3 py-1.5">Pair</th>
             <th className="text-right font-normal px-3 py-1.5">Trades</th>
@@ -276,7 +276,7 @@ function TopPairsTable({ pairs, tfLabel }: { pairs: AnalyticsTopPair[]; tfLabel:
         <tbody>
           {pairs.map((p, i) => (
             <tr key={p.pair} className="hover:bg-zinc-800/50 transition-colors border-b border-zinc-800/30 last:border-0">
-              <td className="px-3 py-1.5 text-zinc-600">{i + 1}</td>
+              <td className="px-3 py-1.5 text-zinc-500">{i + 1}</td>
               <td className="px-3 py-1.5">
                 <Link href={`/trade/${p.pair}`} className="flex items-center gap-1.5 hover:underline">
                   <Image
@@ -297,7 +297,7 @@ function TopPairsTable({ pairs, tfLabel }: { pairs: AnalyticsTopPair[]; tfLabel:
             </tr>
           ))}
           {pairs.length === 0 && (
-            <tr><td colSpan={4} className="text-center py-6 text-zinc-600">No data</td></tr>
+            <tr><td colSpan={4} className="text-center py-6 text-zinc-500">No data</td></tr>
           )}
         </tbody>
       </table>
@@ -309,9 +309,9 @@ function TopDispensersTable({ dispensers, tfLabel, satsMode }: { dispensers: Ana
   return (
     <div className="bg-zinc-900/50 border border-zinc-800 rounded-sm">
       <div className="px-3 py-2 text-xs text-zinc-500">Top Dispensers ({tfLabel} Volume)</div>
-      <table className="w-full text-xs">
+      <table className="w-full text-xs whitespace-nowrap">
         <thead>
-          <tr className="text-zinc-600 border-b border-zinc-800">
+          <tr className="text-zinc-500 border-b border-zinc-800">
             <th className="text-left font-normal px-3 py-1.5">#</th>
             <th className="text-left font-normal px-3 py-1.5">Asset</th>
             <th className="text-right font-normal px-3 py-1.5">Volume</th>
@@ -321,7 +321,7 @@ function TopDispensersTable({ dispensers, tfLabel, satsMode }: { dispensers: Ana
         <tbody>
           {dispensers.map((d, i) => (
             <tr key={d.asset} className="hover:bg-zinc-800/50 transition-colors border-b border-zinc-800/30 last:border-0">
-              <td className="px-3 py-1.5 text-zinc-600">{i + 1}</td>
+              <td className="px-3 py-1.5 text-zinc-500">{i + 1}</td>
               <td className="px-3 py-1.5">
                 <Link href={`/dispense/${d.asset}`} className="flex items-center gap-1.5 hover:underline">
                   <Image
@@ -342,7 +342,7 @@ function TopDispensersTable({ dispensers, tfLabel, satsMode }: { dispensers: Ana
             </tr>
           ))}
           {dispensers.length === 0 && (
-            <tr><td colSpan={4} className="text-center py-6 text-zinc-600">No data</td></tr>
+            <tr><td colSpan={4} className="text-center py-6 text-zinc-500">No data</td></tr>
           )}
         </tbody>
       </table>
@@ -390,9 +390,9 @@ function TopTradersTable({
           ))}
         </div>
       </div>
-      <table className="w-full text-xs">
+      <table className="w-full text-xs whitespace-nowrap">
         <thead>
-          <tr className="text-zinc-600 border-b border-zinc-800">
+          <tr className="text-zinc-500 border-b border-zinc-800">
             <th className="text-left font-normal px-3 py-1.5">#</th>
             <th className="text-left font-normal px-3 py-1.5">Address</th>
             <th
@@ -412,7 +412,7 @@ function TopTradersTable({
         <tbody>
           {list.map((t, i) => (
             <tr key={t.address} className="hover:bg-zinc-800/50 transition-colors border-b border-zinc-800/30 last:border-0">
-              <td className="px-3 py-1.5 text-zinc-600">{i + 1}</td>
+              <td className="px-3 py-1.5 text-zinc-500">{i + 1}</td>
               <td className="px-3 py-1.5 text-zinc-300 font-mono text-[11px] break-all">
                 {t.address}
               </td>
@@ -421,7 +421,7 @@ function TopTradersTable({
             </tr>
           ))}
           {list.length === 0 && (
-            <tr><td colSpan={4} className="text-center py-6 text-zinc-600">No data</td></tr>
+            <tr><td colSpan={4} className="text-center py-6 text-zinc-500">No data</td></tr>
           )}
         </tbody>
       </table>
@@ -568,7 +568,7 @@ export default function AnalyticsPage() {
                       />
                       <span className="text-xs text-zinc-400 font-mono">{q.quote_asset}</span>
                       <span className="text-xs text-zinc-200 font-mono font-semibold">{q.trade_count.toLocaleString()} trades</span>
-                      <span className="text-[10px] text-zinc-600 font-mono">{fmtBig(q.volume)} vol</span>
+                      <span className="text-[10px] text-zinc-500 font-mono">{fmtBig(q.volume)} vol</span>
                     </div>
                   ))}
                 </div>

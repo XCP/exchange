@@ -21,7 +21,7 @@ export function HoldersTable({ asset, totalSupply }: HoldersTableProps) {
   if (holders.length === 0) {
     return (
       <div className="flex items-center justify-center py-12">
-        <span className="text-xs text-zinc-600">No holders found</span>
+        <span className="text-xs text-zinc-500">No holders found</span>
       </div>
     )
   }
@@ -31,9 +31,9 @@ export function HoldersTable({ asset, totalSupply }: HoldersTableProps) {
   const remainingPct = Math.max(0, 100 - topPct)
 
   return (
-    <table className="w-full text-xs">
+    <table className="w-full text-xs whitespace-nowrap">
       <thead className="sticky top-0 bg-zinc-950 z-10">
-        <tr className="text-zinc-600 border-b border-zinc-800">
+        <tr className="text-zinc-500 border-b border-zinc-800">
           <th className="text-left font-normal px-2 py-1.5">Address</th>
           <th className="text-right font-normal px-2 py-1.5">Balance</th>
           <th className="text-right font-normal px-2 py-1.5">% Supply</th>
@@ -54,11 +54,11 @@ export function HoldersTable({ asset, totalSupply }: HoldersTableProps) {
         ))}
         {remainingCount > 0 && (
           <tr className="border-t border-zinc-800/50">
-            <td className="text-zinc-600 px-2 py-2">
+            <td className="text-zinc-500 px-2 py-2">
               And <span className="text-zinc-400">{remainingCount.toLocaleString()}</span> more holders
             </td>
             <td />
-            <td className="text-right text-zinc-600 font-mono px-2 py-2">{remainingPct.toFixed(2)}%</td>
+            <td className="text-right text-zinc-500 font-mono px-2 py-2">{remainingPct.toFixed(2)}%</td>
           </tr>
         )}
       </tbody>

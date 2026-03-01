@@ -12,12 +12,12 @@ export function PortfolioDispensers({ address }: { address: string }) {
   }
 
   if (dispensers.length === 0) {
-    return <div className="flex items-center justify-center py-12"><span className="text-xs text-zinc-600">No open dispensers</span></div>
+    return <div className="flex items-center justify-center py-12"><span className="text-xs text-zinc-500">No open dispensers</span></div>
   }
 
   return (
     <div>
-      <div className="grid grid-cols-5 gap-0 px-3 py-1.5 text-xs text-zinc-600 border-b border-zinc-800 max-sm:grid-cols-3">
+      <div className="grid grid-cols-5 gap-0 px-3 py-1.5 text-xs text-zinc-500 border-b border-zinc-800 max-sm:grid-cols-3">
         <span>Asset</span>
         <span className="text-right">Price (BTC)</span>
         <span className="text-right">Per Dispense</span>

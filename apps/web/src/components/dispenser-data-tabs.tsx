@@ -84,16 +84,16 @@ export function DispensesTable({ dispenses, isLoading, asset }: { dispenses: Dis
   if (dispenses.length === 0) {
     return (
       <div className="flex items-center justify-center py-12">
-        <span className="text-xs text-zinc-600">No recent dispenses</span>
+        <span className="text-xs text-zinc-500">No recent dispenses</span>
       </div>
     )
   }
 
   return (
     <div>
-      <table className="w-full text-xs">
+      <table className="w-full text-xs whitespace-nowrap">
         <thead className="sticky top-0 bg-zinc-950 z-10">
-          <tr className="text-zinc-600">
+          <tr className="text-zinc-500">
             <th className="text-left font-normal px-2 py-1.5 w-10">Time</th>
             <th className="text-right font-normal px-2 py-1.5">Price</th>
             <th className="text-right font-normal px-2 py-1.5">{asset ?? 'Qty'}</th>
@@ -113,7 +113,7 @@ export function DispensesTable({ dispenses, isLoading, asset }: { dispenses: Dis
                 key={`${d.tx_hash}-${d.dispense_index}`}
                 className="hover:bg-zinc-900 cursor-default"
               >
-                <td className="text-zinc-600 font-mono px-2 py-px">
+                <td className="text-zinc-500 font-mono px-2 py-px">
                   {d.block_time ? compactTime(d.block_time) : '—'}
                 </td>
                 <td className="text-right text-zinc-300 font-mono px-2 py-px">
@@ -136,7 +136,7 @@ export function DispensesTable({ dispenses, isLoading, asset }: { dispenses: Dis
                     href={`https://xcp.io/tx/${d.tx_hash}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-zinc-600 hover:text-zinc-300 transition-colors"
+                    className="text-zinc-500 hover:text-zinc-300 transition-colors"
                     title="View transaction"
                   >
                     ↗

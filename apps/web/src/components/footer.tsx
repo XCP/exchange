@@ -6,14 +6,14 @@ export function Footer() {
       <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
         <div className="flex items-center gap-4">
           <span className="text-xs font-bold tracking-wider text-green-500/60 font-mono">XCP DEX</span>
-          <span className="text-[11px] text-zinc-600">Peer-to-peer trading on Bitcoin</span>
+          <span className="text-[11px] text-zinc-500">Peer-to-peer trading on Bitcoin</span>
         </div>
         <div className="flex items-center gap-4">
           <a
             href="https://www.xcp.io"
             target="_blank"
             rel="noopener noreferrer"
-            className="text-[11px] text-zinc-600 hover:text-zinc-400 transition-colors"
+            className="text-[11px] text-zinc-500 hover:text-zinc-400 transition-colors"
           >
             XCP.io
           </a>
@@ -21,7 +21,7 @@ export function Footer() {
             href="https://github.com/CounterpartyXCP"
             target="_blank"
             rel="noopener noreferrer"
-            className="text-[11px] text-zinc-600 hover:text-zinc-400 transition-colors"
+            className="text-[11px] text-zinc-500 hover:text-zinc-400 transition-colors"
           >
             GitHub
           </a>
@@ -29,7 +29,7 @@ export function Footer() {
             href="https://counterparty.io"
             target="_blank"
             rel="noopener noreferrer"
-            className="text-[11px] text-zinc-600 hover:text-zinc-400 transition-colors"
+            className="text-[11px] text-zinc-500 hover:text-zinc-400 transition-colors"
           >
             Docs
           </a>

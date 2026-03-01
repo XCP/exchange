@@ -13,12 +13,12 @@ export function PortfolioOrders({ address }: { address: string }) {
   }
 
   if (orders.length === 0) {
-    return <div className="flex items-center justify-center py-12"><span className="text-xs text-zinc-600">No open orders</span></div>
+    return <div className="flex items-center justify-center py-12"><span className="text-xs text-zinc-500">No open orders</span></div>
   }
 
   return (
     <div>
-      <div className="grid grid-cols-6 gap-0 px-3 py-1.5 text-xs text-zinc-600 border-b border-zinc-800 max-sm:grid-cols-4">
+      <div className="grid grid-cols-6 gap-0 px-3 py-1.5 text-xs text-zinc-500 border-b border-zinc-800 max-sm:grid-cols-4">
         <span>Pair</span>
         <span>Side</span>
         <span className="text-right">Price</span>
@@ -38,7 +38,7 @@ export function PortfolioOrders({ address }: { address: string }) {
             <span className="text-right text-zinc-300 font-mono">{formatAmount(o.price)}</span>
             <span className="text-right text-zinc-300 font-mono">{formatAmount(o.amount)}</span>
             <span className="text-right text-zinc-500 font-mono max-sm:hidden">{formatAmount(o.remaining)}</span>
-            <span className="text-right text-zinc-600 font-mono max-sm:hidden">{o.block_time ? formatTimeAgo(o.block_time) : '—'}</span>
+            <span className="text-right text-zinc-500 font-mono max-sm:hidden">{o.block_time ? formatTimeAgo(o.block_time) : '—'}</span>
           </Link>
         ))}
       </div>

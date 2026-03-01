@@ -37,14 +37,14 @@ export function PortfolioUtxos({ address }: { address: string }) {
 
       {balances.length === 0 ? (
         <div className="flex items-center justify-center py-12">
-          <span className="text-xs text-zinc-600">
+          <span className="text-xs text-zinc-500">
             No UTXO-attached assets found
           </span>
         </div>
       ) : (
         <>
           {/* Table header */}
-          <div className="grid grid-cols-5 gap-0 px-3 py-1.5 text-xs text-zinc-600 border-b border-zinc-800 max-sm:grid-cols-3">
+          <div className="grid grid-cols-5 gap-0 px-3 py-1.5 text-xs text-zinc-500 border-b border-zinc-800 max-sm:grid-cols-3">
             <span>Asset</span>
             <span className="text-right">Quantity</span>
             <span className="text-right max-sm:hidden">UTXO</span>
@@ -77,7 +77,7 @@ export function PortfolioUtxos({ address }: { address: string }) {
                   <span className="text-right text-zinc-300 font-mono">
                     {formatAmount(bal.quantity)}
                   </span>
-                  <span className="text-right text-zinc-600 font-mono text-[10px] max-sm:hidden">
+                  <span className="text-right text-zinc-500 font-mono text-[10px] max-sm:hidden">
                     {txid.slice(0, 8)}...:{voutStr}
                   </span>
                   <span className="max-sm:hidden"></span>
@@ -211,7 +211,7 @@ function AttachModal({
             />
           </div>
 
-          <p className="text-[10px] text-zinc-600">
+          <p className="text-[10px] text-zinc-500">
             The Counterparty node will select a UTXO and attach your asset balance to it.
           </p>
 

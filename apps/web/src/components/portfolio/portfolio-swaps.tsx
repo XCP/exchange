@@ -103,14 +103,14 @@ export function PortfolioSwaps({ address }: { address: string }) {
 
       {listings.length === 0 ? (
         <div className="flex items-center justify-center py-12">
-          <span className="text-xs text-zinc-600">
+          <span className="text-xs text-zinc-500">
             No {statusFilter} swap listings
           </span>
         </div>
       ) : (
         <>
           {/* Header */}
-          <div className="grid grid-cols-6 gap-0 px-3 py-1.5 text-xs text-zinc-600 border-b border-zinc-800 max-sm:grid-cols-4">
+          <div className="grid grid-cols-6 gap-0 px-3 py-1.5 text-xs text-zinc-500 border-b border-zinc-800 max-sm:grid-cols-4">
             <span>Asset</span>
             <span className="text-right">Quantity</span>
             <span className="text-right">{satsMode ? 'Price (sats)' : 'Price (BTC)'}</span>
@@ -161,7 +161,7 @@ export function PortfolioSwaps({ address }: { address: string }) {
                         : Math.round(unitPrice).toLocaleString()
                       : formatPrice(unitPriceBtc, false)}
                   </span>
-                  <span className="text-right text-zinc-600 font-mono max-sm:hidden">
+                  <span className="text-right text-zinc-500 font-mono max-sm:hidden">
                     {listing.created_at ? formatTimeAgo(new Date(listing.created_at + 'Z').getTime() / 1000) : '—'}
                   </span>
                   <div className="text-right">

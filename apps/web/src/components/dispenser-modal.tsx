@@ -74,19 +74,19 @@ export function DispenserModal({ dispenser, asset, onClose }: DispenserModalProp
           {/* Stats grid */}
           <div className="grid grid-cols-2 gap-3 mb-4">
             <div>
-              <div className="text-[10px] uppercase tracking-wider text-zinc-600 mb-0.5">Per Dispense</div>
+              <div className="text-[10px] uppercase tracking-wider text-zinc-500 mb-0.5">Per Dispense</div>
               <div className="text-sm text-zinc-200 font-mono">{formatPrice(parseFloat(dispenser.satoshi_price_normalized), satsMode)} {btcLabel}</div>
             </div>
             <div>
-              <div className="text-[10px] uppercase tracking-wider text-zinc-600 mb-0.5">Tokens / Dispense</div>
+              <div className="text-[10px] uppercase tracking-wider text-zinc-500 mb-0.5">Tokens / Dispense</div>
               <div className="text-sm text-zinc-200 font-mono">{formatAmount(dispenser.give_quantity_normalized)}</div>
             </div>
             <div>
-              <div className="text-[10px] uppercase tracking-wider text-zinc-600 mb-0.5">Dispensed</div>
+              <div className="text-[10px] uppercase tracking-wider text-zinc-500 mb-0.5">Dispensed</div>
               <div className="text-sm text-zinc-200 font-mono">{dispenser.dispense_count}&times;</div>
             </div>
             <div>
-              <div className="text-[10px] uppercase tracking-wider text-zinc-600 mb-0.5">Created</div>
+              <div className="text-[10px] uppercase tracking-wider text-zinc-500 mb-0.5">Created</div>
               <div className="text-sm text-zinc-200 font-mono">
                 {dispenser.block_time ? formatTimeAgo(dispenser.block_time) : '—'}
               </div>
@@ -96,7 +96,7 @@ export function DispenserModal({ dispenser, asset, onClose }: DispenserModalProp
           {/* Supply bar */}
           <div className="mb-4">
             <div className="flex items-center justify-between mb-1">
-              <span className="text-[10px] uppercase tracking-wider text-zinc-600">Supply</span>
+              <span className="text-[10px] uppercase tracking-wider text-zinc-500">Supply</span>
               <span className="text-xs text-zinc-400 font-mono">
                 {formatAmount(dispenser.give_remaining_normalized)} / {formatAmount(dispenser.escrow_quantity_normalized)}
               </span>
@@ -117,8 +117,8 @@ export function DispenserModal({ dispenser, asset, onClose }: DispenserModalProp
               )}
             </div>
             <div className="flex items-center justify-between mt-0.5">
-              <span className="text-[9px] text-zinc-600">{dispensedPct.toFixed(0)}% dispensed</span>
-              <span className="text-[9px] text-zinc-600">
+              <span className="text-[9px] text-zinc-500">{dispensedPct.toFixed(0)}% dispensed</span>
+              <span className="text-[9px] text-zinc-500">
                 {remainingPct.toFixed(0)}% remaining
                 {pendingCount > 0 && (
                   <span className="text-yellow-500"> ({pendingCount} pending)</span>
@@ -130,11 +130,11 @@ export function DispenserModal({ dispenser, asset, onClose }: DispenserModalProp
           {/* Source + TX */}
           <div className="flex flex-col gap-1.5 text-[11px]">
             <div className="flex items-center gap-2">
-              <span className="text-zinc-600 w-10">Source</span>
+              <span className="text-zinc-500 w-10">Source</span>
               <span className="text-zinc-400 font-mono truncate">{dispenser.source}</span>
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-zinc-600 w-10">TX</span>
+              <span className="text-zinc-500 w-10">TX</span>
               <span className="text-zinc-400 font-mono truncate">{dispenser.tx_hash}</span>
             </div>
           </div>
