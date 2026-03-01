@@ -115,7 +115,7 @@ function OrdersTable({ orders, isLoading, blockHeight, baseSearch, quoteSearch, 
   return (
     <table className="w-full text-xs">
       <thead>
-        <tr className="text-zinc-600 border-b border-zinc-800">
+        <tr className="text-zinc-500 border-b border-zinc-800">
           <th className="text-left font-normal px-3 py-1.5 w-8">Time</th>
           <th className="text-left font-normal px-3 py-1.5 w-10">Side</th>
           <th className="text-right font-normal px-3 py-1.5">Amount</th>
@@ -166,7 +166,7 @@ function OrdersTable({ orders, isLoading, blockHeight, baseSearch, quoteSearch, 
 
             return (
               <tr key={order.tx_hash} className="hover:bg-zinc-800/50 transition-colors border-b border-zinc-800/30 last:border-0">
-                <td className="text-zinc-600 font-mono px-3 py-1.5">
+                <td className="text-zinc-500 font-mono px-3 py-1.5">
                   {order.block_time ? compactTime(order.block_time) : '—'}
                 </td>
                 <td className={`font-medium px-3 py-1.5 ${isBid ? 'text-green-400' : 'text-red-400'}`}>
@@ -192,20 +192,20 @@ function OrdersTable({ orders, isLoading, blockHeight, baseSearch, quoteSearch, 
                 </td>
                 <td className="text-left font-mono px-3 py-1.5 max-sm:hidden">
                   <span className="inline-flex items-center gap-1">
-                    <span className="text-zinc-600">{formatAddress(order.source)}</span>
+                    <span className="text-zinc-500">{formatAddress(order.source)}</span>
                     <button
                       onClick={() => onFilterAddress(order.source)}
-                      className="text-zinc-700 hover:text-zinc-400 transition-colors"
+                      className="text-zinc-600 hover:text-zinc-400 transition-colors"
                       title="Filter by this address"
                     >
                       <RiFilter3Line className="w-3 h-3" />
                     </button>
                   </span>
                 </td>
-                <td className={`text-left font-mono px-3 py-1.5 max-sm:hidden capitalize ${isClosed ? 'text-zinc-700' : 'text-zinc-500'}`}>
+                <td className={`text-left font-mono px-3 py-1.5 max-sm:hidden capitalize ${isClosed ? 'text-zinc-600' : 'text-zinc-400'}`}>
                   {order.status}
                 </td>
-                <td className="text-right text-zinc-600 font-mono px-3 py-1.5 max-sm:hidden">
+                <td className="text-right text-zinc-500 font-mono px-3 py-1.5 max-sm:hidden">
                   {blockHeight != null ? `${Math.max(0, order.expire_index - blockHeight).toLocaleString()} blks` : '—'}
                 </td>
               </tr>
