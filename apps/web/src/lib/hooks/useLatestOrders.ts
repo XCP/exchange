@@ -10,8 +10,11 @@ export interface LatestOrder {
   side: string
   price: number
   amount: number
+  give_quantity: number
+  get_quantity: number
   give_remaining: number
   get_remaining: number
+  remaining: number
   expire_index: number
   block_index: number
   block_time: number

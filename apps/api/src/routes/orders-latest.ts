@@ -20,7 +20,8 @@ export async function handleOrdersLatest(
   }
 
   const columns = `tx_hash, pair, base_asset, quote_asset, source, side, price, amount,
-                    give_remaining, get_remaining, expire_index, block_index, block_time, status`;
+                    give_quantity, get_quantity, give_remaining, get_remaining, remaining,
+                    expire_index, block_index, block_time, status`;
 
   const conditions: string[] = [];
   const binds: (string | number)[] = [];

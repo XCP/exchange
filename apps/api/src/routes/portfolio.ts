@@ -147,7 +147,7 @@ export async function handlePortfolioOrders(
   const result = await db
     .prepare(
       `SELECT pair, base_asset, quote_asset, side, price, amount,
-              give_remaining, get_remaining,
+              give_remaining, get_remaining, remaining,
               block_time, tx_hash, expire_index, status
        FROM orders
        WHERE source = ? AND status = 'open'

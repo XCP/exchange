@@ -294,20 +294,24 @@ export async function reindexOrders(
         db.prepare(
           `INSERT INTO orders
            (tx_hash, tx_index, pair, base_asset, quote_asset, source, side,
-            price, amount, give_remaining, get_remaining,
+            price, amount, give_quantity, get_quantity, give_remaining, get_remaining, remaining,
             expiration, expire_index, block_index, block_time,
             status, first_seen_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT (tx_hash) DO UPDATE SET
              status = excluded.status,
              price = excluded.price,
              amount = excluded.amount,
+             give_quantity = excluded.give_quantity,
+             get_quantity = excluded.get_quantity,
              give_remaining = excluded.give_remaining,
-             get_remaining = excluded.get_remaining`
+             get_remaining = excluded.get_remaining,
+             remaining = excluded.remaining`
         ).bind(
           o.tx_hash, o.tx_index, o.pair, o.base_asset, o.quote_asset,
-          o.source, o.side, o.price, o.amount, o.give_remaining,
-          o.get_remaining, o.expiration, o.expire_index,
+          o.source, o.side, o.price, o.amount, o.give_quantity, o.get_quantity,
+          o.give_remaining, o.get_remaining, o.remaining,
+          o.expiration, o.expire_index,
           o.block_index, o.block_time, cpStatus, now
         )
       );

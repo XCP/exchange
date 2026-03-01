@@ -202,10 +202,11 @@ function processOrderPartialFill(
   return (db) =>
     db
       .prepare(
-        `UPDATE orders SET give_remaining = ?, get_remaining = ?
+        `UPDATE orders SET give_remaining = ?, get_remaining = ?,
+           remaining = CASE WHEN side = 'bid' THEN ? ELSE ? END
          WHERE tx_hash = ? AND status = 'open'`
       )
-      .bind(giveRemaining, getRemaining, txHash);
+      .bind(giveRemaining, getRemaining, getRemaining, giveRemaining, txHash);
 }
 
 function processOrderClose(

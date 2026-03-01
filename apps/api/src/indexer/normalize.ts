@@ -79,8 +79,11 @@ export interface NormalizedOrder {
   side: "bid" | "ask";
   price: number;
   amount: number;
+  give_quantity: number;
+  get_quantity: number;
   give_remaining: number;
   get_remaining: number;
+  remaining: number;
   expiration: number;
   expire_index: number;
   block_index: number;
@@ -122,6 +125,8 @@ export function normalizeOrder(order: Order): NormalizedOrder {
   price = parseFloat(price.toFixed(8));
   amount = parseFloat(amount.toFixed(8));
 
+  const remaining = side === "bid" ? getRemaining : giveRemaining;
+
   return {
     tx_hash: order.tx_hash,
     tx_index: order.tx_index,
@@ -132,8 +137,11 @@ export function normalizeOrder(order: Order): NormalizedOrder {
     side,
     price,
     amount,
+    give_quantity: giveQty,
+    get_quantity: getQty,
     give_remaining: giveRemaining,
     get_remaining: getRemaining,
+    remaining,
     expiration: order.expiration,
     expire_index: order.expire_index,
     block_index: order.block_index,
@@ -216,20 +224,22 @@ export function buildOrderUpsertStmt(
     .prepare(
       `INSERT INTO orders
        (tx_hash, tx_index, pair, base_asset, quote_asset, source, side,
-        price, amount, give_remaining, get_remaining,
+        price, amount, give_quantity, get_quantity, give_remaining, get_remaining, remaining,
         expiration, expire_index, block_index, block_time,
         status, first_seen_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?)
        ON CONFLICT (tx_hash) DO UPDATE SET
          give_remaining = excluded.give_remaining,
          get_remaining = excluded.get_remaining,
+         remaining = excluded.remaining,
          status = 'open',
          closed_at = NULL`
     )
     .bind(
       o.tx_hash, o.tx_index, o.pair, o.base_asset, o.quote_asset,
-      o.source, o.side, o.price, o.amount, o.give_remaining,
-      o.get_remaining, o.expiration, o.expire_index,
+      o.source, o.side, o.price, o.amount, o.give_quantity, o.get_quantity,
+      o.give_remaining, o.get_remaining, o.remaining,
+      o.expiration, o.expire_index,
       o.block_index, o.block_time, now
     );
 }

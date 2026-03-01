@@ -10,6 +10,7 @@ interface PortfolioOrder {
   amount: number
   give_remaining: number
   get_remaining: number
+  remaining: number
   block_time: number
   tx_hash: string
   expire_index: number

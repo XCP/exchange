@@ -163,9 +163,7 @@ function OrdersTable({ orders, isLoading, blockHeight, baseSearch, quoteSearch, 
             const isClosed = order.status !== 'open'
             const isBid = /^(buy|bid)$/i.test(order.side)
             // Open orders: show remaining amount; closed orders: show original amount
-            const displayAmount = isClosed
-              ? order.amount
-              : (isBid ? order.get_remaining : order.give_remaining)
+            const displayAmount = isClosed ? order.amount : order.remaining
 
             return (
               <tr key={order.tx_hash} className="hover:bg-zinc-800/50 transition-colors border-b border-zinc-800/30 last:border-0">

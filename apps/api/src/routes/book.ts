@@ -11,7 +11,7 @@ export async function handleBook(
 
   const bids = await db
     .prepare(
-      `SELECT price, amount, give_remaining, get_remaining, source,
+      `SELECT price, amount, remaining, give_remaining, get_remaining, source,
               block_index, block_time, tx_hash, expire_index
        FROM orders
        WHERE pair = ? AND status = 'open' AND side = 'bid'
@@ -23,7 +23,7 @@ export async function handleBook(
 
   const asks = await db
     .prepare(
-      `SELECT price, amount, give_remaining, get_remaining, source,
+      `SELECT price, amount, remaining, give_remaining, get_remaining, source,
               block_index, block_time, tx_hash, expire_index
        FROM orders
        WHERE pair = ? AND status = 'open' AND side = 'ask'

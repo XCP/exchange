@@ -37,7 +37,7 @@ export function PortfolioOrders({ address }: { address: string }) {
             <span className={o.side === 'bid' ? 'text-green-400' : 'text-red-400'}>{o.side === 'bid' ? 'Buy' : 'Sell'}</span>
             <span className="text-right text-zinc-300 font-mono">{formatAmount(o.price)}</span>
             <span className="text-right text-zinc-300 font-mono">{formatAmount(o.amount)}</span>
-            <span className="text-right text-zinc-500 font-mono max-sm:hidden">{formatAmount(o.get_remaining)}</span>
+            <span className="text-right text-zinc-500 font-mono max-sm:hidden">{formatAmount(o.remaining)}</span>
             <span className="text-right text-zinc-600 font-mono max-sm:hidden">{o.block_time ? formatTimeAgo(o.block_time) : '—'}</span>
           </Link>
         ))}
