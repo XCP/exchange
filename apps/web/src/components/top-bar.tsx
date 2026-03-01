@@ -23,7 +23,6 @@ export function TopBar() {
         </Link>
         <nav className="hidden sm:flex items-center gap-4">
           {[
-            { label: 'Latest', href: '/latest' },
             { label: 'Trade', href: '/trade' },
             { label: 'Dispense', href: '/dispense' },
           ].map((link) => {
