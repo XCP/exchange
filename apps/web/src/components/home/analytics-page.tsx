@@ -124,6 +124,7 @@ function SummarySection({ timeframe, includeHidden }: { timeframe: Timeframe; in
     label: `${p.base_asset_longname ?? p.base_asset}/${p.quote_asset}`,
     cells: [
       { value: p.trade_count.toLocaleString() },
+      { value: fmtBig(p.volume) },
       { value: fmtPct(p.price_change), className: pctColor(p.price_change) },
     ],
   }))
@@ -229,15 +230,15 @@ function SummarySection({ timeframe, includeHidden }: { timeframe: Timeframe; in
           <LeaderboardTable
             title="Most Traded (By Count)"
             tabs={[
-              { label: 'Assets', headers: ['Pair', 'Trades', 'Chg'], rows: tradedAssetRows },
-              { label: 'Collections', headers: ['Collection', 'Trades', 'Volume', 'Chg'], rows: tradedCollRows },
+              { label: 'Assets', headers: ['Pair', 'Trades', 'Volume', 'Chg'], rows: tradedAssetRows },
+              { label: 'Collections', headers: ['Collection', 'Trades', 'Volume (XCP)', 'Chg'], rows: tradedCollRows },
             ]}
           />
           <LeaderboardTable
             title="Most Dispensed (By Volume)"
             tabs={[
-              { label: 'Assets', headers: ['Asset', 'Volume', 'Chg'], rows: dispensedAssetRows },
-              { label: 'Collections', headers: ['Collection', 'Dispenses', 'Volume', 'Chg'], rows: dispensedCollRows },
+              { label: 'Assets', headers: ['Asset', 'Volume (BTC)', 'Chg'], rows: dispensedAssetRows },
+              { label: 'Collections', headers: ['Collection', 'Dispenses', 'Volume (BTC)', 'Chg'], rows: dispensedCollRows },
             ]}
           />
         </div>

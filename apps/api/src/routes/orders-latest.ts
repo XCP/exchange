@@ -58,6 +58,12 @@ export async function handleOrdersLatest(
     binds.push(source);
   }
 
+  const side = url.searchParams.get("side");
+  if (side && (side === "buy" || side === "sell")) {
+    conditions.push(`o.side = ?`);
+    binds.push(side);
+  }
+
   const tag = url.searchParams.get("tag");
   if (tag) {
     const tagType = url.searchParams.get("tag_type") ?? "collection";
@@ -83,7 +89,11 @@ export async function handleOrdersLatest(
     ? ` ORDER BY o.expire_index ASC`
     : sort === "expire_index:desc"
       ? ` ORDER BY o.expire_index DESC`
-      : ` ORDER BY o.block_index DESC`;
+      : sort === "price:asc"
+        ? ` ORDER BY o.price ASC`
+        : sort === "price:desc"
+          ? ` ORDER BY o.price DESC`
+          : ` ORDER BY o.block_index DESC`;
 
   const dataQuery = `SELECT ${columns} FROM orders o LEFT JOIN pair_stats ps ON o.pair = ps.pair${whereClause}${orderBy} LIMIT ? OFFSET ?`;
   const countQuery = `SELECT COUNT(*) as total FROM orders o LEFT JOIN pair_stats ps ON o.pair = ps.pair${whereClause}`;

@@ -95,6 +95,7 @@ export async function handleAnalytics(
       db.prepare(
         `SELECT pair, base_asset, quote_asset, base_asset_longname, last_price,
                 ${tradeCountCol} AS trade_count,
+                ${volCol} AS volume,
                 ${pctCol} AS price_change
          FROM pair_stats
          WHERE ${tradeCountCol} > 0${pairHidden}

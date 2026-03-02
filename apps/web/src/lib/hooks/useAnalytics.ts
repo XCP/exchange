@@ -48,6 +48,7 @@ export interface AnalyticsTopPair {
   base_asset_longname: string | null
   last_price: number | null
   trade_count: number
+  volume: number
   price_change: number
 }
 

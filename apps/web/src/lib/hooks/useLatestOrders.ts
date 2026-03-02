@@ -36,6 +36,8 @@ export interface OrderFilters {
   quoteAsset?: string
   source?: string
   tag?: string
+  side?: string
+  sort?: string
   offset?: number
 }
 
@@ -66,6 +68,12 @@ function buildUrl(tab: OrderTab, filters?: OrderFilters): string {
   }
   if (filters?.tag) {
     params.set('tag', filters.tag)
+  }
+  if (filters?.side) {
+    params.set('side', filters.side)
+  }
+  if (filters?.sort) {
+    params.set('sort', filters.sort)
   }
   if (filters?.offset) {
     params.set('offset', String(filters.offset))
