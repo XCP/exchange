@@ -16,6 +16,7 @@ import { CounterCard } from './counter-card'
 import { LeaderboardTable, type LeaderboardRow } from './leaderboard-table'
 import { TopTradersTable } from './top-traders-table'
 import { QuoteMarquee } from './quote-marquee'
+import { DispenseMarquee } from './dispense-marquee'
 import {
   LeaderboardSkeleton,
   ChartsSkeleton,
@@ -56,11 +57,16 @@ const COLLECTION_ICONS: Record<string, string> = {
 const TF_OPTIONS = ['24h', '7d', '30d', 'all'] as const
 const TF_LABELS: Record<Timeframe, string> = { '24h': '24h', '7d': '7d', '30d': '30d', all: 'All' }
 
+type MobileMode = 'xcp' | 'btc'
+const MODE_OPTIONS = ['xcp', 'btc'] as const
+const MODE_LABELS: Record<MobileMode, string> = { xcp: 'XCP', btc: 'BTC' }
+
 // ── Main Orchestrator ───────────────────────────────────────────────
 
 export default function AnalyticsPage() {
   const [timeframe, setTimeframe] = useState<Timeframe>('all')
   const [hideLowQuality, setHideLowQuality] = useState(true)
+  const [mobileMode, setMobileMode] = useState<MobileMode>('xcp')
   const includeHidden = !hideLowQuality
 
   // Cascade: summary first → charts after summary → traders after charts
@@ -97,19 +103,30 @@ export default function AnalyticsPage() {
         </div>
       </div>
 
-      <SummarySection timeframe={timeframe} includeHidden={includeHidden} isLoading={summaryLoading} {...summaryProps} />
-      <ChartsSection timeframe={timeframe} includeHidden={includeHidden} ready={chartsReady} />
-      <TradersSection isLoading={tradersLoading} {...tradersProps} />
+      {/* Mobile XCP/BTC toggle */}
+      <div className="md:hidden flex justify-center mb-4">
+        <TogglePills
+          options={MODE_OPTIONS}
+          value={mobileMode}
+          onChange={setMobileMode}
+          label={(m) => MODE_LABELS[m]}
+        />
+      </div>
+
+      <SummarySection timeframe={timeframe} includeHidden={includeHidden} isLoading={summaryLoading} mobileMode={mobileMode} {...summaryProps} />
+      <ChartsSection timeframe={timeframe} includeHidden={includeHidden} ready={chartsReady} mobileMode={mobileMode} />
+      <TradersSection isLoading={tradersLoading} mobileMode={mobileMode} {...tradersProps} />
     </div>
   )
 }
 
 // ── Summary: Counter Cards + Marquee + Leaderboards ─────────────────
 
-function SummarySection({ timeframe, includeHidden, isLoading, tradeSummary, dispenseSummary, topPairs, topDispensers, quoteVolumes, topTradedCollections, topDispensedCollections }: {
+function SummarySection({ timeframe, includeHidden, isLoading, mobileMode, tradeSummary, dispenseSummary, topPairs, topDispensers, quoteVolumes, topTradedCollections, topDispensedCollections }: {
   timeframe: Timeframe
   includeHidden: boolean
   isLoading: boolean
+  mobileMode: MobileMode
   tradeSummary: ReturnType<typeof useAnalyticsSummary>['tradeSummary']
   dispenseSummary: ReturnType<typeof useAnalyticsSummary>['dispenseSummary']
   topPairs: ReturnType<typeof useAnalyticsSummary>['topPairs']
@@ -172,60 +189,75 @@ function SummarySection({ timeframe, includeHidden, isLoading, tradeSummary, dis
 
   return (
     <>
-      {/* Counter Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-6">
-        <CounterCard
-          label="Trade Volume (XCP)"
-          loading={isLoading}
-          value={tradeSummary ? formatBig(tradeSummary.tf_volume) + ' XCP' : '\u2014'}
-          sub={tradeSummary && tradeSummary.tf_trades > 0 ? `Avg: ${formatBig(tradeSummary.tf_volume / tradeSummary.tf_trades)} XCP` : undefined}
-        />
-        <CounterCard
-          label="Orders Placed"
-          loading={isLoading}
-          value={tradeSummary ? tradeSummary.tf_orders.toLocaleString() : '\u2014'}
-          sub={tradeSummary ? `${tradeSummary.open_orders.toLocaleString()} open` : undefined}
-        />
-        <CounterCard
-          label="Trades"
-          loading={isLoading}
-          value={tradeSummary ? tradeSummary.tf_trades.toLocaleString() : '\u2014'}
-          sub={tradeSummary?.tf_unique_traders ? `${tradeSummary.tf_unique_traders.toLocaleString()} addresses` : undefined}
-        />
-        <CounterCard
-          label="Active Pairs"
-          loading={isLoading}
-          value={tradeSummary ? tradeSummary.active_pairs.toLocaleString() : '\u2014'}
-          sub={tradeSummary ? (isAll ? `${tradeSummary.total_pairs.toLocaleString()} total` : tradeSummary.new_pairs ? `${tradeSummary.new_pairs.toLocaleString()} new` : undefined) : undefined}
-        />
-        <CounterCard
-          label="Dispense Volume"
-          loading={isLoading}
-          value={dispenseSummary ? formatBig(dispenseSummary.tf_volume) + ` ${btcLabel.toUpperCase()}` : '\u2014'}
-          sub={dispenseSummary && dispenseSummary.tf_dispenses > 0 ? `Avg: ${formatBig(dispenseSummary.tf_volume / dispenseSummary.tf_dispenses)} ${btcLabel.toUpperCase()}` : undefined}
-        />
-        <CounterCard
-          label="Dispensers Created"
-          loading={isLoading}
-          value={dispenseSummary ? dispenseSummary.tf_dispensers_created.toLocaleString() : '\u2014'}
-          sub={dispenseSummary ? `${dispenseSummary.open_dispensers.toLocaleString()} open` : undefined}
-        />
-        <CounterCard
-          label="Dispenses"
-          loading={isLoading}
-          value={dispenseSummary ? dispenseSummary.tf_dispenses.toLocaleString() : '\u2014'}
-          sub={dispenseSummary?.tf_unique_buyers ? `${dispenseSummary.tf_unique_buyers.toLocaleString()} addresses` : undefined}
-        />
-        <CounterCard
-          label="Active Dispensers"
-          loading={isLoading}
-          value={dispenseSummary ? dispenseSummary.active_assets.toLocaleString() : '\u2014'}
-          sub={dispenseSummary ? (isAll ? `${dispenseSummary.total_assets.toLocaleString()} total` : dispenseSummary.new_assets ? `${dispenseSummary.new_assets.toLocaleString()} new` : undefined) : undefined}
-        />
+      {/* Counter Cards — split into XCP and BTC groups */}
+      <div className="flex flex-col gap-2 mb-6">
+        <div className={`grid grid-cols-2 md:grid-cols-4 gap-2 ${mobileMode === 'btc' ? 'hidden md:grid' : ''}`}>
+          <CounterCard
+            label="Trade Volume (XCP)"
+            loading={isLoading}
+            value={tradeSummary ? formatBig(tradeSummary.tf_volume) + ' XCP' : '\u2014'}
+            sub={tradeSummary && tradeSummary.tf_trades > 0 ? `Avg: ${formatBig(tradeSummary.tf_volume / tradeSummary.tf_trades)} XCP` : undefined}
+          />
+          <CounterCard
+            label="Orders Placed"
+            loading={isLoading}
+            value={tradeSummary ? tradeSummary.tf_orders.toLocaleString() : '\u2014'}
+            sub={tradeSummary ? `${tradeSummary.open_orders.toLocaleString()} open` : undefined}
+          />
+          <CounterCard
+            label="Trades"
+            loading={isLoading}
+            value={tradeSummary ? tradeSummary.tf_trades.toLocaleString() : '\u2014'}
+            sub={tradeSummary?.tf_unique_traders ? `${tradeSummary.tf_unique_traders.toLocaleString()} addresses` : undefined}
+          />
+          <CounterCard
+            label="Active Pairs"
+            loading={isLoading}
+            value={tradeSummary ? tradeSummary.active_pairs.toLocaleString() : '\u2014'}
+            sub={tradeSummary ? (isAll ? `${tradeSummary.total_pairs.toLocaleString()} total` : tradeSummary.new_pairs ? `${tradeSummary.new_pairs.toLocaleString()} new` : undefined) : undefined}
+          />
+        </div>
+        <div className={`grid grid-cols-2 md:grid-cols-4 gap-2 ${mobileMode === 'xcp' ? 'hidden md:grid' : ''}`}>
+          <CounterCard
+            label="Dispense Volume"
+            loading={isLoading}
+            value={dispenseSummary ? formatBig(dispenseSummary.tf_volume) + ` ${btcLabel.toUpperCase()}` : '\u2014'}
+            sub={dispenseSummary && dispenseSummary.tf_dispenses > 0 ? `Avg: ${formatBig(dispenseSummary.tf_volume / dispenseSummary.tf_dispenses)} ${btcLabel.toUpperCase()}` : undefined}
+          />
+          <CounterCard
+            label="Dispensers Created"
+            loading={isLoading}
+            value={dispenseSummary ? dispenseSummary.tf_dispensers_created.toLocaleString() : '\u2014'}
+            sub={dispenseSummary ? `${dispenseSummary.open_dispensers.toLocaleString()} open` : undefined}
+          />
+          <CounterCard
+            label="Dispenses"
+            loading={isLoading}
+            value={dispenseSummary ? dispenseSummary.tf_dispenses.toLocaleString() : '\u2014'}
+            sub={dispenseSummary?.tf_unique_buyers ? `${dispenseSummary.tf_unique_buyers.toLocaleString()} addresses` : undefined}
+          />
+          <CounterCard
+            label="Active Dispensers"
+            loading={isLoading}
+            value={dispenseSummary ? dispenseSummary.active_assets.toLocaleString() : '\u2014'}
+            sub={dispenseSummary ? (isAll ? `${dispenseSummary.total_assets.toLocaleString()} total` : dispenseSummary.new_assets ? `${dispenseSummary.new_assets.toLocaleString()} new` : undefined) : undefined}
+          />
+        </div>
       </div>
 
-      {/* Quote Volume Marquee Ticker */}
-      {isLoading ? <MarqueeSkeleton /> : <QuoteMarquee quoteVolumes={quoteVolumes} />}
+      {/* Quote Volume Marquee Ticker — XCP on mobile:xcp, BTC on mobile:btc, both on desktop */}
+      {isLoading ? (
+        <MarqueeSkeleton />
+      ) : (
+        <>
+          <div className={mobileMode === 'btc' ? 'hidden md:block' : ''}>
+            <QuoteMarquee quoteVolumes={quoteVolumes} />
+          </div>
+          <div className={mobileMode === 'xcp' ? 'hidden md:block' : ''}>
+            <DispenseMarquee topDispensers={topDispensers} satsMode={satsMode} />
+          </div>
+        </>
+      )}
 
       {/* Leaderboards */}
       <h2 className="text-sm uppercase tracking-wider text-zinc-400 mb-2">Leaderboards</h2>
@@ -233,20 +265,24 @@ function SummarySection({ timeframe, includeHidden, isLoading, tradeSummary, dis
         <LeaderboardSkeleton />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-8">
-          <LeaderboardTable
-            title="Most Traded (By Count)"
-            tabs={[
-              { label: 'Assets', headers: ['Pair', 'Trades', 'Volume', 'Chg'], rows: tradedAssetRows },
-              { label: 'Collections', headers: ['Collection', 'Trades', 'Volume (XCP)', 'Chg'], rows: tradedCollRows },
-            ]}
-          />
-          <LeaderboardTable
-            title="Most Dispensed (By Volume)"
-            tabs={[
-              { label: 'Assets', headers: ['Asset', 'Volume (BTC)', 'Chg'], rows: dispensedAssetRows },
-              { label: 'Collections', headers: ['Collection', 'Dispenses', 'Volume (BTC)', 'Chg'], rows: dispensedCollRows },
-            ]}
-          />
+          <div className={mobileMode === 'btc' ? 'hidden md:block' : ''}>
+            <LeaderboardTable
+              title="Most Traded (By Count)"
+              tabs={[
+                { label: 'Assets', headers: ['Pair', 'Trades', 'Volume', 'Chg'], rows: tradedAssetRows },
+                { label: 'Collections', headers: ['Collection', 'Trades', 'Volume (XCP)', 'Chg'], rows: tradedCollRows },
+              ]}
+            />
+          </div>
+          <div className={mobileMode === 'xcp' ? 'hidden md:block' : ''}>
+            <LeaderboardTable
+              title="Most Dispensed (By Volume)"
+              tabs={[
+                { label: 'Assets', headers: ['Asset', 'Volume (BTC)', 'Chg'], rows: dispensedAssetRows },
+                { label: 'Collections', headers: ['Collection', 'Dispenses', 'Volume (BTC)', 'Chg'], rows: dispensedCollRows },
+              ]}
+            />
+          </div>
         </div>
       )}
     </>
@@ -255,7 +291,7 @@ function SummarySection({ timeframe, includeHidden, isLoading, tradeSummary, dis
 
 // ── Charts: Volume History ──────────────────────────────────────────
 
-function ChartsSection({ timeframe, includeHidden, ready }: { timeframe: Timeframe; includeHidden: boolean; ready: boolean }) {
+function ChartsSection({ timeframe, includeHidden, ready, mobileMode }: { timeframe: Timeframe; includeHidden: boolean; ready: boolean; mobileMode: MobileMode }) {
   const { dailyTradeVolume, dailyDispenseVolume, dailyBtcTradeVolume, isLoading } =
     useAnalyticsCharts(timeframe, includeHidden, ready)
 
@@ -268,8 +304,12 @@ function ChartsSection({ timeframe, includeHidden, ready }: { timeframe: Timefra
         <ChartsSkeleton />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-8">
-          <ComboVolumeChart data={dailyTradeVolume} color="#22c55e" label="Trade Volume (XCP)" />
-          <ComboVolumeChart data={mergedBtcVolume} color="#3b82f6" label="Trade Volume (BTC)" />
+          <div className={mobileMode === 'btc' ? 'hidden md:block' : ''}>
+            <ComboVolumeChart data={dailyTradeVolume} color="#22c55e" label="Trade Volume (XCP)" />
+          </div>
+          <div className={mobileMode === 'xcp' ? 'hidden md:block' : ''}>
+            <ComboVolumeChart data={mergedBtcVolume} color="#3b82f6" label="Trade Volume (BTC)" />
+          </div>
         </div>
       )}
     </>
@@ -278,12 +318,13 @@ function ChartsSection({ timeframe, includeHidden, ready }: { timeframe: Timefra
 
 // ── Traders: Top Traders ────────────────────────────────────────────
 
-function TradersSection({ topMakers, topTakers, topBtcBuyers, topBtcSellers, isLoading }: {
+function TradersSection({ topMakers, topTakers, topBtcBuyers, topBtcSellers, isLoading, mobileMode }: {
   topMakers: ReturnType<typeof useAnalyticsTraders>['topMakers']
   topTakers: ReturnType<typeof useAnalyticsTraders>['topTakers']
   topBtcBuyers: ReturnType<typeof useAnalyticsTraders>['topBtcBuyers']
   topBtcSellers: ReturnType<typeof useAnalyticsTraders>['topBtcSellers']
   isLoading: boolean
+  mobileMode: MobileMode
 }) {
   return (
     <>
@@ -292,20 +333,24 @@ function TradersSection({ topMakers, topTakers, topBtcBuyers, topBtcSellers, isL
         <TradersSkeleton />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-          <TopTradersTable
-            title="Top Traders (XCP)"
-            unit="XCP"
-            tabLabels={['Makers', 'Takers']}
-            listA={topMakers}
-            listB={topTakers}
-          />
-          <TopTradersTable
-            title="Top Traders (BTC)"
-            unit="BTC"
-            tabLabels={['Makers', 'Takers']}
-            listA={topBtcSellers}
-            listB={topBtcBuyers}
-          />
+          <div className={mobileMode === 'btc' ? 'hidden md:block' : ''}>
+            <TopTradersTable
+              title="Top Traders (XCP)"
+              unit="XCP"
+              tabLabels={['Makers', 'Takers']}
+              listA={topMakers}
+              listB={topTakers}
+            />
+          </div>
+          <div className={mobileMode === 'xcp' ? 'hidden md:block' : ''}>
+            <TopTradersTable
+              title="Top Traders (BTC)"
+              unit="BTC"
+              tabLabels={['Makers', 'Takers']}
+              listA={topBtcSellers}
+              listB={topBtcBuyers}
+            />
+          </div>
         </div>
       )}
     </>
