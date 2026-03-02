@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation'
 import Image from 'next/image'
 import Link from 'next/link'
 import { RiFilter3Line, RiCloseLine } from 'react-icons/ri'
+import { useWallet } from '@/lib/wallet/wallet-context'
 import { useBlockHeight } from '@/lib/hooks/useNetworkInfo'
 import { useLatestOrders, type OrderTab, type LatestOrder } from '@/lib/hooks/useLatestOrders'
 import { useAnalyticsSummary, type Timeframe } from '@/lib/hooks/useAnalytics'
@@ -229,6 +230,8 @@ function OrdersTable({ tab, orders, isLoading, blockHeight, baseSearch, quoteSea
   sortCol: 'price:asc' | 'price:desc' | null
   onSortCol: (v: 'price:asc' | 'price:desc' | null) => void
 }) {
+  const { status: walletStatus } = useWallet()
+  const walletConnected = walletStatus === 'connected'
   const showLastCol = tab !== 'all'
   const lastColHeader = tab === 'filled' ? 'Filled' : tab === 'expired' ? 'Expired' : tab === 'cancelled' ? 'Cancelled' : 'Expires'
   const lastColIsAgo = tab === 'filled' || tab === 'expired' || tab === 'cancelled'
@@ -372,7 +375,16 @@ function OrdersTable({ tab, orders, isLoading, blockHeight, baseSearch, quoteSea
                   {order.block_time ? compactTime(order.block_time) : '—'}
                 </td>
                 <td className={`font-medium px-3 py-1.5 ${isBid ? 'text-green-400' : 'text-red-400'}`}>
-                  {isBid ? 'Buy' : 'Sell'}
+                  {walletConnected && isFinite(order.price) && order.price > 0 ? (
+                    <Link
+                      href={`/trade/${order.pair}?side=${isBid ? 'sell' : 'buy'}&price=${order.price}&amount=${displayAmount}`}
+                      className="bg-zinc-800/50 rounded-sm px-1.5 py-0.5 hover:bg-zinc-700/50 transition-colors"
+                    >
+                      {isBid ? 'Buy' : 'Sell'}
+                    </Link>
+                  ) : (
+                    isBid ? 'Buy' : 'Sell'
+                  )}
                 </td>
                 <td className="text-right text-zinc-400 font-mono px-3 py-1.5">
                   {formatPrice(displayAmount)}

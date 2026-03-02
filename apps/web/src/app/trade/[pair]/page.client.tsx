@@ -1,6 +1,7 @@
 'use client'
 
 import { use, useEffect, useRef, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { useTradingPair } from '@/lib/hooks/useTradingPair'
 import { useOrderBook } from '@/lib/hooks/useOrderBook'
@@ -38,17 +39,21 @@ export default function PairOrdersPage({ params }: { params: Promise<{ pair: str
   const { data: pairData, isLoading: pairLoading } = useTradingPair(pairSlug)
   const { bids, asks, spread, spreadPct } = useOrderBook(market)
 
+  const searchParams = useSearchParams()
   const [mobileDataTab, setMobileDataTab] = useState<TabKey>('trades')
 
   const lastPrice = pairData?.last_price != null ? formatAmount(pairData.last_price) : undefined
 
-  // Lifted trade form state
-  const [tradeTab, setTradeTab] = useState<'buy' | 'sell'>('buy')
-  const [priceInput, setPriceInput] = useState('')
-  const [amountInput, setAmountInput] = useState('')
+  // Lifted trade form state — seed from query params if present
+  const paramSide = searchParams.get('side')
+  const paramPrice = searchParams.get('price')
+  const paramAmount = searchParams.get('amount')
+  const [tradeTab, setTradeTab] = useState<'buy' | 'sell'>(paramSide === 'sell' ? 'sell' : 'buy')
+  const [priceInput, setPriceInput] = useState(paramPrice ?? '')
+  const [amountInput, setAmountInput] = useState(paramAmount ?? '')
 
-  // Seed price input once when lastPrice first arrives
-  const seeded = useRef(false)
+  // Seed price input once when lastPrice first arrives (skip if query param provided price)
+  const seeded = useRef(!!paramPrice)
   useEffect(() => {
     if (lastPrice && !seeded.current) {
       setPriceInput(lastPrice)

@@ -1,3 +1,4 @@
+import { Suspense } from 'react'
 import type { Metadata } from 'next'
 import { fetchPairStats } from '@/lib/api/server'
 import { buildTradePairMetadata } from '@/lib/metadata'
@@ -27,5 +28,5 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 }
 
 export default function Page({ params }: Props) {
-  return <PairOrdersPage params={params} />
+  return <Suspense><PairOrdersPage params={params} /></Suspense>
 }
