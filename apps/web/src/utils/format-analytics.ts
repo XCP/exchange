@@ -1,4 +1,4 @@
-export function fmtBig(n: number, decimals = 2): string {
+export function formatBig(n: number, decimals = 2): string {
   if (n >= 1_000_000_000) return (n / 1_000_000_000).toFixed(decimals) + 'B'
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(decimals) + 'M'
   if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K'
@@ -7,7 +7,7 @@ export function fmtBig(n: number, decimals = 2): string {
   return '0'
 }
 
-export function fmtPct(v: number | null): string {
+export function formatPct(v: number | null): string {
   if (v == null) return '\u2014'
   if (v === 0) return '0.0%'
   return `${v > 0 ? '+' : ''}${v.toFixed(1)}%`

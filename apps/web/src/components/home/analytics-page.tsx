@@ -9,7 +9,7 @@ import {
   useAnalyticsTraders,
 } from '@/lib/hooks/useAnalytics'
 import { useSatsMode } from '@/lib/sats-context'
-import { fmtBig, fmtPct, pctColor, mergeDailyVolumes } from '@/utils/format-analytics'
+import { formatBig, formatPct, pctColor, mergeDailyVolumes } from '@/utils/format-analytics'
 import { formatPrice } from '@/utils/format-price'
 import { TogglePills } from './toggle-pills'
 import { CounterCard } from './counter-card'
@@ -65,7 +65,7 @@ export default function AnalyticsPage() {
   const includeHidden = !hideLowQuality
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-8">
+    <div className="px-4 py-8">
       {/* Header + Controls */}
       <div className="flex items-start justify-between mb-6 gap-4 flex-wrap">
         <div>
@@ -124,8 +124,8 @@ function SummarySection({ timeframe, includeHidden }: { timeframe: Timeframe; in
     label: `${p.base_asset_longname ?? p.base_asset}/${p.quote_asset}`,
     cells: [
       { value: p.trade_count.toLocaleString() },
-      { value: fmtBig(p.volume) },
-      { value: fmtPct(p.price_change), className: pctColor(p.price_change) },
+      { value: formatBig(p.volume) },
+      { value: formatPct(p.price_change), className: pctColor(p.price_change) },
     ],
   }))
 
@@ -136,8 +136,8 @@ function SummarySection({ timeframe, includeHidden }: { timeframe: Timeframe; in
     label: c.name,
     cells: [
       { value: c.trade_count.toLocaleString() },
-      { value: fmtBig(c.volume) },
-      { value: fmtPct(c.price_change), className: pctColor(c.price_change) },
+      { value: formatBig(c.volume) },
+      { value: formatPct(c.price_change), className: pctColor(c.price_change) },
     ],
   }))
 
@@ -148,7 +148,7 @@ function SummarySection({ timeframe, includeHidden }: { timeframe: Timeframe; in
     label: d.asset_longname ?? d.asset,
     cells: [
       { value: formatPrice(d.volume, satsMode) },
-      { value: fmtPct(d.price_change), className: pctColor(d.price_change) },
+      { value: formatPct(d.price_change), className: pctColor(d.price_change) },
     ],
   }))
 
@@ -160,7 +160,7 @@ function SummarySection({ timeframe, includeHidden }: { timeframe: Timeframe; in
     cells: [
       { value: c.dispense_count.toLocaleString() },
       { value: formatPrice(c.volume, satsMode) },
-      { value: fmtPct(c.price_change), className: pctColor(c.price_change) },
+      { value: formatPct(c.price_change), className: pctColor(c.price_change) },
     ],
   }))
 
@@ -171,8 +171,8 @@ function SummarySection({ timeframe, includeHidden }: { timeframe: Timeframe; in
         <CounterCard
           label="Trade Volume"
           loading={isLoading}
-          value={tradeSummary ? fmtBig(tradeSummary.tf_volume) + ' XCP' : '\u2014'}
-          sub={tradeSummary && tradeSummary.tf_trades > 0 ? `Avg: ${fmtBig(tradeSummary.tf_volume / tradeSummary.tf_trades)} XCP` : undefined}
+          value={tradeSummary ? formatBig(tradeSummary.tf_volume) + ' XCP' : '\u2014'}
+          sub={tradeSummary && tradeSummary.tf_trades > 0 ? `Avg: ${formatBig(tradeSummary.tf_volume / tradeSummary.tf_trades)} XCP` : undefined}
         />
         <CounterCard
           label="Orders Placed"
@@ -195,8 +195,8 @@ function SummarySection({ timeframe, includeHidden }: { timeframe: Timeframe; in
         <CounterCard
           label="Dispense Volume"
           loading={isLoading}
-          value={dispenseSummary ? fmtBig(dispenseSummary.tf_volume) + ` ${btcLabel.toUpperCase()}` : '\u2014'}
-          sub={dispenseSummary && dispenseSummary.tf_dispenses > 0 ? `Avg: ${fmtBig(dispenseSummary.tf_volume / dispenseSummary.tf_dispenses)} ${btcLabel.toUpperCase()}` : undefined}
+          value={dispenseSummary ? formatBig(dispenseSummary.tf_volume) + ` ${btcLabel.toUpperCase()}` : '\u2014'}
+          sub={dispenseSummary && dispenseSummary.tf_dispenses > 0 ? `Avg: ${formatBig(dispenseSummary.tf_volume / dispenseSummary.tf_dispenses)} ${btcLabel.toUpperCase()}` : undefined}
         />
         <CounterCard
           label="Dispensers Created"

@@ -6,10 +6,15 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { RiFilter3Line } from 'react-icons/ri'
 import { useDispensersLatest, useDispensesLatest, type LatestDispenser, type LatestDispense } from '@/lib/hooks/useDispensersLatest'
+import { useAnalyticsSummary, type Timeframe } from '@/lib/hooks/useAnalytics'
+import { useSatsMode } from '@/lib/sats-context'
 import { useTags } from '@/lib/hooks/useTags'
 import { Pagination } from '@/components/Pagination'
+import { CounterCard } from '@/components/home/counter-card'
+import { TogglePills } from '@/components/home/toggle-pills'
 import { formatAddress } from '@/utils/format-address'
 import { formatPrice } from '@/utils/format-price'
+import { formatBig } from '@/utils/format-analytics'
 import { XCP_IMG_BASE } from '@/utils/constants'
 
 function compactTime(ts: number): string {
@@ -51,10 +56,18 @@ export default function DispensePage() {
   return <Suspense><DispensePageInner /></Suspense>
 }
 
+const TF_OPTIONS = ['24h', '7d', '30d', 'all'] as const
+const TF_LABELS: Record<Timeframe, string> = { '24h': '24h', '7d': '7d', '30d': '30d', all: 'All' }
+
 function DispensePageInner() {
   const searchParams = useSearchParams()
+  const { satsMode } = useSatsMode()
+  const btcLabel = satsMode ? 'sats' : 'BTC'
   const [tab, setTab] = useState<DispenserTab>('open')
   const [tag, setTag] = useState<string | null>(() => searchParams.get('v'))
+  const [timeframe, setTimeframe] = useState<Timeframe>('all')
+  const [hideLowQuality, setHideLowQuality] = useState(true)
+  const includeHidden = !hideLowQuality
 
   const handleTagChange = useCallback((slug: string | null) => {
     setTag(slug)
@@ -68,6 +81,8 @@ function DispensePageInner() {
   const [sourceFilter, setSourceFilter] = useState<string | null>(null)
   const [offset, setOffset] = useState(0)
   const collections = useTags('collection')
+
+  const { dispenseSummary, isLoading: summaryLoading } = useAnalyticsSummary(timeframe, includeHidden)
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedAsset(assetSearch), 300)
@@ -85,6 +100,7 @@ function DispensePageInner() {
     ...(debouncedAsset ? { asset: debouncedAsset } : {}),
     ...(sourceFilter ? { source: sourceFilter } : {}),
     ...(offset > 0 ? { offset } : {}),
+    ...(includeHidden ? { includeHidden: true } : {}),
   }
   const { dispensers, total: dispensersTotal, isLoading: dispensersLoading } = useDispensersLatest(
     Object.keys(dispenserFilters).length > 0 ? dispenserFilters : undefined, 250
@@ -93,6 +109,7 @@ function DispensePageInner() {
     ...(tag ? { tag } : {}),
     ...(debouncedAsset ? { asset: debouncedAsset } : {}),
     ...(offset > 0 ? { offset } : {}),
+    ...(includeHidden ? { includeHidden: true } : {}),
   }
   const { dispenses, total: dispensesTotal, isLoading: dispensesLoading } = useDispensesLatest(
     Object.keys(dispenseFilters).length > 0 ? dispenseFilters : undefined, 250
@@ -103,12 +120,55 @@ function DispensePageInner() {
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
-      <div className="max-w-6xl mx-auto px-4 py-8">
-        <div className="flex items-start justify-between mb-4 gap-4 flex-wrap">
+      <div className="px-4 py-8">
+        <div className="flex items-start justify-between mb-6 gap-4 flex-wrap">
           <div>
             <h1 className="text-lg font-semibold text-zinc-100 mb-1">Dispensers</h1>
             <p className="text-xs text-zinc-500">BTC-to-asset vending machines on Counterparty</p>
           </div>
+          <div className="flex items-center gap-3">
+            <label className="flex items-center gap-1.5 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={hideLowQuality}
+                onChange={(e) => setHideLowQuality(e.target.checked)}
+                className="accent-zinc-500 w-3 h-3"
+              />
+              <span className="text-xs text-zinc-500">Hide low quality</span>
+            </label>
+            <TogglePills
+              options={TF_OPTIONS}
+              value={timeframe}
+              onChange={setTimeframe}
+              label={(tf) => TF_LABELS[tf]}
+            />
+          </div>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-6">
+          <CounterCard
+            label="Dispense Volume"
+            loading={summaryLoading}
+            value={dispenseSummary ? formatBig(dispenseSummary.tf_volume) + ` ${btcLabel.toUpperCase()}` : '\u2014'}
+            sub={dispenseSummary && dispenseSummary.tf_dispenses > 0 ? `Avg: ${formatBig(dispenseSummary.tf_volume / dispenseSummary.tf_dispenses)} ${btcLabel.toUpperCase()}` : undefined}
+          />
+          <CounterCard
+            label="Dispensers Created"
+            loading={summaryLoading}
+            value={dispenseSummary ? dispenseSummary.tf_dispensers_created.toLocaleString() : '\u2014'}
+            sub={dispenseSummary ? `${dispenseSummary.open_dispensers.toLocaleString()} open` : undefined}
+          />
+          <CounterCard
+            label="Dispenses"
+            loading={summaryLoading}
+            value={dispenseSummary ? dispenseSummary.tf_dispenses.toLocaleString() : '\u2014'}
+            sub={dispenseSummary?.tf_unique_buyers ? `${dispenseSummary.tf_unique_buyers.toLocaleString()} addresses` : undefined}
+          />
+          <CounterCard
+            label="Active Dispensers"
+            loading={summaryLoading}
+            value={dispenseSummary ? dispenseSummary.active_assets.toLocaleString() : '\u2014'}
+            sub={dispenseSummary ? (timeframe === 'all' ? `${dispenseSummary.total_assets.toLocaleString()} total` : dispenseSummary.new_assets ? `${dispenseSummary.new_assets.toLocaleString()} new` : undefined) : undefined}
+          />
         </div>
         <div className="bg-zinc-900/50 border border-zinc-800 rounded-sm">
           <div className="px-3 py-2 flex items-center gap-2">

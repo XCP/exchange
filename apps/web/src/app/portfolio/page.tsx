@@ -73,7 +73,7 @@ export default function PortfolioPage() {
       </div>
 
       {/* Tab content */}
-      <div className="max-w-5xl mx-auto">
+      <div className="mx-auto">
         {activeTab === 'orders' && <PortfolioOrders address={address} />}
         {activeTab === 'dispensers' && <PortfolioDispensers address={address} />}
         {activeTab === 'swaps' && <PortfolioSwaps address={address} />}

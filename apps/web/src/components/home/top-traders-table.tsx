@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import type { AnalyticsTopTrader } from '@/lib/hooks/useAnalytics'
 import { TogglePills } from './toggle-pills'
-import { fmtBig } from '@/utils/format-analytics'
+import { formatBig } from '@/utils/format-analytics'
 
 export function TopTradersTable({
   title,
@@ -63,7 +63,7 @@ export function TopTradersTable({
                 <td className="px-3 py-1.5 text-zinc-300 font-mono text-[11px] break-all">
                   {t.address}
                 </td>
-                <td className="text-right text-zinc-400 font-mono px-3 py-1.5">{fmtBig(t.volume)}</td>
+                <td className="text-right text-zinc-400 font-mono px-3 py-1.5">{formatBig(t.volume)}</td>
                 <td className="text-right text-zinc-400 font-mono px-3 py-1.5">{t.trades.toLocaleString()}</td>
               </tr>
             ))}

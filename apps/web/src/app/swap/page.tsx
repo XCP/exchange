@@ -30,7 +30,7 @@ export default function SwapPage() {
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
-      <div className="max-w-6xl mx-auto px-4 py-8">
+      <div className="px-4 py-8">
         <div className="mb-6 flex items-start justify-between">
           <div>
             <h1 className="text-lg font-semibold text-zinc-100 mb-1">Atomic Swaps</h1>

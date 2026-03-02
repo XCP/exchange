@@ -39,6 +39,7 @@ export interface OrderFilters {
   side?: string
   sort?: string
   offset?: number
+  includeHidden?: boolean
 }
 
 function buildUrl(tab: OrderTab, filters?: OrderFilters): string {
@@ -77,6 +78,9 @@ function buildUrl(tab: OrderTab, filters?: OrderFilters): string {
   }
   if (filters?.offset) {
     params.set('offset', String(filters.offset))
+  }
+  if (filters?.includeHidden) {
+    params.set('include_hidden', '1')
   }
 
   const qs = params.toString()

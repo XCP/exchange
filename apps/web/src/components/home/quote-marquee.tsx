@@ -2,7 +2,7 @@
 
 import Image from 'next/image'
 import type { QuoteVolume } from '@/lib/hooks/useAnalytics'
-import { fmtBig } from '@/utils/format-analytics'
+import { formatBig } from '@/utils/format-analytics'
 import { XCP_IMG_BASE } from '@/utils/constants'
 
 export function QuoteMarquee({ quoteVolumes }: { quoteVolumes: QuoteVolume[] }) {
@@ -30,7 +30,7 @@ export function QuoteMarquee({ quoteVolumes }: { quoteVolumes: QuoteVolume[] }) 
             />
             <span className="text-xs text-zinc-400 font-mono">{q.quote_asset_longname ?? q.quote_asset}</span>
             <span className="text-xs text-zinc-200 font-mono font-semibold">{q.trade_count.toLocaleString()} trades</span>
-            <span className="text-[10px] text-zinc-500 font-mono">{fmtBig(q.volume)} vol</span>
+            <span className="text-[10px] text-zinc-500 font-mono">{formatBig(q.volume)} vol</span>
           </div>
         ))}
       </div>

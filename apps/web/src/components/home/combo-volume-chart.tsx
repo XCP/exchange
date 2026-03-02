@@ -9,7 +9,7 @@ import {
   type Time,
   ColorType,
 } from 'lightweight-charts'
-import { fmtBig } from '@/utils/format-analytics'
+import { formatBig } from '@/utils/format-analytics'
 
 const BASE_CHART_OPTIONS = {
   layout: {
@@ -109,7 +109,7 @@ export default function ComboVolumeChart({
     const lineSeries = chart.addSeries(LineSeries, {
       color,
       lineWidth: 2,
-      priceFormat: { type: 'custom', formatter: (v: number) => fmtBig(v) },
+      priceFormat: { type: 'custom', formatter: (v: number) => formatBig(v) },
       priceScaleId: 'left',
       lastValueVisible: false,
       priceLineVisible: false,
@@ -117,7 +117,7 @@ export default function ComboVolumeChart({
     lineSeries.setData(cumulativeData)
 
     const histSeries = chart.addSeries(HistogramSeries, {
-      priceFormat: { type: 'custom', formatter: (v: number) => fmtBig(v) },
+      priceFormat: { type: 'custom', formatter: (v: number) => formatBig(v) },
       priceScaleId: 'right',
       lastValueVisible: false,
       priceLineVisible: false,

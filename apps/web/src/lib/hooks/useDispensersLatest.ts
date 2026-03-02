@@ -36,6 +36,7 @@ export interface DispenserFilters {
   tag?: string
   status?: string
   offset?: number
+  includeHidden?: boolean
 }
 
 function buildDispensersUrl(filters?: DispenserFilters, limit: number = 250): string {
@@ -46,6 +47,7 @@ function buildDispensersUrl(filters?: DispenserFilters, limit: number = 250): st
   if (filters?.source) params.set('source', filters.source)
   if (filters?.tag) params.set('tag', filters.tag)
   if (filters?.offset) params.set('offset', String(filters.offset))
+  if (filters?.includeHidden) params.set('include_hidden', '1')
   const qs = params.toString()
   return dexUrl(`/dispensers/latest?${qs}`)
 }
@@ -56,6 +58,7 @@ function buildDispensesUrl(filters?: DispenserFilters, limit: number = 250): str
   if (filters?.asset) params.set('asset', filters.asset)
   if (filters?.tag) params.set('tag', filters.tag)
   if (filters?.offset) params.set('offset', String(filters.offset))
+  if (filters?.includeHidden) params.set('include_hidden', '1')
   const qs = params.toString()
   return dexUrl(`/dispenses/latest?${qs}`)
 }

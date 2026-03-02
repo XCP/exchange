@@ -64,6 +64,11 @@ export async function handleOrdersLatest(
     binds.push(side === "buy" ? "bid" : "ask");
   }
 
+  const includeHidden = url.searchParams.get("include_hidden");
+  if (!includeHidden) {
+    conditions.push(`(ps.hidden IS NULL OR ps.hidden = 0)`);
+  }
+
   const tag = url.searchParams.get("tag");
   if (tag) {
     const tagType = url.searchParams.get("tag_type") ?? "collection";

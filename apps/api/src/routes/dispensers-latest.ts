@@ -38,6 +38,13 @@ export async function handleDispensersLatest(
     binds.push(source);
   }
 
+  const includeHidden = url.searchParams.get("include_hidden");
+  if (!includeHidden) {
+    conditions.push(
+      `d.asset NOT IN (SELECT asset FROM dispenser_stats WHERE hidden = 1)`
+    );
+  }
+
   const tag = url.searchParams.get("tag");
   if (tag) {
     const tagType = url.searchParams.get("tag_type") ?? "collection";
@@ -97,6 +104,13 @@ export async function handleDispensesLatest(
 
   const conditions: string[] = [];
   const binds: (string | number)[] = [];
+
+  const includeHiddenDispenses = url.searchParams.get("include_hidden");
+  if (!includeHiddenDispenses) {
+    conditions.push(
+      `e.asset NOT IN (SELECT asset FROM dispenser_stats WHERE hidden = 1)`
+    );
+  }
 
   if (asset) {
     conditions.push(`e.asset LIKE ?`);

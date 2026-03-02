@@ -34,7 +34,7 @@ export default function SwapAssetPage({ params }: { params: Promise<{ asset: str
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
-      <div className="max-w-6xl mx-auto px-4 py-8">
+      <div className="px-4 py-8">
         {/* Header */}
         <div className="mb-6">
           <div className="flex items-center gap-2 mb-1">

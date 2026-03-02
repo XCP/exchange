@@ -7,10 +7,14 @@ import Link from 'next/link'
 import { RiFilter3Line, RiCloseLine } from 'react-icons/ri'
 import { useBlockHeight } from '@/lib/hooks/useNetworkInfo'
 import { useLatestOrders, type OrderTab, type LatestOrder } from '@/lib/hooks/useLatestOrders'
+import { useAnalyticsSummary, type Timeframe } from '@/lib/hooks/useAnalytics'
 import { useTags } from '@/lib/hooks/useTags'
 import { Pagination } from '@/components/Pagination'
+import { CounterCard } from '@/components/home/counter-card'
+import { TogglePills } from '@/components/home/toggle-pills'
 import { formatAddress } from '@/utils/format-address'
 import { formatPrice } from '@/utils/format-price'
+import { formatBig } from '@/utils/format-analytics'
 import { XCP_IMG_BASE } from '@/utils/constants'
 
 function compactTime(ts: number): string {
@@ -45,6 +49,9 @@ export default function TradePage() {
   return <Suspense><TradePageInner /></Suspense>
 }
 
+const TF_OPTIONS = ['24h', '7d', '30d', 'all'] as const
+const TF_LABELS: Record<Timeframe, string> = { '24h': '24h', '7d': '7d', '30d': '30d', all: 'All' }
+
 function TradePageInner() {
   const searchParams = useSearchParams()
   const [tab, setTab] = useState<OrderTab>('open')
@@ -56,6 +63,9 @@ function TradePageInner() {
   const [sideFilter, setSideFilter] = useState<'buy' | 'sell' | null>(null)
   const [sortCol, setSortCol] = useState<'price:asc' | 'price:desc' | null>(null)
   const [tag, setTag] = useState<string | null>(() => searchParams.get('v'))
+  const [timeframe, setTimeframe] = useState<Timeframe>('all')
+  const [hideLowQuality, setHideLowQuality] = useState(true)
+  const includeHidden = !hideLowQuality
 
   const handleTagChange = useCallback((slug: string | null) => {
     setTag(slug)
@@ -67,6 +77,8 @@ function TradePageInner() {
   const [offset, setOffset] = useState(0)
   const collections = useTags('collection')
   const blockHeight = useBlockHeight()
+
+  const { tradeSummary, isLoading: summaryLoading } = useAnalyticsSummary(timeframe, includeHidden)
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedBase(baseSearch), 300)
@@ -90,21 +102,62 @@ function TradePageInner() {
     ...(sideFilter ? { side: sideFilter } : {}),
     ...(sortCol ? { sort: sortCol } : {}),
     ...(offset > 0 ? { offset } : {}),
+    ...(includeHidden ? { includeHidden: true } : {}),
   }
 
   const { orders, total, isLoading } = useLatestOrders(tab, Object.keys(filters).length > 0 ? filters : undefined)
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
-      <div className="max-w-6xl mx-auto px-4 py-8">
-        <div className="flex items-start justify-between mb-4 gap-4 flex-wrap">
+      <div className="px-4 py-8">
+        <div className="flex items-start justify-between mb-6 gap-4 flex-wrap">
           <div>
             <h1 className="text-lg font-semibold text-zinc-100 mb-1">DEX Orders</h1>
             <p className="text-xs text-zinc-500">Order book activity across all trading pairs</p>
           </div>
-          {blockHeight != null && (
-            <span className="text-xs text-zinc-500 font-mono">Block {blockHeight.toLocaleString()}</span>
-          )}
+          <div className="flex items-center gap-3">
+            <label className="flex items-center gap-1.5 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={hideLowQuality}
+                onChange={(e) => setHideLowQuality(e.target.checked)}
+                className="accent-zinc-500 w-3 h-3"
+              />
+              <span className="text-xs text-zinc-500">Hide low quality</span>
+            </label>
+            <TogglePills
+              options={TF_OPTIONS}
+              value={timeframe}
+              onChange={setTimeframe}
+              label={(tf) => TF_LABELS[tf]}
+            />
+          </div>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-6">
+          <CounterCard
+            label="Trade Volume"
+            loading={summaryLoading}
+            value={tradeSummary ? formatBig(tradeSummary.tf_volume) + ' XCP' : '\u2014'}
+            sub={tradeSummary && tradeSummary.tf_trades > 0 ? `Avg: ${formatBig(tradeSummary.tf_volume / tradeSummary.tf_trades)} XCP` : undefined}
+          />
+          <CounterCard
+            label="Orders Placed"
+            loading={summaryLoading}
+            value={tradeSummary ? tradeSummary.tf_orders.toLocaleString() : '\u2014'}
+            sub={tradeSummary ? `${tradeSummary.open_orders.toLocaleString()} open` : undefined}
+          />
+          <CounterCard
+            label="Trades"
+            loading={summaryLoading}
+            value={tradeSummary ? tradeSummary.tf_trades.toLocaleString() : '\u2014'}
+            sub={tradeSummary?.tf_unique_traders ? `${tradeSummary.tf_unique_traders.toLocaleString()} addresses` : undefined}
+          />
+          <CounterCard
+            label="Active Pairs"
+            loading={summaryLoading}
+            value={tradeSummary ? tradeSummary.active_pairs.toLocaleString() : '\u2014'}
+            sub={tradeSummary ? (timeframe === 'all' ? `${tradeSummary.total_pairs.toLocaleString()} total` : tradeSummary.new_pairs ? `${tradeSummary.new_pairs.toLocaleString()} new` : undefined) : undefined}
+          />
         </div>
         <div className="bg-zinc-900/50 border border-zinc-800 rounded-sm">
           <div className="px-3 py-2 flex items-center gap-2">
