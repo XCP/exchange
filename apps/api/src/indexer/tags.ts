@@ -22,12 +22,13 @@ const PEPE_WTF_SLUG_OVERRIDES: Record<string, string> = {
   "fake-rares": "fake-rare",
 };
 
-/** Slugs to skip during xcp.io sync (stamps sub-collections absorbed into STAMPs) */
+/** Slugs to skip during xcp.io sync (stamps sub-collections absorbed into STAMPs, etc.) */
 const SKIP_SLUGS = new Set([
   "stampunks", "comediananas", "stampshroomz", "this-is-not-a-stamp",
   "quakestamps", "twistedpepes", "hunt", "stamhams", "stamp-baby-stamp",
   "avime", "rarestamps", "stampcash", "weird-memes", "txampstamp",
   "book-of-stamp", "stampepes", "vivalastamps",
+  "rarepepecoins",
 ]);
 
 function slugify(name: string): string {

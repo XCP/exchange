@@ -6,10 +6,12 @@ import PairOrdersPage from './page.client'
 
 interface Props {
   params: Promise<{ pair: string }>
+  searchParams: Promise<Record<string, string | string[] | undefined>>
 }
 
-export async function generateMetadata({ params }: Props): Promise<Metadata> {
+export async function generateMetadata({ params, searchParams }: Props): Promise<Metadata> {
   const { pair: pairSlug } = await params
+  const sp = await searchParams
   const lastUnderscoreIndex = pairSlug.lastIndexOf('_')
   const base = pairSlug.substring(0, lastUnderscoreIndex)
   const quote = pairSlug.substring(lastUnderscoreIndex + 1)
@@ -17,7 +19,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const stats = await fetchPairStats(pairSlug)
   const displayBase = stats?.base_asset_longname ?? base
 
-  return buildTradePairMetadata(
+  const meta = buildTradePairMetadata(
     base,
     quote,
     displayBase,
@@ -25,6 +27,17 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     stats?.last_price,
     stats?.price_change_24h,
   )
+
+  const hasTradeParams = sp.side || sp.price || sp.amount
+  if (hasTradeParams) {
+    return {
+      ...meta,
+      alternates: { canonical: `/trade/${pairSlug}` },
+      robots: { index: false, follow: false },
+    }
+  }
+
+  return meta
 }
 
 export default function Page({ params }: Props) {

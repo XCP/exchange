@@ -82,7 +82,7 @@ function DispensePageInner() {
   const [offset, setOffset] = useState(0)
   const collections = useTags('collection')
 
-  const { dispenseSummary, isLoading: summaryLoading } = useAnalyticsSummary(timeframe, includeHidden)
+  const { dispenseSummary, isLoading: summaryLoading } = useAnalyticsSummary(timeframe, includeHidden, tag)
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedAsset(assetSearch), 300)

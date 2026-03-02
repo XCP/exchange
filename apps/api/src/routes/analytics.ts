@@ -9,6 +9,7 @@ export async function handleAnalytics(
   const tf = tfParam === "7d" || tfParam === "30d" || tfParam === "all" ? tfParam : "24h";
   const includeHidden = url.searchParams.get("include_hidden") === "1";
   const section = url.searchParams.get("section"); // summary | charts | traders (null = all)
+  const tag = url.searchParams.get("tag");
 
   const pairHidden = includeHidden ? "" : " AND hidden = 0";
   const dispHidden = includeHidden ? "" : " AND ds.hidden = 0";
@@ -16,6 +17,15 @@ export async function handleAnalytics(
   // Efficient hidden filters for raw tables (NOT IN is faster than correlated NOT EXISTS)
   const tradeHidden = includeHidden ? "" : " AND pair NOT IN (SELECT pair FROM pair_stats WHERE hidden = 1)";
   const dispenseHidden = includeHidden ? "" : " AND asset NOT IN (SELECT asset FROM dispenser_stats WHERE hidden = 1)";
+
+  // Collection tag filter subquery (each usage adds 1 bound ? param)
+  const tagSub = `(SELECT ta.asset FROM tag_assets ta JOIN tags t ON ta.tag_id = t.id WHERE t.slug = ?)`;
+  const psTagFilt = tag ? ` AND base_asset IN ${tagSub}` : "";
+  const pairTagFilt = tag ? ` AND pair IN (SELECT pair FROM pair_stats WHERE base_asset IN ${tagSub})` : "";
+  const oPairTagFilt = tag ? ` AND o.pair IN (SELECT pair FROM pair_stats WHERE base_asset IN ${tagSub})` : "";
+  const dsTagFilt = tag ? ` AND ds.asset IN ${tagSub}` : "";
+  const ddTagFilt = tag ? ` AND dd.asset IN ${tagSub}` : "";
+  const rawDispTagFilt = tag ? ` AND asset IN ${tagSub}` : "";
 
   // Timestamp cutoff for raw trade/dispense queries
   const now = Math.floor(Date.now() / 1000);
@@ -38,10 +48,10 @@ export async function handleAnalytics(
   // For "all" timeframe, SQL returns 0 — overridden by Counterparty API result_count
   const tfOrdersExpr = tf === "all"
     ? "0"
-    : `(SELECT COUNT(*) FROM orders WHERE 1=1${timeFilt}${tradeHidden})`;
+    : `(SELECT COUNT(*) FROM orders WHERE 1=1${timeFilt}${tradeHidden}${pairTagFilt})`;
   const tfDispCreatedExpr = tf === "all"
     ? "0"
-    : `(SELECT COUNT(*) FROM dispensers WHERE 1=1${timeFilt}${dispenseHidden})`;
+    : `(SELECT COUNT(*) FROM dispensers WHERE 1=1${timeFilt}${dispenseHidden}${rawDispTagFilt})`;
 
   // Default empty results
   let tradeSummaryData: Record<string, number> | undefined;
@@ -61,37 +71,54 @@ export async function handleAnalytics(
 
   // Section: summary — counter cards + leaderboards (all from pre-computed stats tables, fast)
   if (!section || section === "summary") {
-    const dbPromise = db.batch([
-      db.prepare(
-        `SELECT
+    // Compute tag bind params for summary queries (order must match ? placeholders in SQL)
+    const tradeTagBinds: string[] = [];
+    const dispTagBinds: string[] = [];
+    if (tag) {
+      tradeTagBinds.push(tag); // open_orders oPairTagFilt
+      if (tf !== "all") tradeTagBinds.push(tag); // tf_orders pairTagFilt
+      tradeTagBinds.push(tag, tag); // tf_unique_traders pairTagFilt x2
+      if (cutoff > 0) tradeTagBinds.push(tag); // new_pairs pairTagFilt
+      tradeTagBinds.push(tag); // main WHERE psTagFilt
+
+      dispTagBinds.push(tag); // open_dispensers ddTagFilt
+      if (tf !== "all") dispTagBinds.push(tag); // tf_dispensers_created rawDispTagFilt
+      dispTagBinds.push(tag); // tf_unique_buyers rawDispTagFilt
+      if (cutoff > 0) dispTagBinds.push(tag); // new_assets rawDispTagFilt
+      dispTagBinds.push(tag); // main WHERE dsTagFilt
+    }
+
+    const tradeSummarySql = `SELECT
           COALESCE(SUM(CASE WHEN quote_asset = 'XCP' THEN total_volume ELSE 0 END), 0) AS total_volume,
           COALESCE(SUM(total_trade_count), 0) AS total_trade_count,
           COUNT(*) AS total_pairs,
           SUM(CASE WHEN ${tradeCountCol} > 0 THEN 1 ELSE 0 END) AS active_pairs,
           COALESCE(SUM(CASE WHEN quote_asset = 'XCP' THEN ${volCol} ELSE 0 END), 0) AS tf_volume,
           COALESCE(SUM(${tradeCountCol}), 0) AS tf_trades,
-          (SELECT COUNT(*) FROM orders o WHERE o.status = 'open'${includeHidden ? "" : " AND o.pair NOT IN (SELECT pair FROM pair_stats WHERE hidden = 1)"}) AS open_orders,
+          (SELECT COUNT(*) FROM orders o WHERE o.status = 'open'${includeHidden ? "" : " AND o.pair NOT IN (SELECT pair FROM pair_stats WHERE hidden = 1)"}${oPairTagFilt}) AS open_orders,
           ${tfOrdersExpr} AS tf_orders,
-          (SELECT COUNT(*) FROM (SELECT maker AS a FROM trades WHERE 1=1${timeFilt}${tradeHidden} UNION SELECT taker FROM trades WHERE 1=1${timeFilt}${tradeHidden})) AS tf_unique_traders,
-          ${cutoff > 0 ? `(SELECT COUNT(*) FROM (SELECT pair FROM trades WHERE 1=1${tradeHidden} GROUP BY pair HAVING MIN(block_time) >= ${cutoff}))` : "0"} AS new_pairs
+          (SELECT COUNT(*) FROM (SELECT maker AS a FROM trades WHERE 1=1${timeFilt}${tradeHidden}${pairTagFilt} UNION SELECT taker FROM trades WHERE 1=1${timeFilt}${tradeHidden}${pairTagFilt})) AS tf_unique_traders,
+          ${cutoff > 0 ? `(SELECT COUNT(*) FROM (SELECT pair FROM trades WHERE 1=1${tradeHidden}${pairTagFilt} GROUP BY pair HAVING MIN(block_time) >= ${cutoff}))` : "0"} AS new_pairs
          FROM pair_stats
-         WHERE 1=1${pairHidden}`
-      ),
-      db.prepare(
-        `SELECT
+         WHERE 1=1${pairHidden}${psTagFilt}`;
+
+    const dispenseSummarySql = `SELECT
           COALESCE(SUM(total_btc_spent), 0) AS total_btc_spent,
           COALESCE(SUM(total_dispense_count), 0) AS total_dispense_count,
-          (SELECT COUNT(*) FROM dispensers dd WHERE dd.status < 10${includeHidden ? "" : " AND dd.asset NOT IN (SELECT asset FROM dispenser_stats WHERE hidden = 1)"}) AS open_dispensers,
+          (SELECT COUNT(*) FROM dispensers dd WHERE dd.status < 10${includeHidden ? "" : " AND dd.asset NOT IN (SELECT asset FROM dispenser_stats WHERE hidden = 1)"}${ddTagFilt}) AS open_dispensers,
           COALESCE(SUM(${dispVolCol}), 0) AS tf_volume,
           COALESCE(SUM(${dispCountCol}), 0) AS tf_dispenses,
           SUM(CASE WHEN ${dispCountCol} > 0 THEN 1 ELSE 0 END) AS active_assets,
           COUNT(*) AS total_assets,
           ${tfDispCreatedExpr} AS tf_dispensers_created,
-          (SELECT COUNT(DISTINCT destination) FROM dispenses WHERE 1=1${timeFilt}${dispenseHidden}) AS tf_unique_buyers,
-          ${cutoff > 0 ? `(SELECT COUNT(*) FROM (SELECT asset FROM dispenses WHERE 1=1${dispenseHidden} GROUP BY asset HAVING MIN(block_time) >= ${cutoff}))` : "0"} AS new_assets
+          (SELECT COUNT(DISTINCT destination) FROM dispenses WHERE 1=1${timeFilt}${dispenseHidden}${rawDispTagFilt}) AS tf_unique_buyers,
+          ${cutoff > 0 ? `(SELECT COUNT(*) FROM (SELECT asset FROM dispenses WHERE 1=1${dispenseHidden}${rawDispTagFilt} GROUP BY asset HAVING MIN(block_time) >= ${cutoff}))` : "0"} AS new_assets
          FROM dispenser_stats ds
-         WHERE 1=1${dispHidden}`
-      ),
+         WHERE 1=1${dispHidden}${dsTagFilt}`;
+
+    const dbPromise = db.batch([
+      tradeTagBinds.length ? db.prepare(tradeSummarySql).bind(...tradeTagBinds) : db.prepare(tradeSummarySql),
+      dispTagBinds.length ? db.prepare(dispenseSummarySql).bind(...dispTagBinds) : db.prepare(dispenseSummarySql),
       db.prepare(
         `SELECT pair, base_asset, quote_asset, base_asset_longname, last_price,
                 ${tradeCountCol} AS trade_count,
@@ -156,7 +183,7 @@ export async function handleAnalytics(
     // For "all" timeframe, fetch true all-time totals from Counterparty API in parallel
     // cf.cacheTtl caches at the Cloudflare edge for 6 hours
     const cpFetchOpts = { cf: { cacheTtl: 21600 } };
-    const cpPromise = tf === "all"
+    const cpPromise = tf === "all" && !tag
       ? Promise.all([
           fetch("https://api.counterparty.io:4000/v2/orders?limit=1", cpFetchOpts).then(r => r.json()).catch(() => null),
           fetch("https://api.counterparty.io:4000/v2/dispensers?limit=1", cpFetchOpts).then(r => r.json()).catch(() => null),
