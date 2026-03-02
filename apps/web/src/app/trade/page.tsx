@@ -202,7 +202,9 @@ function TradePageInner() {
             </div>
           </div>
 
-          <OrdersTable orders={orders} isLoading={isLoading} blockHeight={blockHeight} baseSearch={baseSearch} quoteSearch={quoteSearch} onBaseSearch={setBaseSearch} onQuoteSearch={setQuoteSearch} onFilterAddress={setSourceFilter} sourceFilter={sourceFilter} onClearAddress={() => setSourceFilter(null)} sideFilter={sideFilter} onSideFilter={setSideFilter} sortCol={sortCol} onSortCol={setSortCol} />
+          <div className="overflow-x-auto">
+            <OrdersTable orders={orders} isLoading={isLoading} blockHeight={blockHeight} baseSearch={baseSearch} quoteSearch={quoteSearch} onBaseSearch={setBaseSearch} onQuoteSearch={setQuoteSearch} onFilterAddress={setSourceFilter} sourceFilter={sourceFilter} onClearAddress={() => setSourceFilter(null)} sideFilter={sideFilter} onSideFilter={setSideFilter} sortCol={sortCol} onSortCol={setSortCol} />
+          </div>
           <Pagination total={total} offset={offset} limit={250} onOffsetChange={setOffset} />
         </div>
       </div>
@@ -313,7 +315,7 @@ function OrdersTable({ orders, isLoading, blockHeight, baseSearch, quoteSearch, 
             </span>
           </th>
           <th className="text-right font-normal px-3 py-1.5">Total</th>
-          <th className="text-left font-normal px-3 py-1.5 max-sm:hidden">
+          <th className="text-left font-normal px-3 py-1.5">
             <div className="relative inline-flex items-center gap-1" ref={addrRef}>
               <span>Address</span>
               {sourceFilter ? (
@@ -343,8 +345,8 @@ function OrdersTable({ orders, isLoading, blockHeight, baseSearch, quoteSearch, 
               )}
             </div>
           </th>
-          <th className="text-left font-normal px-3 py-1.5 max-sm:hidden">Status</th>
-          <th className="text-right font-normal px-3 py-1.5 max-sm:hidden">Expires</th>
+          <th className="text-left font-normal px-3 py-1.5">Status</th>
+          <th className="text-right font-normal px-3 py-1.5">Expires</th>
         </tr>
       </thead>
       <tbody>
@@ -389,7 +391,7 @@ function OrdersTable({ orders, isLoading, blockHeight, baseSearch, quoteSearch, 
                 <td className="text-right text-zinc-400 font-mono px-3 py-1.5">
                   {isFinite(order.price) ? formatPrice(order.price * displayAmount) : '—'}
                 </td>
-                <td className="text-left font-mono px-3 py-1.5 max-sm:hidden">
+                <td className="text-left font-mono px-3 py-1.5">
                   <span className="inline-flex items-center gap-1">
                     <span className="text-zinc-500">{formatAddress(order.source)}</span>
                     {!sourceFilter && (
@@ -403,10 +405,10 @@ function OrdersTable({ orders, isLoading, blockHeight, baseSearch, quoteSearch, 
                     )}
                   </span>
                 </td>
-                <td className={`text-left font-mono px-3 py-1.5 max-sm:hidden capitalize ${isClosed ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                <td className={`text-left font-mono px-3 py-1.5 capitalize ${isClosed ? 'text-zinc-500' : 'text-zinc-400'}`}>
                   {order.status}
                 </td>
-                <td className="text-right text-zinc-500 font-mono px-3 py-1.5 max-sm:hidden">
+                <td className="text-right text-zinc-500 font-mono px-3 py-1.5">
                   {blockHeight != null ? `${Math.max(0, order.expire_index - blockHeight).toLocaleString()} blocks` : '—'}
                 </td>
               </tr>
