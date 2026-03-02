@@ -60,10 +60,14 @@ export function WalletProvider({ children }: { children: ReactNode }) {
               setAddress(accounts[0])
               setStatus('connected')
             } else {
+              setAddress(null)
+              setStatus('disconnected')
               storageRemove(STORAGE_KEY)
             }
           })
           .catch(() => {
+            setAddress(null)
+            setStatus('disconnected')
             storageRemove(STORAGE_KEY)
           })
       }
