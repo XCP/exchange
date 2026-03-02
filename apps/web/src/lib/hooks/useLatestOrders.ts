@@ -49,7 +49,6 @@ function buildUrl(tab: OrderTab, filters?: OrderFilters): string {
     params.set('status', tab)
   } else if (tab === 'expired') {
     params.set('status', 'expired')
-    params.set('sort', 'expire_index:desc')
   } else if (tab === 'expiring') {
     params.set('status', 'open')
     params.set('sort', 'expire_index:asc')
