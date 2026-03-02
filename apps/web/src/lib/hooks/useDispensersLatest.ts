@@ -34,11 +34,13 @@ export interface DispenserFilters {
   asset?: string
   source?: string
   tag?: string
+  status?: string
 }
 
 function buildDispensersUrl(filters?: DispenserFilters, limit: number = 50): string {
   const params = new URLSearchParams()
   params.set('limit', String(limit))
+  if (filters?.status) params.set('status', filters.status)
   if (filters?.asset) params.set('asset', filters.asset)
   if (filters?.source) params.set('source', filters.source)
   if (filters?.tag) params.set('tag', filters.tag)

@@ -12,8 +12,16 @@ export async function handleDispensersLatest(
     200
   );
 
-  const conditions: string[] = ["d.status < 10"];
+  const status = url.searchParams.get("status");
+  const conditions: string[] = [];
   const binds: (string | number)[] = [];
+
+  if (status === "open") {
+    conditions.push(`d.status < 10`);
+  } else if (status === "closed") {
+    conditions.push(`d.status >= 10`);
+  }
+  // "all" or null = no status filter
 
   if (asset) {
     conditions.push(`d.asset LIKE ?`);

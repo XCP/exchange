@@ -29,14 +29,30 @@ function EmptyRows({ loading, label, cols }: { loading: boolean; label: string; 
   )
 }
 
+type DispenserTab = 'all' | 'open' | 'dispenses' | 'closed'
+
+const TABS: [DispenserTab, string][] = [
+  ['all', 'All'],
+  ['open', 'Open'],
+  ['dispenses', 'Dispenses'],
+  ['closed', 'Closed'],
+]
+
 export default function DispensePage() {
-  const [tab, setTab] = useState<0 | 1>(0)
+  const [tab, setTab] = useState<DispenserTab>('open')
   const [tag, setTag] = useState<string | null>(null)
   const collections = useTags('collection')
 
-  const filters = tag ? { tag } : undefined
-  const { dispensers, isLoading: dispensersLoading } = useDispensersLatest(filters, 50)
-  const { dispenses, isLoading: dispensesLoading } = useDispensesLatest(filters, 50)
+  const dispenserStatus = tab === 'dispenses' ? undefined : tab
+  const dispenserFilters = {
+    ...(tag ? { tag } : {}),
+    ...(dispenserStatus ? { status: dispenserStatus } : {}),
+  }
+  const { dispensers, isLoading: dispensersLoading } = useDispensersLatest(
+    Object.keys(dispenserFilters).length > 0 ? dispenserFilters : undefined, 50
+  )
+  const dispenseFilters = tag ? { tag } : undefined
+  const { dispenses, isLoading: dispensesLoading } = useDispensesLatest(dispenseFilters, 50)
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
@@ -62,12 +78,12 @@ export default function DispensePage() {
               ))}
             </select>
             <div className="flex gap-0.5 ml-auto">
-              {['New', 'Dispenses'].map((label, i) => (
+              {TABS.map(([key, label]) => (
                 <button
-                  key={label}
-                  onClick={() => setTab(i as 0 | 1)}
+                  key={key}
+                  onClick={() => setTab(key)}
                   className={`px-2 py-0.5 text-[10px] font-mono rounded-sm transition-colors ${
-                    tab === i
+                    tab === key
                       ? 'bg-zinc-700 text-zinc-100'
                       : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900'
                   }`}
@@ -77,10 +93,10 @@ export default function DispensePage() {
               ))}
             </div>
           </div>
-          {tab === 0 ? (
-            <DispensersTable dispensers={dispensers} isLoading={dispensersLoading} />
-          ) : (
+          {tab === 'dispenses' ? (
             <DispensesTable dispenses={dispenses} isLoading={dispensesLoading} />
+          ) : (
+            <DispensersTable dispensers={dispensers} isLoading={dispensersLoading} />
           )}
         </div>
       </div>
