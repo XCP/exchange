@@ -384,7 +384,7 @@ function OrdersTable({ tab, orders, isLoading, blockHeight, baseSearch, quoteSea
                   </Link>
                 </td>
                 <td className="text-right text-zinc-400 font-mono px-3 py-1.5">
-                  {isFinite(order.price) ? formatPrice(order.price) : '—'}
+                  {isFinite(order.price) && order.price > 0 ? formatPrice(order.price) : '—'}
                 </td>
                 <td className="px-3 py-1.5">
                   <Link href={`/trade/${order.pair}`} className="flex items-center gap-1.5 hover:underline decoration-zinc-400">
@@ -393,7 +393,7 @@ function OrdersTable({ tab, orders, isLoading, blockHeight, baseSearch, quoteSea
                   </Link>
                 </td>
                 <td className="text-right text-zinc-400 font-mono px-3 py-1.5">
-                  {isFinite(order.price) ? formatPrice(order.price * displayAmount) : '—'}
+                  {isFinite(order.price) && order.price > 0 ? formatPrice(order.price * displayAmount) : '—'}
                 </td>
                 <td className="text-left font-mono px-3 py-1.5">
                   <span className="inline-flex items-center gap-1">
