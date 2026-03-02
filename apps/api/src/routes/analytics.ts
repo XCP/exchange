@@ -45,11 +45,12 @@ export async function handleAnalytics(
   const dispCountCol = tf === "all" ? "total_dispense_count" : `dispense_count_${tf}`;
   const dispPctCol = tf === "all" ? "0" : `price_change_${tf}`;
 
-  // For "all" timeframe, SQL returns 0 — overridden by Counterparty API result_count
-  const tfOrdersExpr = tf === "all"
+  // For "all" timeframe without tag, SQL returns 0 — overridden by Counterparty API result_count
+  // When tag is set, always compute from DB (scoped count is fast enough)
+  const tfOrdersExpr = tf === "all" && !tag
     ? "0"
     : `(SELECT COUNT(*) FROM orders WHERE 1=1${timeFilt}${tradeHidden}${pairTagFilt})`;
-  const tfDispCreatedExpr = tf === "all"
+  const tfDispCreatedExpr = tf === "all" && !tag
     ? "0"
     : `(SELECT COUNT(*) FROM dispensers WHERE 1=1${timeFilt}${dispenseHidden}${rawDispTagFilt})`;
 
@@ -76,13 +77,13 @@ export async function handleAnalytics(
     const dispTagBinds: string[] = [];
     if (tag) {
       tradeTagBinds.push(tag); // open_orders oPairTagFilt
-      if (tf !== "all") tradeTagBinds.push(tag); // tf_orders pairTagFilt
+      tradeTagBinds.push(tag); // tf_orders pairTagFilt
       tradeTagBinds.push(tag, tag); // tf_unique_traders pairTagFilt x2
       if (cutoff > 0) tradeTagBinds.push(tag); // new_pairs pairTagFilt
       tradeTagBinds.push(tag); // main WHERE psTagFilt
 
       dispTagBinds.push(tag); // open_dispensers ddTagFilt
-      if (tf !== "all") dispTagBinds.push(tag); // tf_dispensers_created rawDispTagFilt
+      dispTagBinds.push(tag); // tf_dispensers_created rawDispTagFilt
       dispTagBinds.push(tag); // tf_unique_buyers rawDispTagFilt
       if (cutoff > 0) dispTagBinds.push(tag); // new_assets rawDispTagFilt
       dispTagBinds.push(tag); // main WHERE dsTagFilt
