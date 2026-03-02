@@ -1,10 +1,12 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
+import { RiFilter3Line } from 'react-icons/ri'
 import { useDispensersLatest, useDispensesLatest, type LatestDispenser, type LatestDispense } from '@/lib/hooks/useDispensersLatest'
 import { useTags } from '@/lib/hooks/useTags'
+import { Pagination } from '@/components/Pagination'
 import { formatAddress } from '@/utils/format-address'
 import { formatPrice } from '@/utils/format-price'
 import { XCP_IMG_BASE } from '@/utils/constants'
@@ -28,6 +30,12 @@ function EmptyRows({ loading, label, cols }: { loading: boolean; label: string; 
   )
 }
 
+function statusLabel(status: number): string {
+  if (status === 10) return 'closed'
+  if (status === 11) return 'closing'
+  return 'open'
+}
+
 type DispenserTab = 'all' | 'open' | 'dispenses' | 'closing' | 'closed'
 
 const TABS: [DispenserTab, string][] = [
@@ -41,18 +49,43 @@ const TABS: [DispenserTab, string][] = [
 export default function DispensePage() {
   const [tab, setTab] = useState<DispenserTab>('open')
   const [tag, setTag] = useState<string | null>(null)
+  const [assetSearch, setAssetSearch] = useState('')
+  const [debouncedAsset, setDebouncedAsset] = useState('')
+  const [sourceFilter, setSourceFilter] = useState<string | null>(null)
+  const [offset, setOffset] = useState(0)
   const collections = useTags('collection')
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedAsset(assetSearch), 300)
+    return () => clearTimeout(timer)
+  }, [assetSearch])
+
+  useEffect(() => {
+    setOffset(0)
+  }, [tab, tag, debouncedAsset, sourceFilter])
 
   const dispenserStatus = tab === 'dispenses' ? undefined : tab
   const dispenserFilters = {
     ...(tag ? { tag } : {}),
     ...(dispenserStatus ? { status: dispenserStatus } : {}),
+    ...(debouncedAsset ? { asset: debouncedAsset } : {}),
+    ...(sourceFilter ? { source: sourceFilter } : {}),
+    ...(offset > 0 ? { offset } : {}),
   }
-  const { dispensers, isLoading: dispensersLoading } = useDispensersLatest(
-    Object.keys(dispenserFilters).length > 0 ? dispenserFilters : undefined, 50
+  const { dispensers, total: dispensersTotal, isLoading: dispensersLoading } = useDispensersLatest(
+    Object.keys(dispenserFilters).length > 0 ? dispenserFilters : undefined, 250
   )
-  const dispenseFilters = tag ? { tag } : undefined
-  const { dispenses, isLoading: dispensesLoading } = useDispensesLatest(dispenseFilters, 50)
+  const dispenseFilters = {
+    ...(tag ? { tag } : {}),
+    ...(debouncedAsset ? { asset: debouncedAsset } : {}),
+    ...(offset > 0 ? { offset } : {}),
+  }
+  const { dispenses, total: dispensesTotal, isLoading: dispensesLoading } = useDispensesLatest(
+    Object.keys(dispenseFilters).length > 0 ? dispenseFilters : undefined, 250
+  )
+
+  const isDispensesTab = tab === 'dispenses'
+  const activeTotal = isDispensesTab ? dispensesTotal : dispensersTotal
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
@@ -65,18 +98,25 @@ export default function DispensePage() {
         </div>
         <div className="bg-zinc-900/50 border border-zinc-800 rounded-sm">
           <div className="px-3 py-2 flex items-center gap-2">
-            <select
-              value={tag ?? ''}
-              onChange={(e) => setTag(e.target.value || null)}
-              className="px-2 py-0.5 text-[10px] font-mono bg-zinc-800 border border-zinc-700 rounded-sm text-zinc-300 outline-none"
-            >
-              <option value="">All Dispensers</option>
-              {collections.filter(c => c.open_dispensers_count > 0).map(c => (
-                <option key={c.slug} value={c.slug}>
-                  {c.name} ({c.open_dispensers_count})
-                </option>
-              ))}
-            </select>
+            {sourceFilter ? (
+              <span className="inline-flex items-center gap-1.5 px-2 py-px text-[10px] font-mono bg-zinc-800 border border-zinc-700 rounded-sm text-zinc-300">
+                {sourceFilter}
+                <button onClick={() => setSourceFilter(null)} className="text-zinc-500 hover:text-zinc-200 transition-colors">&times;</button>
+              </span>
+            ) : (
+              <select
+                value={tag ?? ''}
+                onChange={(e) => setTag(e.target.value || null)}
+                className="px-2 py-0.5 text-[10px] font-mono bg-zinc-800 border border-zinc-700 rounded-sm text-zinc-300 outline-none"
+              >
+                <option value="">All Dispensers</option>
+                {collections.filter(c => c.open_dispensers_count > 0).map(c => (
+                  <option key={c.slug} value={c.slug}>
+                    {c.name} ({c.open_dispensers_count})
+                  </option>
+                ))}
+              </select>
+            )}
             <div className="flex gap-0.5 ml-auto">
               {TABS.map(([key, label]) => (
                 <button
@@ -93,59 +133,105 @@ export default function DispensePage() {
               ))}
             </div>
           </div>
-          {tab === 'dispenses' ? (
+          {isDispensesTab ? (
             <DispensesTable dispenses={dispenses} isLoading={dispensesLoading} />
           ) : (
-            <DispensersTable dispensers={dispensers} isLoading={dispensersLoading} />
+            <DispensersTable dispensers={dispensers} isLoading={dispensersLoading} assetSearch={assetSearch} onAssetSearch={setAssetSearch} onFilterAddress={setSourceFilter} />
           )}
+          <Pagination total={activeTotal} offset={offset} limit={250} onOffsetChange={setOffset} />
         </div>
       </div>
     </div>
   )
 }
 
-function DispensersTable({ dispensers, isLoading }: { dispensers: LatestDispenser[]; isLoading: boolean }) {
+function DispensersTable({ dispensers, isLoading, assetSearch, onAssetSearch, onFilterAddress }: {
+  dispensers: LatestDispenser[]
+  isLoading: boolean
+  assetSearch: string
+  onAssetSearch: (v: string) => void
+  onFilterAddress: (addr: string) => void
+}) {
   return (
     <table className="w-full text-xs whitespace-nowrap">
       <thead>
         <tr className="text-zinc-500 border-b border-zinc-800">
           <th className="text-left font-normal px-3 py-1.5 w-8">Time</th>
-          <th className="text-left font-normal px-3 py-1.5">Asset</th>
+          <th className="text-right font-normal px-3 py-1.5">Amount</th>
+          <th className="text-left font-normal px-3 py-0.5">
+            <span className="relative flex items-center">
+              <input
+                type="text"
+                value={assetSearch}
+                onChange={(e) => onAssetSearch(e.target.value)}
+                placeholder="Asset"
+                className="w-full px-1.5 py-0.5 pr-5 text-[11px] font-mono bg-zinc-800 border border-zinc-700 rounded-sm text-zinc-200 placeholder:text-zinc-600 outline-none focus:border-zinc-500"
+              />
+              {assetSearch && (
+                <button onClick={() => onAssetSearch('')} className="absolute right-1 text-zinc-600 hover:text-zinc-300 transition-colors text-[10px]">&times;</button>
+              )}
+            </span>
+          </th>
           <th className="text-right font-normal px-3 py-1.5">Price</th>
-          <th className="text-right font-normal px-3 py-1.5">Available</th>
+          <th className="text-left font-normal px-3 py-1.5">BTC</th>
           <th className="text-left font-normal px-3 py-1.5 max-sm:hidden">Address</th>
+          <th className="text-left font-normal px-3 py-1.5 max-sm:hidden">Status</th>
           <th className="text-right font-normal px-3 py-1.5 max-sm:hidden">Dispenses</th>
         </tr>
       </thead>
       <tbody>
         {isLoading || dispensers.length === 0 ? (
-          <EmptyRows loading={isLoading} label="dispensers" cols={6} />
+          <EmptyRows loading={isLoading} label="dispensers" cols={8} />
         ) : (
-          dispensers.map((d) => (
-            <tr key={d.tx_hash} className="hover:bg-zinc-800/50 transition-colors border-b border-zinc-800/30 last:border-0">
-              <td className="text-zinc-500 font-mono px-3 py-1.5">
-                {d.block_time ? compactTime(d.block_time) : '—'}
-              </td>
-              <td className="px-3 py-1.5">
-                <Link href={`/dispense/${encodeURIComponent(d.asset)}`} className="flex items-center gap-1.5 hover:underline">
-                  <Image src={`${XCP_IMG_BASE}/icon/${d.asset}`} alt="" width={14} height={14} className="rounded-sm" unoptimized />
-                  <span className="text-zinc-200 truncate">{d.asset}</span>
-                </Link>
-              </td>
-              <td className="text-right text-zinc-400 font-mono px-3 py-1.5">
-                {formatPrice(d.price)}
-              </td>
-              <td className="text-right text-zinc-400 font-mono px-3 py-1.5">
-                {formatPrice(d.give_remaining)}
-              </td>
-              <td className="text-left text-zinc-500 font-mono px-3 py-1.5 max-sm:hidden">
-                {formatAddress(d.source)}
-              </td>
-              <td className="text-right text-zinc-500 font-mono px-3 py-1.5 max-sm:hidden">
-                {d.dispense_count}
-              </td>
-            </tr>
-          ))
+          dispensers.map((d) => {
+            const isOpen = d.status < 10
+            const displayAmount = isOpen ? d.give_remaining : d.give_quantity
+            const status = statusLabel(d.status)
+
+            return (
+              <tr key={d.tx_hash} className="hover:bg-zinc-800/50 transition-colors border-b border-zinc-800/30 last:border-0">
+                <td className="text-zinc-500 font-mono px-3 py-1.5">
+                  {d.block_time ? compactTime(d.block_time) : '—'}
+                </td>
+                <td className="text-right text-zinc-400 font-mono px-3 py-1.5">
+                  {formatPrice(displayAmount)}
+                </td>
+                <td className="px-3 py-1.5">
+                  <Link href={`/dispense/${encodeURIComponent(d.asset)}`} className="flex items-center gap-1.5 hover:underline">
+                    <Image src={`${XCP_IMG_BASE}/icon/${d.asset}`} alt="" width={14} height={14} className="rounded-sm" unoptimized />
+                    <span className="text-zinc-200 truncate">{d.asset}</span>
+                  </Link>
+                </td>
+                <td className="text-right text-zinc-400 font-mono px-3 py-1.5">
+                  {formatPrice(d.price)}
+                </td>
+                <td className="px-3 py-1.5">
+                  <span className="flex items-center gap-1.5">
+                    <Image src={`${XCP_IMG_BASE}/icon/BTC`} alt="" width={14} height={14} className="rounded-sm" unoptimized />
+                    <span className="text-zinc-400">BTC</span>
+                  </span>
+                </td>
+                <td className="text-left font-mono px-3 py-1.5 max-sm:hidden">
+                  <span className="inline-flex items-center gap-1">
+                    <span className="text-zinc-500">{formatAddress(d.source)}</span>
+                    <button
+                      onClick={() => onFilterAddress(d.source)}
+                      className="text-zinc-600 hover:text-zinc-400 transition-colors"
+                      title="Filter by this address"
+                    >
+                      <RiFilter3Line className="w-3 h-3" />
+                    </button>
+                  </span>
+                </td>
+                <td className={`text-left font-mono px-3 py-1.5 max-sm:hidden capitalize ${isOpen ? 'text-zinc-400' : 'text-zinc-500'}`}>
+                  {status}
+                </td>
+                <td className="text-right text-zinc-500 font-mono px-3 py-1.5 max-sm:hidden">
+                  {d.dispense_count}
+                </td>
+              </tr>
+            )
+          })
         )}
       </tbody>
     </table>

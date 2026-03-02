@@ -8,8 +8,12 @@ export async function handleDispensersLatest(
   const asset = url.searchParams.get("asset");
   const source = url.searchParams.get("source");
   const limit = Math.min(
-    parseInt(url.searchParams.get("limit") ?? "50", 10) || 50,
-    200
+    parseInt(url.searchParams.get("limit") ?? "250", 10) || 250,
+    500
+  );
+  const offset = Math.max(
+    parseInt(url.searchParams.get("offset") ?? "0", 10) || 0,
+    0
   );
 
   const status = url.searchParams.get("status");
@@ -23,7 +27,6 @@ export async function handleDispensersLatest(
   } else if (status === "closed") {
     conditions.push(`d.status = 10`);
   }
-  // "all" or null = no status filter
 
   if (asset) {
     conditions.push(`d.asset LIKE ?`);
@@ -49,29 +52,30 @@ export async function handleDispensersLatest(
       binds.push(tagRow.id);
     } else {
       return Response.json(
-        { dispensers: [] },
+        { dispensers: [], total: 0, limit, offset },
         { headers: { "Cache-Control": cacheControl(url, 30) } }
       );
     }
   }
 
-  let query = `SELECT d.tx_hash, d.asset, d.source, d.give_quantity, d.escrow_quantity,
+  const columns = `d.tx_hash, d.asset, d.source, d.give_quantity, d.escrow_quantity,
                       d.give_remaining, d.satoshi_price, d.price, d.dispense_count,
-                      d.status, d.block_index, d.block_time
-               FROM dispensers d`;
-  if (conditions.length > 0) {
-    query += ` WHERE ${conditions.join(" AND ")}`;
-  }
-  query += ` ORDER BY d.block_index DESC LIMIT ?`;
-  binds.push(limit);
+                      d.status, d.block_index, d.block_time`;
+  const whereClause = conditions.length > 0 ? ` WHERE ${conditions.join(" AND ")}` : "";
 
-  const result = await db
-    .prepare(query)
-    .bind(...binds)
-    .all();
+  const dataQuery = `SELECT ${columns} FROM dispensers d${whereClause} ORDER BY d.block_index DESC LIMIT ? OFFSET ?`;
+  const countQuery = `SELECT COUNT(*) as total FROM dispensers d${whereClause}`;
+
+  const dataStmt = db.prepare(dataQuery).bind(...binds, limit, offset);
+  const countStmt = binds.length > 0
+    ? db.prepare(countQuery).bind(...binds)
+    : db.prepare(countQuery);
+
+  const [dataResult, countResult] = await db.batch([dataStmt, countStmt]);
+  const total = (countResult.results[0] as { total: number })?.total ?? 0;
 
   return Response.json(
-    { dispensers: result.results },
+    { dispensers: dataResult.results, total, limit, offset },
     { headers: { "Cache-Control": cacheControl(url, 30) } }
   );
 }
@@ -83,8 +87,12 @@ export async function handleDispensesLatest(
   const url = new URL(request.url);
   const asset = url.searchParams.get("asset");
   const limit = Math.min(
-    parseInt(url.searchParams.get("limit") ?? "50", 10) || 50,
-    200
+    parseInt(url.searchParams.get("limit") ?? "250", 10) || 250,
+    500
+  );
+  const offset = Math.max(
+    parseInt(url.searchParams.get("offset") ?? "0", 10) || 0,
+    0
   );
 
   const conditions: string[] = [];
@@ -109,30 +117,31 @@ export async function handleDispensesLatest(
       binds.push(tagRow.id);
     } else {
       return Response.json(
-        { dispenses: [] },
+        { dispenses: [], total: 0, limit, offset },
         { headers: { "Cache-Control": cacheControl(url, 30) } }
       );
     }
   }
 
-  let query = `SELECT e.tx_hash, e.dispense_index, e.dispenser_tx_hash,
+  const columns = `e.tx_hash, e.dispense_index, e.dispenser_tx_hash,
                       e.source, e.destination, e.asset,
                       e.dispense_quantity, e.btc_amount, e.price,
-                      e.block_index, e.block_time
-               FROM dispenses e`;
-  if (conditions.length > 0) {
-    query += ` WHERE ${conditions.join(" AND ")}`;
-  }
-  query += ` ORDER BY e.block_index DESC LIMIT ?`;
-  binds.push(limit);
+                      e.block_index, e.block_time`;
+  const whereClause = conditions.length > 0 ? ` WHERE ${conditions.join(" AND ")}` : "";
 
-  const result = await db
-    .prepare(query)
-    .bind(...binds)
-    .all();
+  const dataQuery = `SELECT ${columns} FROM dispenses e${whereClause} ORDER BY e.block_index DESC LIMIT ? OFFSET ?`;
+  const countQuery = `SELECT COUNT(*) as total FROM dispenses e${whereClause}`;
+
+  const dataStmt = db.prepare(dataQuery).bind(...binds, limit, offset);
+  const countStmt = binds.length > 0
+    ? db.prepare(countQuery).bind(...binds)
+    : db.prepare(countQuery);
+
+  const [dataResult, countResult] = await db.batch([dataStmt, countStmt]);
+  const total = (countResult.results[0] as { total: number })?.total ?? 0;
 
   return Response.json(
-    { dispenses: result.results },
+    { dispenses: dataResult.results, total, limit, offset },
     { headers: { "Cache-Control": cacheControl(url, 30) } }
   );
 }

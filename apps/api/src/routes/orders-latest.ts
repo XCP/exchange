@@ -15,6 +15,10 @@ export async function handleOrdersLatest(
     parseInt(url.searchParams.get("limit") ?? "250", 10) || 250,
     500
   );
+  const offset = Math.max(
+    parseInt(url.searchParams.get("offset") ?? "0", 10) || 0,
+    0
+  );
 
   const validStatuses = ["open", "filled", "expired", "cancelled", "invalid"];
   if (status && !validStatuses.includes(status)) {
@@ -67,37 +71,33 @@ export async function handleOrdersLatest(
       );
       binds.push(tagRow.id, tagRow.id);
     } else {
-      // Unknown tag — return empty results
       return Response.json(
-        { orders: [] },
+        { orders: [], total: 0, limit, offset },
         { headers: { "Cache-Control": cacheControl(url, 30) } }
       );
     }
   }
 
-  let query = `SELECT ${columns} FROM orders o LEFT JOIN pair_stats ps ON o.pair = ps.pair`;
-  if (conditions.length > 0) {
-    query += ` WHERE ${conditions.join(" AND ")}`;
-  }
+  const whereClause = conditions.length > 0 ? ` WHERE ${conditions.join(" AND ")}` : "";
+  const orderBy = sort === "expire_index:asc"
+    ? ` ORDER BY o.expire_index ASC`
+    : sort === "expire_index:desc"
+      ? ` ORDER BY o.expire_index DESC`
+      : ` ORDER BY o.block_index DESC`;
 
-  if (sort === "expire_index:asc") {
-    query += ` ORDER BY o.expire_index ASC`;
-  } else if (sort === "expire_index:desc") {
-    query += ` ORDER BY o.expire_index DESC`;
-  } else {
-    query += ` ORDER BY o.block_index DESC`;
-  }
+  const dataQuery = `SELECT ${columns} FROM orders o LEFT JOIN pair_stats ps ON o.pair = ps.pair${whereClause}${orderBy} LIMIT ? OFFSET ?`;
+  const countQuery = `SELECT COUNT(*) as total FROM orders o LEFT JOIN pair_stats ps ON o.pair = ps.pair${whereClause}`;
 
-  query += ` LIMIT ?`;
-  binds.push(limit);
+  const dataStmt = db.prepare(dataQuery).bind(...binds, limit, offset);
+  const countStmt = binds.length > 0
+    ? db.prepare(countQuery).bind(...binds)
+    : db.prepare(countQuery);
 
-  const result = await db
-    .prepare(query)
-    .bind(...binds)
-    .all();
+  const [dataResult, countResult] = await db.batch([dataStmt, countStmt]);
+  const total = (countResult.results[0] as { total: number })?.total ?? 0;
 
   return Response.json(
-    { orders: result.results },
+    { orders: dataResult.results, total, limit, offset },
     { headers: { "Cache-Control": cacheControl(url, 30) } }
   );
 }

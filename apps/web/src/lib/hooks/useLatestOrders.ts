@@ -25,6 +25,7 @@ export interface LatestOrder {
 
 interface LatestOrdersResponse {
   orders: LatestOrder[]
+  total: number
 }
 
 export type OrderTab = 'all' | 'open' | 'filled' | 'expiring' | 'expired' | 'cancelled'
@@ -35,6 +36,7 @@ export interface OrderFilters {
   quoteAsset?: string
   source?: string
   tag?: string
+  offset?: number
 }
 
 function buildUrl(tab: OrderTab, filters?: OrderFilters): string {
@@ -65,6 +67,9 @@ function buildUrl(tab: OrderTab, filters?: OrderFilters): string {
   if (filters?.tag) {
     params.set('tag', filters.tag)
   }
+  if (filters?.offset) {
+    params.set('offset', String(filters.offset))
+  }
 
   const qs = params.toString()
   return dexUrl(`/orders/latest${qs ? `?${qs}` : ''}`)
@@ -77,6 +82,7 @@ export function useLatestOrders(tab: OrderTab, filters?: OrderFilters) {
 
   return {
     orders: data?.orders ?? [],
+    total: data?.total ?? 0,
     error,
     isLoading,
   }

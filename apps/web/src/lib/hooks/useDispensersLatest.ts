@@ -35,45 +35,50 @@ export interface DispenserFilters {
   source?: string
   tag?: string
   status?: string
+  offset?: number
 }
 
-function buildDispensersUrl(filters?: DispenserFilters, limit: number = 50): string {
+function buildDispensersUrl(filters?: DispenserFilters, limit: number = 250): string {
   const params = new URLSearchParams()
   params.set('limit', String(limit))
   if (filters?.status) params.set('status', filters.status)
   if (filters?.asset) params.set('asset', filters.asset)
   if (filters?.source) params.set('source', filters.source)
   if (filters?.tag) params.set('tag', filters.tag)
+  if (filters?.offset) params.set('offset', String(filters.offset))
   const qs = params.toString()
   return dexUrl(`/dispensers/latest?${qs}`)
 }
 
-function buildDispensesUrl(filters?: DispenserFilters, limit: number = 50): string {
+function buildDispensesUrl(filters?: DispenserFilters, limit: number = 250): string {
   const params = new URLSearchParams()
   params.set('limit', String(limit))
   if (filters?.asset) params.set('asset', filters.asset)
   if (filters?.tag) params.set('tag', filters.tag)
+  if (filters?.offset) params.set('offset', String(filters.offset))
   const qs = params.toString()
   return dexUrl(`/dispenses/latest?${qs}`)
 }
 
-export function useDispensersLatest(filters?: DispenserFilters, limit: number = 50) {
-  const { data, error, isLoading } = useDexSWR<{ dispensers: LatestDispenser[] }>(
+export function useDispensersLatest(filters?: DispenserFilters, limit: number = 250) {
+  const { data, error, isLoading } = useDexSWR<{ dispensers: LatestDispenser[]; total: number }>(
     buildDispensersUrl(filters, limit)
   )
   return {
     dispensers: data?.dispensers ?? [],
+    total: data?.total ?? 0,
     error,
     isLoading,
   }
 }
 
-export function useDispensesLatest(filters?: DispenserFilters, limit: number = 50) {
-  const { data, error, isLoading } = useDexSWR<{ dispenses: LatestDispense[] }>(
+export function useDispensesLatest(filters?: DispenserFilters, limit: number = 250) {
+  const { data, error, isLoading } = useDexSWR<{ dispenses: LatestDispense[]; total: number }>(
     buildDispensesUrl(filters, limit)
   )
   return {
     dispenses: data?.dispenses ?? [],
+    total: data?.total ?? 0,
     error,
     isLoading,
   }

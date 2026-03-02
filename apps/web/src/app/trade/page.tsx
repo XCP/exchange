@@ -7,6 +7,7 @@ import { RiFilter3Line } from 'react-icons/ri'
 import { useBlockHeight } from '@/lib/hooks/useNetworkInfo'
 import { useLatestOrders, type OrderTab, type LatestOrder } from '@/lib/hooks/useLatestOrders'
 import { useTags } from '@/lib/hooks/useTags'
+import { Pagination } from '@/components/Pagination'
 import { formatAddress } from '@/utils/format-address'
 import { formatPrice } from '@/utils/format-price'
 import { XCP_IMG_BASE } from '@/utils/constants'
@@ -47,6 +48,7 @@ export default function TradePage() {
   const [debouncedQuote, setDebouncedQuote] = useState('')
   const [sourceFilter, setSourceFilter] = useState<string | null>(null)
   const [tag, setTag] = useState<string | null>(null)
+  const [offset, setOffset] = useState(0)
   const collections = useTags('collection')
   const blockHeight = useBlockHeight()
 
@@ -60,14 +62,19 @@ export default function TradePage() {
     return () => clearTimeout(timer)
   }, [quoteSearch])
 
+  useEffect(() => {
+    setOffset(0)
+  }, [tab, tag, debouncedBase, debouncedQuote, sourceFilter])
+
   const filters = {
     ...(tag ? { tag } : {}),
     ...(debouncedBase ? { baseAsset: debouncedBase } : {}),
     ...(debouncedQuote ? { quoteAsset: debouncedQuote } : {}),
     ...(sourceFilter ? { source: sourceFilter } : {}),
+    ...(offset > 0 ? { offset } : {}),
   }
 
-  const { orders, isLoading } = useLatestOrders(tab, Object.keys(filters).length > 0 ? filters : undefined)
+  const { orders, total, isLoading } = useLatestOrders(tab, Object.keys(filters).length > 0 ? filters : undefined)
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
@@ -83,23 +90,24 @@ export default function TradePage() {
         </div>
         <div className="bg-zinc-900/50 border border-zinc-800 rounded-sm">
           <div className="px-3 py-2 flex items-center gap-2">
-            <select
-              value={tag ?? ''}
-              onChange={(e) => setTag(e.target.value || null)}
-              className="px-2 py-0.5 text-[10px] font-mono bg-zinc-800 border border-zinc-700 rounded-sm text-zinc-300 outline-none"
-            >
-              <option value="">All Orders</option>
-              {collections.filter(c => c.open_orders_count > 0).map(c => (
-                <option key={c.slug} value={c.slug}>
-                  {c.name} ({c.open_orders_count})
-                </option>
-              ))}
-            </select>
-            {sourceFilter && (
-              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 text-[10px] font-mono bg-zinc-800 border border-zinc-700 rounded-sm text-zinc-300">
-                {formatAddress(sourceFilter)}
+            {sourceFilter ? (
+              <span className="inline-flex items-center gap-1.5 px-2 py-px text-[10px] font-mono bg-zinc-800 border border-zinc-700 rounded-sm text-zinc-300">
+                {sourceFilter}
                 <button onClick={() => setSourceFilter(null)} className="text-zinc-500 hover:text-zinc-200 transition-colors">&times;</button>
               </span>
+            ) : (
+              <select
+                value={tag ?? ''}
+                onChange={(e) => setTag(e.target.value || null)}
+                className="px-2 py-0.5 text-[10px] font-mono bg-zinc-800 border border-zinc-700 rounded-sm text-zinc-300 outline-none"
+              >
+                <option value="">All Orders</option>
+                {collections.filter(c => c.open_orders_count > 0).map(c => (
+                  <option key={c.slug} value={c.slug}>
+                    {c.name} ({c.open_orders_count})
+                  </option>
+                ))}
+              </select>
             )}
             <div className="flex gap-0.5 ml-auto">
               {ORDER_TABS.map(([key, label]) => (
@@ -119,6 +127,7 @@ export default function TradePage() {
           </div>
 
           <OrdersTable orders={orders} isLoading={isLoading} blockHeight={blockHeight} baseSearch={baseSearch} quoteSearch={quoteSearch} onBaseSearch={setBaseSearch} onQuoteSearch={setQuoteSearch} onFilterAddress={setSourceFilter} />
+          <Pagination total={total} offset={offset} limit={250} onOffsetChange={setOffset} />
         </div>
       </div>
     </div>
