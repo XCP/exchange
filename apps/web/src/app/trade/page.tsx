@@ -202,7 +202,7 @@ function TradePageInner() {
             </div>
           </div>
 
-          <OrdersTable orders={orders} isLoading={isLoading} blockHeight={blockHeight} baseSearch={baseSearch} quoteSearch={quoteSearch} onBaseSearch={setBaseSearch} onQuoteSearch={setQuoteSearch} onFilterAddress={setSourceFilter} sourceFilter={sourceFilter} onClearAddress={() => setSourceFilter(null)} sideFilter={sideFilter} onSideFilter={setSideFilter} sortCol={sortCol} onSortCol={setSortCol} canSortPrice={!!(tag || debouncedQuote)} />
+          <OrdersTable orders={orders} isLoading={isLoading} blockHeight={blockHeight} baseSearch={baseSearch} quoteSearch={quoteSearch} onBaseSearch={setBaseSearch} onQuoteSearch={setQuoteSearch} onFilterAddress={setSourceFilter} sourceFilter={sourceFilter} onClearAddress={() => setSourceFilter(null)} sideFilter={sideFilter} onSideFilter={setSideFilter} sortCol={sortCol} onSortCol={setSortCol} canSortPrice />
           <Pagination total={total} offset={offset} limit={250} onOffsetChange={setOffset} />
         </div>
       </div>
@@ -210,7 +210,7 @@ function TradePageInner() {
   )
 }
 
-function OrdersTable({ orders, isLoading, blockHeight, baseSearch, quoteSearch, onBaseSearch, onQuoteSearch, onFilterAddress, sourceFilter, onClearAddress, sideFilter, onSideFilter, sortCol, onSortCol, canSortPrice }: {
+function OrdersTable({ orders, isLoading, blockHeight, baseSearch, quoteSearch, onBaseSearch, onQuoteSearch, onFilterAddress, sourceFilter, onClearAddress, sideFilter, onSideFilter, sortCol, onSortCol }: {
   orders: LatestOrder[]
   isLoading: boolean
   blockHeight: number | null
@@ -225,7 +225,6 @@ function OrdersTable({ orders, isLoading, blockHeight, baseSearch, quoteSearch, 
   onSideFilter: (v: 'buy' | 'sell' | null) => void
   sortCol: 'price:asc' | 'price:desc' | null
   onSortCol: (v: 'price:asc' | 'price:desc' | null) => void
-  canSortPrice: boolean
 }) {
   const [showSideMenu, setShowSideMenu] = useState(false)
   const [showAddrInput, setShowAddrInput] = useState(false)
@@ -243,7 +242,6 @@ function OrdersTable({ orders, isLoading, blockHeight, baseSearch, quoteSearch, 
   }, [])
 
   function cyclePriceSort() {
-    if (!canSortPrice) return
     if (sortCol === null) onSortCol('price:asc')
     else if (sortCol === 'price:asc') onSortCol('price:desc')
     else onSortCol(null)
@@ -293,8 +291,7 @@ function OrdersTable({ orders, isLoading, blockHeight, baseSearch, quoteSearch, 
           <th className="text-right font-normal px-3 py-1.5">
             <button
               onClick={cyclePriceSort}
-              className={`inline-flex items-center gap-0.5 ${canSortPrice ? 'cursor-pointer hover:text-zinc-300' : 'cursor-default'}`}
-              disabled={!canSortPrice}
+              className="inline-flex items-center gap-0.5 cursor-pointer hover:text-zinc-300"
             >
               Price
               {sortCol === 'price:asc' && <span className="text-zinc-300">&#9650;</span>}
