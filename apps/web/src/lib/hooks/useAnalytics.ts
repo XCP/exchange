@@ -122,5 +122,8 @@ export function useAnalytics(timeframe: Timeframe = '24h', includeHidden: boolea
     topBtcSellers: traders.data?.top_btc_sellers ?? [],
     error: summary.error || charts.error || traders.error,
     isLoading: summary.isLoading || charts.isLoading || traders.isLoading,
+    summaryLoading: summary.isLoading,
+    chartsLoading: charts.isLoading,
+    tradersLoading: traders.isLoading,
   }
 }

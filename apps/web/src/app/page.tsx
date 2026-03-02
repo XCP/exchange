@@ -450,7 +450,9 @@ export default function AnalyticsPage() {
     topTakers,
     topBtcBuyers,
     topBtcSellers,
-    isLoading,
+    summaryLoading,
+    chartsLoading,
+    tradersLoading,
   } = useAnalytics(timeframe, !hideLowQuality)
 
   const tfLabel = TF_LABELS[timeframe]
@@ -493,130 +495,140 @@ export default function AnalyticsPage() {
           </div>
         </div>
 
-        {isLoading ? (
-          <div className="flex items-center justify-center py-20">
-            <span className="text-sm text-zinc-500">Loading analytics...</span>
+        {/* Counter Cards — show skeleton placeholders while loading */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-6">
+          {/* Row 1: Order book trading */}
+          <CounterCard
+            label="Trade Volume"
+            value={tradeSummary ? fmtBig(tradeSummary.tf_volume) + ' XCP' : '—'}
+            sub={tradeSummary && tradeSummary.tf_trades > 0 ? `Avg: ${fmtBig(tradeSummary.tf_volume / tradeSummary.tf_trades)} XCP` : undefined}
+          />
+          <CounterCard
+            label="Orders Placed"
+            value={tradeSummary ? tradeSummary.tf_orders.toLocaleString() : '—'}
+            sub={tradeSummary ? `${tradeSummary.open_orders.toLocaleString()} open` : undefined}
+          />
+          <CounterCard
+            label="Trades"
+            value={tradeSummary ? tradeSummary.tf_trades.toLocaleString() : '—'}
+            sub={tradeSummary?.tf_unique_traders ? `${tradeSummary.tf_unique_traders.toLocaleString()} addresses` : undefined}
+          />
+          <CounterCard
+            label="Active Pairs"
+            value={tradeSummary ? tradeSummary.active_pairs.toLocaleString() : '—'}
+            sub={tradeSummary ? (isAll ? `${tradeSummary.total_pairs.toLocaleString()} total` : tradeSummary.new_pairs ? `${tradeSummary.new_pairs.toLocaleString()} new` : undefined) : undefined}
+          />
+          {/* Row 2: Dispensers */}
+          <CounterCard
+            label="Dispense Volume"
+            value={dispenseSummary ? fmtBig(dispenseSummary.tf_volume) + ` ${btcLabel.toUpperCase()}` : '—'}
+            sub={dispenseSummary && dispenseSummary.tf_dispenses > 0 ? `Avg: ${fmtBig(dispenseSummary.tf_volume / dispenseSummary.tf_dispenses)} ${btcLabel.toUpperCase()}` : undefined}
+          />
+          <CounterCard
+            label="Dispensers Created"
+            value={dispenseSummary ? dispenseSummary.tf_dispensers_created.toLocaleString() : '—'}
+            sub={dispenseSummary ? `${dispenseSummary.open_dispensers.toLocaleString()} open` : undefined}
+          />
+          <CounterCard
+            label="Dispenses"
+            value={dispenseSummary ? dispenseSummary.tf_dispenses.toLocaleString() : '—'}
+            sub={dispenseSummary?.tf_unique_buyers ? `${dispenseSummary.tf_unique_buyers.toLocaleString()} addresses` : undefined}
+          />
+          <CounterCard
+            label="Active Dispensers"
+            value={dispenseSummary ? dispenseSummary.active_assets.toLocaleString() : '—'}
+            sub={dispenseSummary ? (isAll ? `${dispenseSummary.total_assets.toLocaleString()} total` : dispenseSummary.new_assets ? `${dispenseSummary.new_assets.toLocaleString()} new` : undefined) : undefined}
+          />
+        </div>
+
+        {/* Quote Volume Marquee Ticker */}
+        {quoteVolumes.length > 0 && (() => {
+          // Repeat enough to guarantee overflow, then duplicate for seamless loop
+          const reps = Math.max(2, Math.ceil(8 / quoteVolumes.length))
+          const strip = Array(reps).fill(quoteVolumes).flat()
+          return (
+          <div className="marquee-container overflow-hidden mb-6 bg-zinc-900/50 border border-zinc-800 rounded-sm">
+            <div
+              className="marquee-strip flex w-max gap-4 py-2"
+              style={{ animation: `marquee ${Math.max(strip.length * 6, 40)}s linear infinite` }}
+            >
+              {[...strip, ...strip].map((q, i) => (
+                <div key={`${q.quote_asset}-${i}`} className="flex items-center gap-2 shrink-0 min-w-0 px-3">
+                  <Image
+                    src={`${XCP_IMG_BASE}/icon/${q.quote_asset}`}
+                    alt=""
+                    width={14}
+                    height={14}
+                    className="rounded-sm"
+                    unoptimized
+                  />
+                  <span className="text-xs text-zinc-400 font-mono">{q.quote_asset}</span>
+                  <span className="text-xs text-zinc-200 font-mono font-semibold">{q.trade_count.toLocaleString()} trades</span>
+                  <span className="text-[10px] text-zinc-500 font-mono">{fmtBig(q.volume)} vol</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          )
+        })()}
+
+        {/* Leaderboards — renders as soon as summary loads */}
+        <h2 className="text-xs uppercase tracking-wider text-zinc-500 mb-2">Leaderboards</h2>
+        {summaryLoading ? (
+          <div className="flex items-center justify-center py-10 mb-8">
+            <span className="text-xs text-zinc-500">Loading leaderboards...</span>
           </div>
         ) : (
-          <>
-            {/* Counter Cards */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-6">
-              {/* Row 1: Order book trading */}
-              <CounterCard
-                label="Trade Volume"
-                value={tradeSummary ? fmtBig(tradeSummary.tf_volume) + ' XCP' : '—'}
-                sub={tradeSummary && tradeSummary.tf_trades > 0 ? `Avg: ${fmtBig(tradeSummary.tf_volume / tradeSummary.tf_trades)} XCP` : undefined}
-              />
-              <CounterCard
-                label="Orders Placed"
-                value={tradeSummary ? tradeSummary.tf_orders.toLocaleString() : '—'}
-                sub={tradeSummary ? `${tradeSummary.open_orders.toLocaleString()} open` : undefined}
-              />
-              <CounterCard
-                label="Trades"
-                value={tradeSummary ? tradeSummary.tf_trades.toLocaleString() : '—'}
-                sub={tradeSummary?.tf_unique_traders ? `${tradeSummary.tf_unique_traders.toLocaleString()} addresses` : undefined}
-              />
-              <CounterCard
-                label="Active Pairs"
-                value={tradeSummary ? tradeSummary.active_pairs.toLocaleString() : '—'}
-                sub={tradeSummary ? (isAll ? `${tradeSummary.total_pairs.toLocaleString()} total` : tradeSummary.new_pairs ? `${tradeSummary.new_pairs.toLocaleString()} new` : undefined) : undefined}
-              />
-              {/* Row 2: Dispensers */}
-              <CounterCard
-                label="Dispense Volume"
-                value={dispenseSummary ? fmtBig(dispenseSummary.tf_volume) + ` ${btcLabel.toUpperCase()}` : '—'}
-                sub={dispenseSummary && dispenseSummary.tf_dispenses > 0 ? `Avg: ${fmtBig(dispenseSummary.tf_volume / dispenseSummary.tf_dispenses)} ${btcLabel.toUpperCase()}` : undefined}
-              />
-              <CounterCard
-                label="Dispensers Created"
-                value={dispenseSummary ? dispenseSummary.tf_dispensers_created.toLocaleString() : '—'}
-                sub={dispenseSummary ? `${dispenseSummary.open_dispensers.toLocaleString()} open` : undefined}
-              />
-              <CounterCard
-                label="Dispenses"
-                value={dispenseSummary ? dispenseSummary.tf_dispenses.toLocaleString() : '—'}
-                sub={dispenseSummary?.tf_unique_buyers ? `${dispenseSummary.tf_unique_buyers.toLocaleString()} addresses` : undefined}
-              />
-              <CounterCard
-                label="Active Dispensers"
-                value={dispenseSummary ? dispenseSummary.active_assets.toLocaleString() : '—'}
-                sub={dispenseSummary ? (isAll ? `${dispenseSummary.total_assets.toLocaleString()} total` : dispenseSummary.new_assets ? `${dispenseSummary.new_assets.toLocaleString()} new` : undefined) : undefined}
-              />
-            </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-8">
+            <TopPairsTable pairs={topPairs} tfLabel={tfLabel} />
+            <TopDispensersTable dispensers={topDispensers} tfLabel={tfLabel} satsMode={satsMode} />
+          </div>
+        )}
 
-            {/* Quote Volume Marquee Ticker */}
-            {quoteVolumes.length > 0 && (() => {
-              // Repeat enough to guarantee overflow, then duplicate for seamless loop
-              const reps = Math.max(2, Math.ceil(8 / quoteVolumes.length))
-              const strip = Array(reps).fill(quoteVolumes).flat()
-              return (
-              <div className="marquee-container overflow-hidden mb-6 bg-zinc-900/50 border border-zinc-800 rounded-sm">
-                <div
-                  className="marquee-strip flex w-max gap-4 py-2"
-                  style={{ animation: `marquee ${Math.max(strip.length * 6, 40)}s linear infinite` }}
-                >
-                  {[...strip, ...strip].map((q, i) => (
-                    <div key={`${q.quote_asset}-${i}`} className="flex items-center gap-2 shrink-0 min-w-0 px-3">
-                      <Image
-                        src={`${XCP_IMG_BASE}/icon/${q.quote_asset}`}
-                        alt=""
-                        width={14}
-                        height={14}
-                        className="rounded-sm"
-                        unoptimized
-                      />
-                      <span className="text-xs text-zinc-400 font-mono">{q.quote_asset}</span>
-                      <span className="text-xs text-zinc-200 font-mono font-semibold">{q.trade_count.toLocaleString()} trades</span>
-                      <span className="text-[10px] text-zinc-500 font-mono">{fmtBig(q.volume)} vol</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              )
-            })()}
+        {/* Volume History — renders as soon as charts load */}
+        <h2 className="text-xs uppercase tracking-wider text-zinc-500 mb-2">Volume History</h2>
+        {chartsLoading ? (
+          <div className="flex items-center justify-center py-10 mb-8">
+            <span className="text-xs text-zinc-500">Loading charts...</span>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-8">
+            <ComboVolumeChart
+              data={dailyTradeVolume}
+              color="#22c55e"
+              label="Trade Volume (XCP)"
+            />
+            <ComboVolumeChart
+              data={mergeDailyVolumes(dailyBtcTradeVolume, dailyDispenseVolume)}
+              color="#3b82f6"
+              label="Trade Volume (BTC)"
+            />
+          </div>
+        )}
 
-            {/* Leaderboards */}
-            <h2 className="text-xs uppercase tracking-wider text-zinc-500 mb-2">Leaderboards</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-8">
-              <TopPairsTable pairs={topPairs} tfLabel={tfLabel} />
-              <TopDispensersTable dispensers={topDispensers} tfLabel={tfLabel} satsMode={satsMode} />
-            </div>
-
-            {/* Volume History */}
-            <h2 className="text-xs uppercase tracking-wider text-zinc-500 mb-2">Volume History</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-8">
-              <ComboVolumeChart
-                data={dailyTradeVolume}
-                color="#22c55e"
-                label="Trade Volume (XCP)"
-              />
-              <ComboVolumeChart
-                data={mergeDailyVolumes(dailyBtcTradeVolume, dailyDispenseVolume)}
-                color="#3b82f6"
-                label="Trade Volume (BTC)"
-              />
-            </div>
-
-            {/* Top Traders */}
-            <h2 className="text-xs uppercase tracking-wider text-zinc-500 mb-2">Top Traders</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-              <TopTradersTable
-                title="Top Traders (XCP)"
-                unit="XCP"
-                tabLabels={['Makers', 'Takers']}
-                listA={topMakers}
-                listB={topTakers}
-              />
-              <TopTradersTable
-                title="Top Traders (BTC)"
-                unit="BTC"
-                tabLabels={['Makers', 'Takers']}
-                listA={topBtcSellers}
-                listB={topBtcBuyers}
-              />
-            </div>
-          </>
+        {/* Top Traders — renders as soon as traders load */}
+        <h2 className="text-xs uppercase tracking-wider text-zinc-500 mb-2">Top Traders</h2>
+        {tradersLoading ? (
+          <div className="flex items-center justify-center py-10">
+            <span className="text-xs text-zinc-500">Loading traders...</span>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+            <TopTradersTable
+              title="Top Traders (XCP)"
+              unit="XCP"
+              tabLabels={['Makers', 'Takers']}
+              listA={topMakers}
+              listB={topTakers}
+            />
+            <TopTradersTable
+              title="Top Traders (BTC)"
+              unit="BTC"
+              tabLabels={['Makers', 'Takers']}
+              listA={topBtcSellers}
+              listB={topBtcBuyers}
+            />
+          </div>
         )}
       </div>
     </div>
