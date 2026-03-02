@@ -12,7 +12,7 @@ interface ComposeState {
   error: string | null
 }
 
-/** Fetch recommended fee rate from mempool.space (cached 30s) */
+/** Fetch next-block median fee rate from mempool.space (cached 30s) */
 let cachedFeeRate: number | null = null
 let feeRateTimestamp = 0
 
@@ -20,10 +20,10 @@ async function getFeeRate(): Promise<number> {
   const now = Date.now()
   if (cachedFeeRate && now - feeRateTimestamp < 30_000) return cachedFeeRate
   try {
-    const res = await fetch('https://mempool.space/api/v1/fees/recommended')
+    const res = await fetch('https://mempool.space/api/v1/fees/mempool-blocks')
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
-    const data = await res.json()
-    cachedFeeRate = Math.max(data.hourFee ?? 3, 1)
+    const data: { medianFee: number }[] = await res.json()
+    cachedFeeRate = Math.max(Math.round(data[0]?.medianFee ?? 3), 1)
     feeRateTimestamp = now
     return cachedFeeRate
   } catch {

@@ -59,14 +59,14 @@ const COLLECTION_ICONS: Record<string, string> = {
   'hodlpet': 'HODLPET',
   'kaleidoscope': 'BITROCK',
   'lfg-collection': 'ORANGEFIGHT',
-  'mafia-wars': 'MALVERDE',
-  'memorychain': 'SARUTOBIISL',
+  'mafia-wars': 'MAFIACASH',
+  'memorychain': 'THEGODTANU',
   'modern-relics': 'RELICASH',
   'oasis-mining': 'CCGBTCONE',
   'penisium': 'PENISIMOON',
   'pepe-flags': 'PEPEFLAGPA',
   'phockheads': 'PHOCKHEADS',
-  'phunchkins': 'PEPEAQUA',
+  'fake-munchkin': 'PEPEAQUA',
   'rare-bobo': 'BOBOCASH',
   'rare-coco': 'RARECOCO',
   'rare-gogo': 'RAREGOGO',
@@ -83,7 +83,7 @@ const COLLECTION_ICONS: Record<string, string> = {
   'skara': 'MANTLEASKAR',
   'spamgelo': 'DANKSPAMGELO',
   'spells-of-genesis': 'BITCRYSTALS',
-  'stamps': 'A808011111111111111',
+  'stamps': 'A6360128538192758000',
   'the-pepe-project': 'ORANGEMAN',
   'the-wojak-way': 'RAREWOJAK',
   'wojak-npc': 'A4003111400514243181',
@@ -115,7 +115,7 @@ export default function AnalyticsPage() {
       {/* Header + Controls */}
       <div className="flex items-start justify-between mb-6 gap-4 flex-wrap">
         <div>
-          <h1 className="text-lg font-semibold text-zinc-100 mb-1">XCP DEX</h1>
+          <h1 className="text-lg font-semibold text-zinc-100 mb-1">Dashboard</h1>
           <p className="text-xs text-zinc-500">Decentralized exchange metrics and leaderboards</p>
         </div>
         <div className="flex items-center gap-3">

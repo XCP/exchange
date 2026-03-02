@@ -29,6 +29,7 @@ const SKIP_SLUGS = new Set([
   "avime", "rarestamps", "stampcash", "weird-memes", "txampstamp",
   "book-of-stamp", "stampepes", "vivalastamps",
   "rarepepecoins",
+  "phunchkins",
 ]);
 
 function slugify(name: string): string {
@@ -58,6 +59,17 @@ interface TagEntry {
 
 interface AssetEntry {
   asset: string;
+}
+
+/** Remove tag_assets rows that match entries in tag_asset_exclusions */
+async function applyExclusions(db: D1Database): Promise<number> {
+  const result = await db.prepare(
+    `DELETE FROM tag_assets WHERE (tag_id, asset) IN (
+       SELECT t.id, e.asset FROM tag_asset_exclusions e
+       JOIN tags t ON t.slug = e.tag_slug
+     )`
+  ).run();
+  return result.meta.changes ?? 0;
 }
 
 export async function syncTags(db: D1Database, tagType: string): Promise<{ tags: number; assets: number }> {
@@ -161,7 +173,11 @@ export async function syncTags(db: D1Database, tagType: string): Promise<{ tags:
     ).bind(tagType),
   ]);
 
-  // 6. Record sync timestamp
+  // 6. Apply exclusions (remove assets that belong to a different collection)
+  const excluded = await applyExclusions(db);
+  if (excluded > 0) console.log(`tag sync: removed ${excluded} excluded tag_assets`);
+
+  // 7. Record sync timestamp
   await setState(db, `last_tag_sync_${tagType}`, String(Math.floor(Date.now() / 1000)));
 
   return { tags: tags.length, assets: totalAssets };

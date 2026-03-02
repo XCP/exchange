@@ -61,7 +61,7 @@ export function useBlockHeight() {
   return data ? parseInt(data, 10) : null
 }
 
-/** Next-block fee rate in sat/vB with 20% buffer, rounded to 2 decimals */
+/** Next-block fee rate in sat/vB (median, no buffer), rounded to nearest integer */
 export function useFeeRate() {
   const { data } = useSWR<MempoolBlock[]>(
     `${MEMPOOL_BASE}/v1/fees/mempool-blocks`,
@@ -70,6 +70,5 @@ export function useFeeRate() {
   )
 
   if (!data || data.length === 0) return null
-  const median = data[0].medianFee
-  return Math.round(median * 1.2 * 100) / 100
+  return Math.round(data[0].medianFee)
 }

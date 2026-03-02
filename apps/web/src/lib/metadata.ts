@@ -1,7 +1,5 @@
 import type { Metadata } from 'next'
 
-const SITE_NAME = 'XCP DEX'
-const SITE_TITLE_SUFFIX = ' | XCP DEX'
 const DEFAULT_DESCRIPTION = 'Peer-to-peer trading on the Counterparty Decentralized Exchange. No counterparty risk.'
 
 function formatChange(change: number | null | undefined): string {
@@ -45,8 +43,8 @@ export function buildTradePairMetadata(
   const changeStr = formatChange(change)
 
   const title = priceStr
-    ? `${displayBase} ${priceStr} ${quote}${changeStr}${SITE_TITLE_SUFFIX}`
-    : `${displayBase}/${quote}${SITE_TITLE_SUFFIX}`
+    ? `${displayBase} ${priceStr} ${quote}${changeStr}`
+    : `${displayBase}/${quote}`
 
   const desc = description ?? `Trade ${displayBase}/${quote} on the Counterparty DEX. ${priceStr ? `Price: ${priceStr} ${quote}${changeStr}.` : ''} No counterparty risk.`
 
@@ -71,8 +69,8 @@ export function buildDispenseMetadata(
   const changeStr = formatChange(change)
 
   const title = priceStr
-    ? `${displayAsset} ${priceStr} BTC${changeStr}${SITE_TITLE_SUFFIX}`
-    : `${displayAsset} Dispensers${SITE_TITLE_SUFFIX}`
+    ? `${displayAsset} ${priceStr} BTC${changeStr}`
+    : `${displayAsset} Dispensers`
 
   const desc = description ?? `Buy ${displayAsset} from ${activeCount ?? 0} active dispensers on the Counterparty network.${priceStr ? ` Best price: ${priceStr} BTC.` : ''}`
 
@@ -90,7 +88,7 @@ export function buildAssetMetadata(
   supply?: string | null,
   locked?: boolean | null,
 ): Metadata {
-  const title = `${displayAsset}${SITE_TITLE_SUFFIX}`
+  const title = displayAsset
   const parts: string[] = [`${displayAsset} on the Counterparty network.`]
   if (supply) parts.push(`Supply: ${supply}.`)
   if (locked) parts.push('Locked.')
@@ -104,7 +102,7 @@ export function buildAssetMetadata(
 }
 
 export function buildStaticMetadata(pageTitle: string, description?: string, path?: string): Metadata {
-  const title = `${pageTitle}${SITE_TITLE_SUFFIX}`
+  const title = pageTitle
   const desc = description ?? DEFAULT_DESCRIPTION
 
   return {

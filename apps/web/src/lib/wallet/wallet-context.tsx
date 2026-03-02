@@ -60,15 +60,15 @@ export function WalletProvider({ children }: { children: ReactNode }) {
               setAddress(accounts[0])
               setStatus('connected')
             } else {
+              // Wallet may be locked — keep storage key so user can reconnect
               setAddress(null)
               setStatus('disconnected')
-              storageRemove(STORAGE_KEY)
             }
           })
           .catch(() => {
+            // Transient error — keep storage key for retry on next load
             setAddress(null)
             setStatus('disconnected')
-            storageRemove(STORAGE_KEY)
           })
       }
     }
@@ -76,14 +76,10 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     if (window.xcpwallet) {
       onDetected()
     } else {
-      // Wait up to 2s for extension to inject
+      // Listen for extension injection — no timeout so late injection is caught
       const handler = () => onDetected()
       window.addEventListener('xcp-wallet#initialized', handler)
-      const timeout = setTimeout(() => {
-        window.removeEventListener('xcp-wallet#initialized', handler)
-      }, 2000)
       return () => {
-        clearTimeout(timeout)
         window.removeEventListener('xcp-wallet#initialized', handler)
       }
     }
@@ -95,16 +91,19 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
     const onAccountsChanged = (accounts: string[]) => {
       if (accounts.length === 0) {
+        // Fired on lock OR disconnect — don't clear storage key here
+        // (the disconnect event handler below clears it for real disconnects)
         setAddress(null)
         setStatus('disconnected')
-        storageRemove(STORAGE_KEY)
       } else {
         setAddress(accounts[0])
         setStatus('connected')
+        storageSet(STORAGE_KEY, '1')
       }
     }
 
     const onDisconnect = () => {
+      // Explicit disconnect from extension — clear storage key
       setAddress(null)
       setStatus('disconnected')
       storageRemove(STORAGE_KEY)

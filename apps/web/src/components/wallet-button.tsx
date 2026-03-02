@@ -28,7 +28,14 @@ export function WalletButton() {
     return (
       <>
         <button
-          onClick={() => setShowInstall(true)}
+          onClick={() => {
+            // Re-check — extension may have injected after the 2s detection window
+            if (window.xcpwallet) {
+              connect()
+            } else {
+              setShowInstall(true)
+            }
+          }}
           className="rounded-sm border border-green-500/30 bg-green-500/10 px-3 py-1 text-xs font-medium text-green-400 hover:bg-green-500/20 transition-colors"
         >
           Connect

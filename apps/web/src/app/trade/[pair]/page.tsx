@@ -2,6 +2,7 @@ import { Suspense } from 'react'
 import type { Metadata } from 'next'
 import { fetchPairStats } from '@/lib/api/server'
 import { buildTradePairMetadata } from '@/lib/metadata'
+import { XCP_IMG_BASE } from '@/utils/constants'
 import PairOrdersPage from './page.client'
 
 interface Props {
@@ -28,16 +29,19 @@ export async function generateMetadata({ params, searchParams }: Props): Promise
     stats?.price_change_24h,
   )
 
+  const icons = { icon: `${XCP_IMG_BASE}/icon/${quote}` }
+
   const hasTradeParams = sp.side || sp.price || sp.amount
   if (hasTradeParams) {
     return {
       ...meta,
+      icons,
       alternates: { canonical: `/trade/${pairSlug}` },
       robots: { index: false, follow: false },
     }
   }
 
-  return meta
+  return { ...meta, icons }
 }
 
 export default function Page({ params }: Props) {

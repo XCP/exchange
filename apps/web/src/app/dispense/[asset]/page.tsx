@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { fetchDispenserStats, fetchAssetInfo } from '@/lib/api/server'
 import { buildDispenseMetadata } from '@/lib/metadata'
+import { XCP_IMG_BASE } from '@/utils/constants'
 import AssetDispensersPage from './page.client'
 
 interface Props {
@@ -17,15 +18,18 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
   const displayAsset = info?.asset_longname ?? asset
 
-  return buildDispenseMetadata(
-    asset,
-    displayAsset,
-    stats?.cheapest_price,
-    stats?.last_dispense_price,
-    stats?.price_change_24h,
-    stats?.active_dispensers,
-    info?.description,
-  )
+  return {
+    ...buildDispenseMetadata(
+      asset,
+      displayAsset,
+      stats?.cheapest_price,
+      stats?.last_dispense_price,
+      stats?.price_change_24h,
+      stats?.active_dispensers,
+      info?.description,
+    ),
+    icons: { icon: `${XCP_IMG_BASE}/icon/BTC` },
+  }
 }
 
 export default function Page({ params }: Props) {
