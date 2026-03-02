@@ -407,7 +407,8 @@ function OrdersTable({ tab, orders, isLoading, blockHeight, baseSearch, quoteSea
             const isClosed = order.status !== 'open'
             const isBid = /^(buy|bid)$/i.test(order.side)
             // Open orders: show remaining amount; closed orders: show original amount
-            const displayAmount = isClosed ? order.amount : order.remaining
+            const rawAmount = isClosed ? order.amount : order.remaining
+            const displayAmount = rawAmount > 0 ? rawAmount : 0
 
             return (
               <tr key={order.tx_hash} className="hover:bg-zinc-800/50 transition-colors border-b border-zinc-800/30 last:border-0">
@@ -427,7 +428,7 @@ function OrdersTable({ tab, orders, isLoading, blockHeight, baseSearch, quoteSea
                   )}
                 </td>
                 <td className="text-right text-zinc-400 font-mono px-3 py-1.5">
-                  {formatPrice(displayAmount)}
+                  {displayAmount > 0 ? formatPrice(displayAmount) : '—'}
                 </td>
                 <td className="px-3 py-1.5">
                   <Link href={`/trade/${order.pair}`} className="flex items-center gap-1.5 hover:underline">

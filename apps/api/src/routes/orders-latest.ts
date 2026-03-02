@@ -36,6 +36,9 @@ export async function handleOrdersLatest(
   if (status) {
     conditions.push(`o.status = ?`);
     binds.push(status);
+  } else {
+    // Exclude invalid orders from unfiltered views
+    conditions.push(`o.status != 'invalid'`);
   }
 
   if (asset) {
