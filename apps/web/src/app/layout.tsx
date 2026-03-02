@@ -20,7 +20,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://xcpdex.com"),
-  title: "XCP DEX — Trade Bitcoin Assets",
+  title: "XCP DEX - Trade Cryptoassets Peer-to-Peer",
   description:
     "Peer-to-peer trading on the Counterparty Decentralized Exchange. No counterparty risk.",
   openGraph: {
