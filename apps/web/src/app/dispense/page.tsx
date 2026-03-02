@@ -73,7 +73,7 @@ export default function DispensePage() {
               <option value="">All Dispensers</option>
               {collections.filter(c => c.open_dispensers_count > 0).map(c => (
                 <option key={c.slug} value={c.slug}>
-                  {c.name} ({c.open_dispensers_count})
+                  {c.name}
                 </option>
               ))}
             </select>

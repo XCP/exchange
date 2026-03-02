@@ -91,7 +91,7 @@ export default function TradePage() {
               <option value="">All Orders</option>
               {collections.filter(c => c.open_orders_count > 0).map(c => (
                 <option key={c.slug} value={c.slug}>
-                  {c.name} ({c.open_orders_count})
+                  {c.name}
                 </option>
               ))}
             </select>
