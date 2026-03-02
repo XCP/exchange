@@ -1,11 +1,31 @@
 import { setState } from "./state";
 
 const TAGS_BASE = "https://app.xcp.io/api/v1/tags";
+const TOKENSCAN_NFTS_URL = "https://tokenscan.io/js/nfts.js";
 const PAGE_LIMIT = 100;
 /** Max rows per INSERT statement (2 params each = 100 bound params at 50 rows) */
 const ROWS_PER_STMT = 50;
 /** Max statements per db.batch() call */
 const STMTS_PER_BATCH = 50;
+
+/** Tokenscan name → our existing slug for known mismatches */
+const SLUG_OVERRIDES: Record<string, string> = {
+  "Bitcorns": "bitcorn-crops",
+};
+
+function slugify(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
+interface TokenscanCollection {
+  name: string;
+  site: string;
+  cards: string[];
+}
 
 interface TagEntry {
   slug: string;
@@ -119,4 +139,91 @@ export async function syncTags(db: D1Database, tagType: string): Promise<{ tags:
   await setState(db, `last_tag_sync_${tagType}`, String(Math.floor(Date.now() / 1000)));
 
   return { tags: tags.length, assets: totalAssets };
+}
+
+/**
+ * Sync NFT collections from tokenscan.io as a secondary source.
+ * Uses INSERT ... ON CONFLICT DO NOTHING so xcp.io data stays authoritative.
+ * Only inserts assets for newly created tags (skips if tag already existed).
+ */
+export async function syncTokenscanCollections(db: D1Database): Promise<{ tags: number; assets: number }> {
+  const res = await fetch(TOKENSCAN_NFTS_URL);
+  if (!res.ok) throw new Error(`Tokenscan fetch error: ${res.status}`);
+  const text = await res.text();
+
+  // File format: NFT_DATA = [ ... ]
+  const jsonStr = text.replace(/^[^=]+=\s*/, "").trim();
+  const collections: TokenscanCollection[] = JSON.parse(jsonStr);
+
+  let newTags = 0;
+  let totalAssets = 0;
+
+  for (const col of collections) {
+    const slug = SLUG_OVERRIDES[col.name] ?? slugify(col.name);
+    // Strip file extension from card filenames to get asset names
+    const assets = col.cards.map((c) => c.replace(/\.[^.]+$/, ""));
+
+    // INSERT ... ON CONFLICT DO NOTHING — xcp.io owns overlapping tags
+    const row = await db
+      .prepare(
+        `INSERT INTO tags (slug, name, tag_type, assets_count)
+         VALUES (?, ?, 'collection', ?)
+         ON CONFLICT (tag_type, slug) DO NOTHING
+         RETURNING id`
+      )
+      .bind(slug, col.name, assets.length)
+      .first<{ id: number }>();
+
+    // If row is null, the tag already existed — skip asset sync
+    if (!row) continue;
+
+    newTags++;
+    const tagId = row.id;
+
+    // Batch-insert assets respecting D1 limits
+    for (let i = 0; i < assets.length; i += ROWS_PER_STMT * STMTS_PER_BATCH) {
+      const batchSlice = assets.slice(i, i + ROWS_PER_STMT * STMTS_PER_BATCH);
+      const stmts: D1PreparedStatement[] = [];
+
+      for (let j = 0; j < batchSlice.length; j += ROWS_PER_STMT) {
+        const chunk = batchSlice.slice(j, j + ROWS_PER_STMT);
+        const placeholders = chunk.map(() => "(?, ?)").join(", ");
+        const params: (number | string)[] = [];
+        for (const asset of chunk) {
+          params.push(tagId, asset);
+        }
+        stmts.push(
+          db.prepare(`INSERT INTO tag_assets (tag_id, asset) VALUES ${placeholders}`).bind(...params)
+        );
+      }
+
+      await db.batch(stmts);
+    }
+
+    totalAssets += assets.length;
+  }
+
+  // Update open orders + dispensers counts for any newly added tags
+  if (newTags > 0) {
+    await db.batch([
+      db.prepare(
+        `UPDATE tags SET open_orders_count = (
+          SELECT COUNT(DISTINCT o.tx_hash) FROM orders o
+          JOIN tag_assets ta ON ta.tag_id = tags.id
+          WHERE o.status = 'open' AND (o.base_asset = ta.asset OR o.quote_asset = ta.asset)
+        ) WHERE tag_type = 'collection' AND open_orders_count IS NULL`
+      ),
+      db.prepare(
+        `UPDATE tags SET open_dispensers_count = (
+          SELECT COUNT(*) FROM dispensers d
+          JOIN tag_assets ta ON ta.tag_id = tags.id
+          WHERE d.status < 10 AND d.asset = ta.asset
+        ) WHERE tag_type = 'collection' AND open_dispensers_count IS NULL`
+      ),
+    ]);
+  }
+
+  await setState(db, "last_tag_sync_tokenscan", String(Math.floor(Date.now() / 1000)));
+
+  return { tags: newTags, assets: totalAssets };
 }

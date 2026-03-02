@@ -16,7 +16,7 @@ import { handleSearch } from "./routes/search";
 import { handleBlock } from "./routes/block";
 import { handleTags } from "./routes/tags";
 import { handleDispensersLatest, handleDispensesLatest } from "./routes/dispensers-latest";
-import { syncTags } from "./indexer/tags";
+import { syncTags, syncTokenscanCollections } from "./indexer/tags";
 import { handleGetSwaps, handleGetSwap, handleCancelSwap, handlePrepareListingPsbt, handleCompleteListingPsbt, handlePrepareFill, handleCompleteFill, handlePrepareCancelSwap } from "./routes/swaps";
 import { checkPendingFills } from "./lib/swap-monitor";
 import { syncBlocks } from "./indexer/sync-block";
@@ -415,6 +415,10 @@ export default {
       // POST /indexer/sync-tags?type=collection — manual tag sync
       if (path === "/indexer/sync-tags" && request.method === "POST") {
         const tagType = url.searchParams.get("type") ?? "collection";
+        if (tagType === "tokenscan") {
+          const result = await syncTokenscanCollections(env.DB);
+          return await withCors(Response.json({ ok: true, ...result }));
+        }
         const result = await syncTags(env.DB, tagType);
         return await withCors(Response.json({ ok: true, ...result }));
       }
@@ -644,6 +648,22 @@ export default {
                   console.log(`Tag sync (collection): ${result.tags} tags, ${result.assets} assets`);
                 } catch (e) {
                   console.error("Tag sync error:", e);
+                }
+              }
+
+              // Periodic tokenscan collection sync: secondary NFT data source every 24h
+              const TOKENSCAN_SYNC_INTERVAL = 24 * 3600;
+              const lastTsSyncRow = await env.DB
+                .prepare(`SELECT value FROM indexer_state WHERE key = 'last_tag_sync_tokenscan'`)
+                .first<{ value: string }>();
+              const lastTsSync = lastTsSyncRow ? parseInt(lastTsSyncRow.value, 10) : 0;
+
+              if (now - lastTsSync >= TOKENSCAN_SYNC_INTERVAL) {
+                try {
+                  const result = await syncTokenscanCollections(env.DB);
+                  console.log(`Tokenscan sync: ${result.tags} new tags, ${result.assets} assets`);
+                } catch (e) {
+                  console.error("Tokenscan sync error:", e);
                 }
               }
 
