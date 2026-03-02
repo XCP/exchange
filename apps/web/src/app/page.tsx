@@ -84,22 +84,55 @@ function baseChartOptions() {
   }
 }
 
+// ── Skeleton primitives ─────────────────────────────────────────────
+
+function Bone({ className = '' }: { className?: string }) {
+  return <div className={`animate-pulse rounded-sm bg-zinc-800 ${className}`} />
+}
+
+function SkeletonRows({ rows = 10, cols = 4 }: { rows?: number; cols?: number }) {
+  return (
+    <>
+      {Array.from({ length: rows }, (_, i) => (
+        <tr key={i} className="border-b border-zinc-800/30 last:border-0">
+          {Array.from({ length: cols }, (_, j) => (
+            <td key={j} className="px-3 py-1.5">
+              <Bone className="h-3 w-full" />
+            </td>
+          ))}
+        </tr>
+      ))}
+    </>
+  )
+}
+
 // ── CounterCard ─────────────────────────────────────────────────────
 
 function CounterCard({
   label,
   value,
   sub,
+  loading,
 }: {
   label: string
   value: string
   sub?: string
+  loading?: boolean
 }) {
   return (
     <div className="bg-zinc-900/50 border border-zinc-800 rounded-sm px-4 py-3">
       <div className="text-[10px] uppercase tracking-wider text-zinc-500 mb-1">{label}</div>
-      <div className="text-lg font-mono font-semibold text-zinc-100">{value}</div>
-      {sub && <div className="text-xs text-zinc-500 font-mono mt-0.5">{sub}</div>}
+      {loading ? (
+        <>
+          <Bone className="h-6 w-24 mb-1" />
+          <Bone className="h-3 w-16 mt-0.5" />
+        </>
+      ) : (
+        <>
+          <div className="text-lg font-mono font-semibold text-zinc-100">{value}</div>
+          {sub ? <div className="text-xs text-zinc-500 font-mono mt-0.5">{sub}</div> : <div className="h-3 mt-0.5" />}
+        </>
+      )}
     </div>
   )
 }
@@ -495,53 +528,70 @@ export default function AnalyticsPage() {
           </div>
         </div>
 
-        {/* Counter Cards — show skeleton placeholders while loading */}
+        {/* Counter Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-6">
-          {/* Row 1: Order book trading */}
           <CounterCard
             label="Trade Volume"
+            loading={summaryLoading}
             value={tradeSummary ? fmtBig(tradeSummary.tf_volume) + ' XCP' : '—'}
             sub={tradeSummary && tradeSummary.tf_trades > 0 ? `Avg: ${fmtBig(tradeSummary.tf_volume / tradeSummary.tf_trades)} XCP` : undefined}
           />
           <CounterCard
             label="Orders Placed"
+            loading={summaryLoading}
             value={tradeSummary ? tradeSummary.tf_orders.toLocaleString() : '—'}
             sub={tradeSummary ? `${tradeSummary.open_orders.toLocaleString()} open` : undefined}
           />
           <CounterCard
             label="Trades"
+            loading={summaryLoading}
             value={tradeSummary ? tradeSummary.tf_trades.toLocaleString() : '—'}
             sub={tradeSummary?.tf_unique_traders ? `${tradeSummary.tf_unique_traders.toLocaleString()} addresses` : undefined}
           />
           <CounterCard
             label="Active Pairs"
+            loading={summaryLoading}
             value={tradeSummary ? tradeSummary.active_pairs.toLocaleString() : '—'}
             sub={tradeSummary ? (isAll ? `${tradeSummary.total_pairs.toLocaleString()} total` : tradeSummary.new_pairs ? `${tradeSummary.new_pairs.toLocaleString()} new` : undefined) : undefined}
           />
-          {/* Row 2: Dispensers */}
           <CounterCard
             label="Dispense Volume"
+            loading={summaryLoading}
             value={dispenseSummary ? fmtBig(dispenseSummary.tf_volume) + ` ${btcLabel.toUpperCase()}` : '—'}
             sub={dispenseSummary && dispenseSummary.tf_dispenses > 0 ? `Avg: ${fmtBig(dispenseSummary.tf_volume / dispenseSummary.tf_dispenses)} ${btcLabel.toUpperCase()}` : undefined}
           />
           <CounterCard
             label="Dispensers Created"
+            loading={summaryLoading}
             value={dispenseSummary ? dispenseSummary.tf_dispensers_created.toLocaleString() : '—'}
             sub={dispenseSummary ? `${dispenseSummary.open_dispensers.toLocaleString()} open` : undefined}
           />
           <CounterCard
             label="Dispenses"
+            loading={summaryLoading}
             value={dispenseSummary ? dispenseSummary.tf_dispenses.toLocaleString() : '—'}
             sub={dispenseSummary?.tf_unique_buyers ? `${dispenseSummary.tf_unique_buyers.toLocaleString()} addresses` : undefined}
           />
           <CounterCard
             label="Active Dispensers"
+            loading={summaryLoading}
             value={dispenseSummary ? dispenseSummary.active_assets.toLocaleString() : '—'}
             sub={dispenseSummary ? (isAll ? `${dispenseSummary.total_assets.toLocaleString()} total` : dispenseSummary.new_assets ? `${dispenseSummary.new_assets.toLocaleString()} new` : undefined) : undefined}
           />
         </div>
 
         {/* Quote Volume Marquee Ticker */}
+        {summaryLoading && (
+          <div className="mb-6 bg-zinc-900/50 border border-zinc-800 rounded-sm py-2 px-3 flex gap-4">
+            {Array.from({ length: 6 }, (_, i) => (
+              <div key={i} className="flex items-center gap-2 shrink-0">
+                <Bone className="h-3.5 w-3.5 rounded-sm" />
+                <Bone className="h-3 w-10" />
+                <Bone className="h-3 w-16" />
+              </div>
+            ))}
+          </div>
+        )}
         {quoteVolumes.length > 0 && (() => {
           // Repeat enough to guarantee overflow, then duplicate for seamless loop
           const reps = Math.max(2, Math.ceil(8 / quoteVolumes.length))
@@ -575,8 +625,23 @@ export default function AnalyticsPage() {
         {/* Leaderboards — renders as soon as summary loads */}
         <h2 className="text-xs uppercase tracking-wider text-zinc-500 mb-2">Leaderboards</h2>
         {summaryLoading ? (
-          <div className="flex items-center justify-center py-10 mb-8">
-            <span className="text-xs text-zinc-500">Loading leaderboards...</span>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-8">
+            {[0, 1].map((k) => (
+              <div key={k} className="bg-zinc-900/50 border border-zinc-800 rounded-sm">
+                <div className="px-3 py-2"><Bone className="h-3 w-36" /></div>
+                <table className="w-full text-xs whitespace-nowrap">
+                  <thead>
+                    <tr className="text-zinc-500 border-b border-zinc-800">
+                      <th className="text-left font-normal px-3 py-1.5 w-6">#</th>
+                      <th className="text-left font-normal px-3 py-1.5">—</th>
+                      <th className="text-right font-normal px-3 py-1.5">—</th>
+                      <th className="text-right font-normal px-3 py-1.5">—</th>
+                    </tr>
+                  </thead>
+                  <tbody><SkeletonRows rows={10} cols={4} /></tbody>
+                </table>
+              </div>
+            ))}
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-8">
@@ -588,8 +653,15 @@ export default function AnalyticsPage() {
         {/* Volume History — renders as soon as charts load */}
         <h2 className="text-xs uppercase tracking-wider text-zinc-500 mb-2">Volume History</h2>
         {chartsLoading ? (
-          <div className="flex items-center justify-center py-10 mb-8">
-            <span className="text-xs text-zinc-500">Loading charts...</span>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-8">
+            {[0, 1].map((k) => (
+              <div key={k} className="bg-zinc-900/50 border border-zinc-800 rounded-sm">
+                <div className="px-3 py-2"><Bone className="h-3 w-32" /></div>
+                <div className="px-3 pb-3" style={{ height: 280 }}>
+                  <div className="w-full h-full animate-pulse rounded-sm bg-zinc-800/50" />
+                </div>
+              </div>
+            ))}
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-8">
@@ -609,8 +681,29 @@ export default function AnalyticsPage() {
         {/* Top Traders — renders as soon as traders load */}
         <h2 className="text-xs uppercase tracking-wider text-zinc-500 mb-2">Top Traders</h2>
         {tradersLoading ? (
-          <div className="flex items-center justify-center py-10">
-            <span className="text-xs text-zinc-500">Loading traders...</span>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+            {[0, 1].map((k) => (
+              <div key={k} className="bg-zinc-900/50 border border-zinc-800 rounded-sm">
+                <div className="px-3 py-2 flex items-center gap-2">
+                  <Bone className="h-3 w-28" />
+                  <div className="flex gap-0.5 ml-auto">
+                    <Bone className="h-5 w-12 rounded-sm" />
+                    <Bone className="h-5 w-12 rounded-sm" />
+                  </div>
+                </div>
+                <table className="w-full text-xs whitespace-nowrap">
+                  <thead>
+                    <tr className="text-zinc-500 border-b border-zinc-800">
+                      <th className="text-left font-normal px-3 py-1.5 w-6">#</th>
+                      <th className="text-left font-normal px-3 py-1.5">—</th>
+                      <th className="text-right font-normal px-3 py-1.5">—</th>
+                      <th className="text-right font-normal px-3 py-1.5">—</th>
+                    </tr>
+                  </thead>
+                  <tbody><SkeletonRows rows={10} cols={4} /></tbody>
+                </table>
+              </div>
+            ))}
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2">

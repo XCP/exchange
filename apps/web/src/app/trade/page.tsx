@@ -12,8 +12,7 @@ import { formatPrice } from '@/utils/format-price'
 import { XCP_IMG_BASE } from '@/utils/constants'
 
 function compactTime(ts: number): string {
-  const diff = Math.floor(Date.now() / 1000 - ts)
-  if (diff < 60) return `${diff}s`
+  const diff = Math.max(0, Math.floor(Date.now() / 1000 - ts))
   if (diff < 3600) return `${Math.floor(diff / 60)}m`
   if (diff < 86400) return `${Math.floor(diff / 3600)}h`
   if (diff < 2592000) return `${Math.floor(diff / 86400)}d`
