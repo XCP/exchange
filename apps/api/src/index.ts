@@ -15,6 +15,7 @@ import { handleOrdersLatest } from "./routes/orders-latest";
 import { handleSearch } from "./routes/search";
 import { handleBlock } from "./routes/block";
 import { handleTags } from "./routes/tags";
+import { handleDispensersLatest, handleDispensesLatest } from "./routes/dispensers-latest";
 import { syncTags } from "./indexer/tags";
 import { handleGetSwaps, handleGetSwap, handleCancelSwap, handlePrepareListingPsbt, handleCompleteListingPsbt, handlePrepareFill, handleCompleteFill, handlePrepareCancelSwap } from "./routes/swaps";
 import { checkPendingFills } from "./lib/swap-monitor";
@@ -190,6 +191,16 @@ export default {
       // Route: GET /orders/latest
       if (path === "/orders/latest") {
         return await withCors(await handleOrdersLatest(request, env.DB));
+      }
+
+      // Route: GET /dispensers/latest
+      if (path === "/dispensers/latest") {
+        return await withCors(await handleDispensersLatest(request, env.DB));
+      }
+
+      // Route: GET /dispenses/latest
+      if (path === "/dispenses/latest") {
+        return await withCors(await handleDispensesLatest(request, env.DB));
       }
 
       // Route: GET /search?q=...

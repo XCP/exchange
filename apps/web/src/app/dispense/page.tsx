@@ -3,11 +3,11 @@
 import { useState } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
-import { useGlobalDispensers, useGlobalDispenses } from '@/lib/hooks/useGlobalDispensers'
+import { useDispensersLatest, useDispensesLatest, type LatestDispenser, type LatestDispense } from '@/lib/hooks/useDispensersLatest'
+import { useTags } from '@/lib/hooks/useTags'
 import { formatAddress } from '@/utils/format-address'
 import { formatPrice } from '@/utils/format-price'
 import { XCP_IMG_BASE } from '@/utils/constants'
-import type { Dispenser, Dispense } from '@/types/trading'
 
 function compactTime(ts: number): string {
   const diff = Math.floor(Date.now() / 1000 - ts)
@@ -31,8 +31,12 @@ function EmptyRows({ loading, label, cols }: { loading: boolean; label: string; 
 
 export default function DispensePage() {
   const [tab, setTab] = useState<0 | 1>(0)
-  const { dispensers, isLoading: dispensersLoading } = useGlobalDispensers(50)
-  const { dispenses, isLoading: dispensesLoading } = useGlobalDispenses(50)
+  const [tag, setTag] = useState<string | null>(null)
+  const collections = useTags('collection')
+
+  const filters = tag ? { tag } : undefined
+  const { dispensers, isLoading: dispensersLoading } = useDispensersLatest(filters, 50)
+  const { dispenses, isLoading: dispensesLoading } = useDispensesLatest(filters, 50)
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
@@ -45,6 +49,18 @@ export default function DispensePage() {
         </div>
         <div className="bg-zinc-900/50 border border-zinc-800 rounded-sm">
           <div className="px-3 py-2 flex items-center gap-2">
+            <select
+              value={tag ?? ''}
+              onChange={(e) => setTag(e.target.value || null)}
+              className="px-2 py-0.5 text-[10px] font-mono bg-zinc-800 border border-zinc-700 rounded-sm text-zinc-300 outline-none"
+            >
+              <option value="">All Collections</option>
+              {collections.filter(c => c.open_dispensers_count > 0).map(c => (
+                <option key={c.slug} value={c.slug}>
+                  {c.name} ({c.open_dispensers_count})
+                </option>
+              ))}
+            </select>
             <div className="flex gap-0.5 ml-auto">
               {['New', 'Dispenses'].map((label, i) => (
                 <button
@@ -72,7 +88,7 @@ export default function DispensePage() {
   )
 }
 
-function DispensersTable({ dispensers, isLoading }: { dispensers: Dispenser[]; isLoading: boolean }) {
+function DispensersTable({ dispensers, isLoading }: { dispensers: LatestDispenser[]; isLoading: boolean }) {
   return (
     <table className="w-full text-xs whitespace-nowrap">
       <thead>
@@ -89,42 +105,38 @@ function DispensersTable({ dispensers, isLoading }: { dispensers: Dispenser[]; i
         {isLoading || dispensers.length === 0 ? (
           <EmptyRows loading={isLoading} label="dispensers" cols={6} />
         ) : (
-          dispensers.map((dispenser) => {
-            const assetSymbol = dispenser.asset_info?.asset_longname ?? dispenser.asset
-
-            return (
-              <tr key={dispenser.tx_hash} className="hover:bg-zinc-800/50 transition-colors border-b border-zinc-800/30 last:border-0">
-                <td className="text-zinc-500 font-mono px-3 py-1.5">
-                  {dispenser.block_time ? compactTime(dispenser.block_time) : '—'}
-                </td>
-                <td className="px-3 py-1.5">
-                  <Link href={`/dispense/${encodeURIComponent(assetSymbol)}`} className="flex items-center gap-1.5 hover:underline">
-                    <Image src={`${XCP_IMG_BASE}/icon/${dispenser.asset}`} alt="" width={14} height={14} className="rounded-sm" unoptimized />
-                    <span className="text-zinc-200 truncate">{assetSymbol}</span>
-                  </Link>
-                </td>
-                <td className="text-right text-zinc-400 font-mono px-3 py-1.5">
-                  {formatPrice(dispenser.satoshirate_normalized)}
-                </td>
-                <td className="text-right text-zinc-400 font-mono px-3 py-1.5">
-                  {formatPrice(dispenser.give_remaining_normalized)}
-                </td>
-                <td className="text-left text-zinc-500 font-mono px-3 py-1.5 max-sm:hidden">
-                  {formatAddress(dispenser.source)}
-                </td>
-                <td className="text-right text-zinc-500 font-mono px-3 py-1.5 max-sm:hidden">
-                  {dispenser.dispense_count}
-                </td>
-              </tr>
-            )
-          })
+          dispensers.map((d) => (
+            <tr key={d.tx_hash} className="hover:bg-zinc-800/50 transition-colors border-b border-zinc-800/30 last:border-0">
+              <td className="text-zinc-500 font-mono px-3 py-1.5">
+                {d.block_time ? compactTime(d.block_time) : '—'}
+              </td>
+              <td className="px-3 py-1.5">
+                <Link href={`/dispense/${encodeURIComponent(d.asset)}`} className="flex items-center gap-1.5 hover:underline">
+                  <Image src={`${XCP_IMG_BASE}/icon/${d.asset}`} alt="" width={14} height={14} className="rounded-sm" unoptimized />
+                  <span className="text-zinc-200 truncate">{d.asset}</span>
+                </Link>
+              </td>
+              <td className="text-right text-zinc-400 font-mono px-3 py-1.5">
+                {formatPrice(d.price)}
+              </td>
+              <td className="text-right text-zinc-400 font-mono px-3 py-1.5">
+                {formatPrice(d.give_remaining)}
+              </td>
+              <td className="text-left text-zinc-500 font-mono px-3 py-1.5 max-sm:hidden">
+                {formatAddress(d.source)}
+              </td>
+              <td className="text-right text-zinc-500 font-mono px-3 py-1.5 max-sm:hidden">
+                {d.dispense_count}
+              </td>
+            </tr>
+          ))
         )}
       </tbody>
     </table>
   )
 }
 
-function DispensesTable({ dispenses, isLoading }: { dispenses: Dispense[]; isLoading: boolean }) {
+function DispensesTable({ dispenses, isLoading }: { dispenses: LatestDispense[]; isLoading: boolean }) {
   return (
     <table className="w-full text-xs whitespace-nowrap">
       <thead>
@@ -141,37 +153,31 @@ function DispensesTable({ dispenses, isLoading }: { dispenses: Dispense[]; isLoa
         {isLoading || dispenses.length === 0 ? (
           <EmptyRows loading={isLoading} label="dispenses" cols={6} />
         ) : (
-          dispenses.map((dispense) => {
-            const assetSymbol = dispense.asset_info?.asset_longname ?? dispense.asset
-            const qty = parseFloat(dispense.dispense_quantity_normalized)
-            const price = qty > 0 ? parseFloat(dispense.btc_amount_normalized) / qty : 0
-
-            return (
-              <tr key={`${dispense.tx_hash}-${dispense.dispense_index}`} className="hover:bg-zinc-800/50 transition-colors border-b border-zinc-800/30 last:border-0">
-                <td className="text-zinc-500 font-mono px-3 py-1.5">
-                  {dispense.block_time ? compactTime(dispense.block_time) : '—'}
-                </td>
-                <td className="px-3 py-1.5">
-                  <Link href={`/dispense/${encodeURIComponent(assetSymbol)}`} className="flex items-center gap-1.5 hover:underline">
-                    <Image src={`${XCP_IMG_BASE}/icon/${dispense.asset}`} alt="" width={14} height={14} className="rounded-sm" unoptimized />
-                    <span className="text-zinc-200 truncate">{assetSymbol}</span>
-                  </Link>
-                </td>
-                <td className="text-right text-zinc-400 font-mono px-3 py-1.5">
-                  {isFinite(price) && price > 0 ? formatPrice(price) : '—'}
-                </td>
-                <td className="text-right text-zinc-400 font-mono px-3 py-1.5">
-                  {formatPrice(dispense.dispense_quantity_normalized)}
-                </td>
-                <td className="text-left text-zinc-500 font-mono px-3 py-1.5 max-sm:hidden">
-                  {formatAddress(dispense.destination)}
-                </td>
-                <td className="text-left text-zinc-500 font-mono px-3 py-1.5 max-sm:hidden">
-                  {formatAddress(dispense.source)}
-                </td>
-              </tr>
-            )
-          })
+          dispenses.map((d) => (
+            <tr key={`${d.tx_hash}-${d.dispense_index}`} className="hover:bg-zinc-800/50 transition-colors border-b border-zinc-800/30 last:border-0">
+              <td className="text-zinc-500 font-mono px-3 py-1.5">
+                {d.block_time ? compactTime(d.block_time) : '—'}
+              </td>
+              <td className="px-3 py-1.5">
+                <Link href={`/dispense/${encodeURIComponent(d.asset)}`} className="flex items-center gap-1.5 hover:underline">
+                  <Image src={`${XCP_IMG_BASE}/icon/${d.asset}`} alt="" width={14} height={14} className="rounded-sm" unoptimized />
+                  <span className="text-zinc-200 truncate">{d.asset}</span>
+                </Link>
+              </td>
+              <td className="text-right text-zinc-400 font-mono px-3 py-1.5">
+                {isFinite(d.price) && d.price > 0 ? formatPrice(d.price) : '—'}
+              </td>
+              <td className="text-right text-zinc-400 font-mono px-3 py-1.5">
+                {formatPrice(d.dispense_quantity)}
+              </td>
+              <td className="text-left text-zinc-500 font-mono px-3 py-1.5 max-sm:hidden">
+                {formatAddress(d.destination)}
+              </td>
+              <td className="text-left text-zinc-500 font-mono px-3 py-1.5 max-sm:hidden">
+                {formatAddress(d.source)}
+              </td>
+            </tr>
+          ))
         )}
       </tbody>
     </table>

@@ -5,7 +5,7 @@ export async function handleTags(request: Request, db: D1Database): Promise<Resp
   const rows = await db
     .prepare(
       `SELECT slug, name, tag_type, assets_count, open_orders_count, open_dispensers_count
-       FROM tags WHERE tag_type = ? AND (open_orders_count > 0 OR open_dispensers_count > 0) ORDER BY name`
+       FROM tags WHERE tag_type = ? ORDER BY name`
     )
     .bind(tagType)
     .all();
