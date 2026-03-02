@@ -59,9 +59,9 @@ export async function handleOrdersLatest(
   }
 
   const side = url.searchParams.get("side");
-  if (side && (side === "buy" || side === "sell")) {
+  if (side === "buy" || side === "sell") {
     conditions.push(`o.side = ?`);
-    binds.push(side);
+    binds.push(side === "buy" ? "bid" : "ask");
   }
 
   const tag = url.searchParams.get("tag");
