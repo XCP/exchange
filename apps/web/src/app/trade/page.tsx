@@ -416,7 +416,7 @@ function OrdersTable({ tab, orders, isLoading, blockHeight, baseSearch, quoteSea
                   <td className="text-right text-zinc-500 font-mono px-3 py-1.5">
                     {blockHeight != null
                       ? lastColIsAgo
-                        ? `${(blockHeight - order.block_index).toLocaleString()} blocks ago`
+                        ? `${(blockHeight - (order.status === 'expired' ? order.expire_index : order.block_index)).toLocaleString()} blocks ago`
                         : `${Math.max(0, order.expire_index - blockHeight).toLocaleString()} blocks`
                       : '—'}
                   </td>
