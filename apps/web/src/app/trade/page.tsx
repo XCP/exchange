@@ -160,7 +160,48 @@ function TradePageInner() {
           />
         </div>
         <div className="bg-zinc-900/50 border border-zinc-800 rounded-sm">
-          <div className="px-3 py-2 flex items-center gap-2">
+          {/* Mobile: stacked rows */}
+          <div className="sm:hidden px-3 py-2 flex flex-col gap-2">
+            <select
+              value={tag ?? ''}
+              onChange={(e) => handleTagChange(e.target.value || null)}
+              className="w-full px-2 py-1 text-xs font-mono bg-zinc-800 border border-zinc-700 rounded-sm text-zinc-300 outline-none"
+            >
+              <option value="">All Orders</option>
+              {collections.filter(c => tab === 'open' || tab === 'expiring' ? c.open_orders_count > 0 : true).map(c => (
+                <option key={c.slug} value={c.slug}>
+                  {c.name}{tab === 'open' || tab === 'expiring' ? ` (${c.open_orders_count})` : ''}
+                </option>
+              ))}
+            </select>
+            <select
+              value={tab}
+              onChange={(e) => setTab(e.target.value as OrderTab)}
+              className="w-full px-2 py-1 text-xs font-mono bg-zinc-800 border border-zinc-700 rounded-sm text-zinc-300 outline-none"
+            >
+              {ORDER_TABS.map(([key, label]) => (
+                <option key={key} value={key}>{label}</option>
+              ))}
+            </select>
+            {(sourceFilter || sideFilter) && (
+              <div className="flex items-center gap-2">
+                {sourceFilter && (
+                  <span className="inline-flex items-center gap-1.5 px-2 py-px text-[10px] font-mono bg-zinc-800 border border-zinc-700 rounded-sm text-zinc-300">
+                    {formatAddress(sourceFilter)}
+                    <button onClick={() => setSourceFilter(null)} className="text-zinc-500 hover:text-zinc-200 transition-colors">&times;</button>
+                  </span>
+                )}
+                {sideFilter && (
+                  <span className="inline-flex items-center gap-1.5 px-2 py-px text-[10px] font-mono bg-zinc-800 border border-zinc-700 rounded-sm text-zinc-300 capitalize">
+                    {sideFilter}
+                    <button onClick={() => setSideFilter(null)} className="text-zinc-500 hover:text-zinc-200 transition-colors">&times;</button>
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+          {/* Desktop: single row */}
+          <div className="hidden sm:flex px-3 py-2 items-center gap-2">
             <select
               value={tag ?? ''}
               onChange={(e) => handleTagChange(e.target.value || null)}
