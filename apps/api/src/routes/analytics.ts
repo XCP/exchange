@@ -112,7 +112,8 @@ export async function handleAnalytics(
          LIMIT 10`
       ),
       db.prepare(
-        `SELECT quote_asset, ROUND(SUM(${volCol}), 2) AS volume,
+        `SELECT quote_asset, MAX(quote_asset_longname) AS quote_asset_longname,
+                ROUND(SUM(${volCol}), 2) AS volume,
                 SUM(${tradeCountCol}) AS trade_count
          FROM pair_stats
          WHERE ${tradeCountCol} > 0 AND quote_asset NOT IN ('XCP', 'BTC')${pairHidden}

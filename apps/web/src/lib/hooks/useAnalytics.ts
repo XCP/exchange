@@ -1,5 +1,5 @@
-import { dexUrl } from '@/lib/api/client'
-import { useDexSWR } from '@/lib/api/use-dex-swr'
+import useSWR from 'swr'
+import { dexUrl, fetcher } from '@/lib/api/client'
 
 export type Timeframe = '24h' | '7d' | '30d' | 'all'
 
@@ -63,6 +63,7 @@ export interface AnalyticsTopDispenser {
 
 export interface QuoteVolume {
   quote_asset: string
+  quote_asset_longname: string | null
   volume: number
   trade_count: number
 }
@@ -73,25 +74,39 @@ export interface AnalyticsTopTrader {
   trades: number
 }
 
-export interface AnalyticsTopCollection {
+export interface TopTradedCollection {
   slug: string
   name: string
-  trade_count?: number
-  volume?: number
+  trade_count: number
 }
 
-interface AnalyticsResponse {
+export interface TopDispensedCollection {
+  slug: string
+  name: string
+  volume: number
+}
+
+// Per-section response types
+interface SummaryResponse {
   timeframe: string
   trade_summary: TradeSummary
   dispense_summary: DispenseSummary
-  daily_trade_volume: DailyTradeVolume[]
-  daily_dispense_volume: DailyDispenseVolume[]
-  daily_btc_trade_volume: DailyTradeVolume[]
   top_pairs: AnalyticsTopPair[]
   top_dispensers: AnalyticsTopDispenser[]
   quote_volumes: QuoteVolume[]
-  top_traded_collections: AnalyticsTopCollection[]
-  top_dispensed_collections: AnalyticsTopCollection[]
+  top_traded_collections: TopTradedCollection[]
+  top_dispensed_collections: TopDispensedCollection[]
+}
+
+interface ChartsResponse {
+  timeframe: string
+  daily_trade_volume: DailyTradeVolume[]
+  daily_dispense_volume: DailyDispenseVolume[]
+  daily_btc_trade_volume: DailyTradeVolume[]
+}
+
+interface TradersResponse {
+  timeframe: string
   top_makers: AnalyticsTopTrader[]
   top_takers: AnalyticsTopTrader[]
   top_btc_buyers: AnalyticsTopTrader[]
@@ -106,35 +121,49 @@ function buildParams(timeframe: Timeframe, includeHidden: boolean, section: stri
   return params.toString()
 }
 
-export function useAnalytics(timeframe: Timeframe = '24h', includeHidden: boolean = false) {
-  // Three parallel requests to stay within D1 resource limits
-  const summaryKey = dexUrl(`/analytics?${buildParams(timeframe, includeHidden, 'summary')}`)
-  const chartsKey = dexUrl(`/analytics?${buildParams(timeframe, includeHidden, 'charts')}`)
-  const tradersKey = dexUrl(`/analytics?${buildParams(timeframe, includeHidden, 'traders')}`)
+// Analytics data changes at most every 10-min cron tick — no need for block-level cache busting
+const ANALYTICS_SWR_OPTS = {
+  dedupingInterval: 5 * 60 * 1000,
+  revalidateOnFocus: false,
+}
 
-  const summary = useDexSWR<AnalyticsResponse>(summaryKey)
-  const charts = useDexSWR<AnalyticsResponse>(chartsKey)
-  const traders = useDexSWR<AnalyticsResponse>(tradersKey)
-
+export function useAnalyticsSummary(timeframe: Timeframe, includeHidden: boolean) {
+  const key = dexUrl(`/analytics?${buildParams(timeframe, includeHidden, 'summary')}`)
+  const { data, isLoading, error } = useSWR<SummaryResponse>(key, fetcher, ANALYTICS_SWR_OPTS)
   return {
-    tradeSummary: summary.data?.trade_summary ?? null,
-    dispenseSummary: summary.data?.dispense_summary ?? null,
-    topPairs: summary.data?.top_pairs ?? [],
-    topDispensers: summary.data?.top_dispensers ?? [],
-    quoteVolumes: summary.data?.quote_volumes ?? [],
-    topTradedCollections: summary.data?.top_traded_collections ?? [],
-    topDispensedCollections: summary.data?.top_dispensed_collections ?? [],
-    dailyTradeVolume: charts.data?.daily_trade_volume ?? [],
-    dailyDispenseVolume: charts.data?.daily_dispense_volume ?? [],
-    dailyBtcTradeVolume: charts.data?.daily_btc_trade_volume ?? [],
-    topMakers: traders.data?.top_makers ?? [],
-    topTakers: traders.data?.top_takers ?? [],
-    topBtcBuyers: traders.data?.top_btc_buyers ?? [],
-    topBtcSellers: traders.data?.top_btc_sellers ?? [],
-    error: summary.error || charts.error || traders.error,
-    isLoading: summary.isLoading || charts.isLoading || traders.isLoading,
-    summaryLoading: summary.isLoading,
-    chartsLoading: charts.isLoading,
-    tradersLoading: traders.isLoading,
+    tradeSummary: data?.trade_summary ?? null,
+    dispenseSummary: data?.dispense_summary ?? null,
+    topPairs: data?.top_pairs ?? [],
+    topDispensers: data?.top_dispensers ?? [],
+    quoteVolumes: data?.quote_volumes ?? [],
+    topTradedCollections: data?.top_traded_collections ?? [],
+    topDispensedCollections: data?.top_dispensed_collections ?? [],
+    isLoading,
+    error,
+  }
+}
+
+export function useAnalyticsCharts(timeframe: Timeframe, includeHidden: boolean) {
+  const key = dexUrl(`/analytics?${buildParams(timeframe, includeHidden, 'charts')}`)
+  const { data, isLoading, error } = useSWR<ChartsResponse>(key, fetcher, ANALYTICS_SWR_OPTS)
+  return {
+    dailyTradeVolume: data?.daily_trade_volume ?? [],
+    dailyDispenseVolume: data?.daily_dispense_volume ?? [],
+    dailyBtcTradeVolume: data?.daily_btc_trade_volume ?? [],
+    isLoading,
+    error,
+  }
+}
+
+export function useAnalyticsTraders(timeframe: Timeframe, includeHidden: boolean) {
+  const key = dexUrl(`/analytics?${buildParams(timeframe, includeHidden, 'traders')}`)
+  const { data, isLoading, error } = useSWR<TradersResponse>(key, fetcher, ANALYTICS_SWR_OPTS)
+  return {
+    topMakers: data?.top_makers ?? [],
+    topTakers: data?.top_takers ?? [],
+    topBtcBuyers: data?.top_btc_buyers ?? [],
+    topBtcSellers: data?.top_btc_sellers ?? [],
+    isLoading,
+    error,
   }
 }
