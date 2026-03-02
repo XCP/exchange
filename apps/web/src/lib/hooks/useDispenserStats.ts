@@ -1,5 +1,5 @@
-import useSWR from 'swr'
-import { fetcher, dexUrl } from '@/lib/api/client'
+import { dexUrl } from '@/lib/api/client'
+import { useDexSWR } from '@/lib/api/use-dex-swr'
 
 export interface DispenserStats {
   asset: string
@@ -34,10 +34,8 @@ export interface DispenserStats {
 }
 
 export function useDispenserStats(asset: string) {
-  const { data, error, isLoading } = useSWR<DispenserStats>(
-    asset ? dexUrl(`/dispenser-stats/${asset}`) : null,
-    fetcher,
-    { refreshInterval: 30_000 }
+  const { data, error, isLoading } = useDexSWR<DispenserStats>(
+    asset ? dexUrl(`/dispenser-stats/${asset}`) : null
   )
 
   return { data, error, isLoading }

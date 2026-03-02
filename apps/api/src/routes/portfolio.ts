@@ -1,4 +1,5 @@
 import { API_TIMEOUT_MS } from "../lib/constants";
+import { cacheControl } from "../utils/cache";
 
 const BALANCE_CACHE_TTL = 86400; // 1 day in seconds
 
@@ -113,7 +114,7 @@ export async function handlePortfolioBids(
 
   return Response.json(
     { address, asset_count: assets.length, bids: allBids },
-    { headers: { "Cache-Control": "public, max-age=60" } }
+    { headers: { "Cache-Control": cacheControl(new URL(request.url), 60) } }
   );
 }
 
@@ -135,7 +136,7 @@ export async function handlePortfolioDispensers(
 
   return Response.json(
     { address, dispensers: result.results },
-    { headers: { "Cache-Control": "public, max-age=60" } }
+    { headers: { "Cache-Control": cacheControl(new URL(request.url), 60) } }
   );
 }
 
@@ -158,6 +159,6 @@ export async function handlePortfolioOrders(
 
   return Response.json(
     { address, orders: result.results },
-    { headers: { "Cache-Control": "public, max-age=60" } }
+    { headers: { "Cache-Control": cacheControl(new URL(request.url), 60) } }
   );
 }

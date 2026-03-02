@@ -1,5 +1,5 @@
-import useSWR from 'swr'
-import { fetcher, dexUrl } from '@/lib/api/client'
+import { dexUrl } from '@/lib/api/client'
+import { useDexSWR } from '@/lib/api/use-dex-swr'
 
 export type Timeframe = '24h' | '7d' | '30d' | 'all'
 
@@ -103,10 +103,9 @@ export function useAnalytics(timeframe: Timeframe = '24h', includeHidden: boolea
   const chartsKey = dexUrl(`/analytics?${buildParams(timeframe, includeHidden, 'charts')}`)
   const tradersKey = dexUrl(`/analytics?${buildParams(timeframe, includeHidden, 'traders')}`)
 
-  const opts = { refreshInterval: 300_000 }
-  const summary = useSWR<AnalyticsResponse>(summaryKey, fetcher, opts)
-  const charts = useSWR<AnalyticsResponse>(chartsKey, fetcher, opts)
-  const traders = useSWR<AnalyticsResponse>(tradersKey, fetcher, opts)
+  const summary = useDexSWR<AnalyticsResponse>(summaryKey)
+  const charts = useDexSWR<AnalyticsResponse>(chartsKey)
+  const traders = useDexSWR<AnalyticsResponse>(tradersKey)
 
   return {
     tradeSummary: summary.data?.trade_summary ?? null,

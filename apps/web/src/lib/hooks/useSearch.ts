@@ -1,5 +1,5 @@
-import useSWR from 'swr'
-import { fetcher, dexUrl } from '@/lib/api/client'
+import { dexUrl } from '@/lib/api/client'
+import { useDexSWR } from '@/lib/api/use-dex-swr'
 
 export interface SearchPairResult {
   pair: string
@@ -25,9 +25,8 @@ interface SearchResponse {
 }
 
 export function useSearch(query: string) {
-  const { data, isLoading } = useSWR<SearchResponse>(
+  const { data, isLoading } = useDexSWR<SearchResponse>(
     query.length >= 2 ? dexUrl(`/search?q=${encodeURIComponent(query)}`) : null,
-    fetcher,
     { dedupingInterval: 300, keepPreviousData: true }
   )
 

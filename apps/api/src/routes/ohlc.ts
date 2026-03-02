@@ -1,4 +1,5 @@
 import { INTERVAL_SECONDS, calendarBucket, nextBucket, walkBack } from "../lib/constants";
+import { cacheControl } from "../utils/cache";
 
 const VALID_INTERVALS = new Set(Object.keys(INTERVAL_SECONDS));
 
@@ -153,7 +154,7 @@ export async function handleOhlc(
     { pair, interval, candles },
     {
       headers: {
-        "Cache-Control": "public, max-age=60",
+        "Cache-Control": cacheControl(url, 60),
       },
     }
   );

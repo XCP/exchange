@@ -1,5 +1,5 @@
-import useSWR from 'swr'
-import { fetcher, dexUrl } from '@/lib/api/client'
+import { dexUrl } from '@/lib/api/client'
+import { useDexSWR } from '@/lib/api/use-dex-swr'
 
 export interface TradeSummary {
   total_pairs: number
@@ -11,10 +11,8 @@ export interface TradeSummary {
 
 export function useTradeSummary(includeHidden: boolean = false) {
   const params = includeHidden ? '?include_hidden=1' : ''
-  const { data, error, isLoading } = useSWR<TradeSummary>(
-    dexUrl(`/trade-summary${params}`),
-    fetcher,
-    { refreshInterval: 60_000 }
+  const { data, error, isLoading } = useDexSWR<TradeSummary>(
+    dexUrl(`/trade-summary${params}`)
   )
 
   return { data, error, isLoading }

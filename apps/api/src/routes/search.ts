@@ -1,3 +1,5 @@
+import { cacheControl } from "../utils/cache";
+
 export async function handleSearch(
   request: Request,
   db: D1Database
@@ -8,7 +10,7 @@ export async function handleSearch(
   if (q.length < 2) {
     return Response.json(
       { pairs: [], dispensers: [] },
-      { headers: { "Cache-Control": "public, max-age=60" } }
+      { headers: { "Cache-Control": cacheControl(url, 60) } }
     );
   }
 
@@ -47,6 +49,6 @@ export async function handleSearch(
       pairs: pairResult.results,
       dispensers: dispenserResult.results,
     },
-    { headers: { "Cache-Control": "public, max-age=60" } }
+    { headers: { "Cache-Control": cacheControl(url, 60) } }
   );
 }

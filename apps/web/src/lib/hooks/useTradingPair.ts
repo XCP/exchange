@@ -1,5 +1,6 @@
 import useSWR from 'swr'
 import { fetcher, dexUrl, counterpartyUrl } from '@/lib/api/client'
+import { useDexSWR } from '@/lib/api/use-dex-swr'
 import type { CounterpartyResponse } from '@/types/api'
 import type { PairStats } from './usePairStats'
 
@@ -62,10 +63,8 @@ export interface TradingPairData {
 export function useTradingPair(pairSlug: string) {
   const baseSymbol = pairSlug.substring(0, pairSlug.lastIndexOf('_'))
 
-  const { data: pairStats, error: pairError, isLoading: pairLoading } = useSWR<PairStats>(
-    pairSlug ? dexUrl(`/pair/${pairSlug}`) : null,
-    fetcher,
-    { refreshInterval: 60_000 }
+  const { data: pairStats, error: pairError, isLoading: pairLoading } = useDexSWR<PairStats>(
+    pairSlug ? dexUrl(`/pair/${pairSlug}`) : null
   )
 
   const { data: assetData, error: assetError, isLoading: assetLoading } = useSWR<CounterpartyAssetResponse>(

@@ -1,5 +1,5 @@
-import useSWR from 'swr'
-import { fetcher, dexUrl } from '@/lib/api/client'
+import { dexUrl } from '@/lib/api/client'
+import { useDexSWR } from '@/lib/api/use-dex-swr'
 
 export interface DispenserMarketEntry {
   asset: string
@@ -57,10 +57,8 @@ export function useDispenserMarkets(sort: string = 'total_btc_spent', includeHid
   const offset = (page - 1) * PAGE_SIZE
   const params = new URLSearchParams({ sort, limit: String(PAGE_SIZE), offset: String(offset), timeframe, order })
   if (includeHidden) params.set('include_hidden', '1')
-  const { data, error, isLoading } = useSWR<DispenserMarketsResponse>(
-    dexUrl(`/dispenser-stats?${params}`),
-    fetcher,
-    { refreshInterval: 60_000 }
+  const { data, error, isLoading } = useDexSWR<DispenserMarketsResponse>(
+    dexUrl(`/dispenser-stats?${params}`)
   )
 
   const total = data?.total ?? 0

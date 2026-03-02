@@ -1,3 +1,5 @@
+import { cacheControl } from "../utils/cache";
+
 export async function handleOrdersLatest(
   request: Request,
   db: D1Database
@@ -52,6 +54,27 @@ export async function handleOrdersLatest(
     binds.push(source);
   }
 
+  const tag = url.searchParams.get("tag");
+  if (tag) {
+    const tagType = url.searchParams.get("tag_type") ?? "collection";
+    const tagRow = await db
+      .prepare(`SELECT id FROM tags WHERE slug = ? AND tag_type = ?`)
+      .bind(tag, tagType)
+      .first<{ id: number }>();
+    if (tagRow) {
+      conditions.push(
+        `(o.base_asset IN (SELECT asset FROM tag_assets WHERE tag_id = ?) OR o.quote_asset IN (SELECT asset FROM tag_assets WHERE tag_id = ?))`
+      );
+      binds.push(tagRow.id, tagRow.id);
+    } else {
+      // Unknown tag — return empty results
+      return Response.json(
+        { orders: [] },
+        { headers: { "Cache-Control": cacheControl(url, 30) } }
+      );
+    }
+  }
+
   let query = `SELECT ${columns} FROM orders o LEFT JOIN pair_stats ps ON o.pair = ps.pair`;
   if (conditions.length > 0) {
     query += ` WHERE ${conditions.join(" AND ")}`;
@@ -75,6 +98,6 @@ export async function handleOrdersLatest(
 
   return Response.json(
     { orders: result.results },
-    { headers: { "Cache-Control": "public, max-age=30" } }
+    { headers: { "Cache-Control": cacheControl(url, 30) } }
   );
 }

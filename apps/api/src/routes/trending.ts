@@ -1,3 +1,5 @@
+import { cacheControl } from "../utils/cache";
+
 export async function handleTrending(
   request: Request,
   db: D1Database
@@ -31,7 +33,7 @@ export async function handleTrending(
   if (!result.results.length) {
     return Response.json(
       { trending: [] },
-      { headers: { "Cache-Control": "public, max-age=60" } }
+      { headers: { "Cache-Control": cacheControl(url, 60) } }
     );
   }
 
@@ -56,7 +58,7 @@ export async function handleTrending(
     { trending },
     {
       headers: {
-        "Cache-Control": "public, max-age=60",
+        "Cache-Control": cacheControl(url, 60),
       },
     }
   );

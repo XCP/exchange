@@ -1,3 +1,5 @@
+import { cacheControl } from "../utils/cache";
+
 export async function handleMarkets(
   request: Request,
   db: D1Database
@@ -48,7 +50,7 @@ export async function handleMarkets(
     { markets: result.results, total: countResult?.total ?? 0, limit, offset },
     {
       headers: {
-        "Cache-Control": "public, max-age=60",
+        "Cache-Control": cacheControl(url, 60),
       },
     }
   );

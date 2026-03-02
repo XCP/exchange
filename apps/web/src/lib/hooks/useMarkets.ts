@@ -1,5 +1,5 @@
-import useSWR from 'swr'
-import { fetcher, dexUrl } from '@/lib/api/client'
+import { dexUrl } from '@/lib/api/client'
+import { useDexSWR } from '@/lib/api/use-dex-swr'
 
 export interface MarketEntry {
   pair: string
@@ -27,10 +27,8 @@ export function useMarkets(quote?: string, limit: number = 50) {
   const params = new URLSearchParams({ limit: String(limit) })
   if (quote) params.set('quote', quote)
 
-  const { data, error, isLoading } = useSWR<MarketsResponse>(
-    dexUrl(`/markets?${params.toString()}`),
-    fetcher,
-    { refreshInterval: 60_000 }
+  const { data, error, isLoading } = useDexSWR<MarketsResponse>(
+    dexUrl(`/markets?${params.toString()}`)
   )
 
   return {

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import useSWR from 'swr'
 import { fetcher, dexUrl } from '@/lib/api/client'
+import { useDexSWR } from '@/lib/api/use-dex-swr'
 
 export interface Trade {
   id: number
@@ -57,10 +57,9 @@ export function useTrades(market: string, baseSymbol: string, quoteSymbol: strin
   const url = market ? dexUrl(`/trades/${pairSlug}?limit=${PAGE_SIZE}`) : null
 
   // SWR fetches the latest page (auto-refreshes)
-  const { data, error, isLoading } = useSWR<TradesResponse>(
+  const { data, error, isLoading } = useDexSWR<TradesResponse>(
     url,
-    fetcher,
-    { refreshInterval: 60_000, revalidateOnFocus: false }
+    { revalidateOnFocus: false }
   )
 
   // Accumulated older trades (appended via loadMore)

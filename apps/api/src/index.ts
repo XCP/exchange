@@ -13,6 +13,9 @@ import { handleTradeSummary } from "./routes/trade-summary";
 import { handleAnalytics } from "./routes/analytics";
 import { handleOrdersLatest } from "./routes/orders-latest";
 import { handleSearch } from "./routes/search";
+import { handleBlock } from "./routes/block";
+import { handleTags } from "./routes/tags";
+import { syncTags } from "./indexer/tags";
 import { handleGetSwaps, handleGetSwap, handleCancelSwap, handlePrepareListingPsbt, handleCompleteListingPsbt, handlePrepareFill, handleCompleteFill, handlePrepareCancelSwap } from "./routes/swaps";
 import { checkPendingFills } from "./lib/swap-monitor";
 import { syncBlocks } from "./indexer/sync-block";
@@ -105,7 +108,7 @@ export default {
       // Route: GET /pair/:pair
       const pairMatch = path.match(/^\/pair\/([A-Za-z0-9._]+)$/);
       if (pairMatch) {
-        return await withCors(await handlePair(env.DB, pairMatch[1]));
+        return await withCors(await handlePair(url, env.DB, pairMatch[1]));
       }
 
       // Route: GET /pairs
@@ -131,7 +134,7 @@ export default {
       // Route: GET /asset/:name
       const assetMatch = path.match(/^\/asset\/([A-Za-z0-9._]+)$/);
       if (assetMatch) {
-        return await withCors(await handleAsset(env.DB, assetMatch[1]));
+        return await withCors(await handleAsset(url, env.DB, assetMatch[1]));
       }
 
       // Route: GET /portfolio/:address/bids
@@ -181,7 +184,7 @@ export default {
       // Route: GET /dispenser-stats/:asset
       const dispenserStatsMatch = path.match(/^\/dispenser-stats\/([A-Za-z0-9._]+)$/);
       if (dispenserStatsMatch) {
-        return await withCors(await handleDispenserStats(env.DB, dispenserStatsMatch[1]));
+        return await withCors(await handleDispenserStats(url, env.DB, dispenserStatsMatch[1]));
       }
 
       // Route: GET /orders/latest
@@ -197,6 +200,16 @@ export default {
       // Route: GET /analytics
       if (path === "/analytics") {
         return await withCors(await handleAnalytics(request, env.DB));
+      }
+
+      // Route: GET /block
+      if (path === "/block") {
+        return await withCors(await handleBlock(env.DB));
+      }
+
+      // Route: GET /tags?type=collection
+      if (path === "/tags") {
+        return await withCors(await handleTags(request, env.DB));
       }
 
       // Route: GET /status — mode, progress, table counts
@@ -386,6 +399,13 @@ export default {
           deleteState(env.DB, "aggregation_cursor"),
         ]);
         return await withCors(Response.json({ ok: true, mode: "IDLE" }));
+      }
+
+      // POST /indexer/sync-tags?type=collection — manual tag sync
+      if (path === "/indexer/sync-tags" && request.method === "POST") {
+        const tagType = url.searchParams.get("type") ?? "collection";
+        const result = await syncTags(env.DB, tagType);
+        return await withCors(Response.json({ ok: true, ...result }));
       }
 
       // ---- Swap routes (PSBT atomic swaps) ----
@@ -597,6 +617,22 @@ export default {
                   .run();
                 if (stalePairs > 0 || staleDispensers > 0) {
                   console.log(`Stats refresh: ${stalePairs} pairs, ${staleDispensers} dispenser assets`);
+                }
+              }
+
+              // Periodic tag sync: refresh collection tags every 24 hours
+              const TAG_SYNC_INTERVAL = 24 * 3600;
+              const lastTagSyncRow = await env.DB
+                .prepare(`SELECT value FROM indexer_state WHERE key = 'last_tag_sync_collection'`)
+                .first<{ value: string }>();
+              const lastTagSync = lastTagSyncRow ? parseInt(lastTagSyncRow.value, 10) : 0;
+
+              if (now - lastTagSync >= TAG_SYNC_INTERVAL) {
+                try {
+                  const result = await syncTags(env.DB, "collection");
+                  console.log(`Tag sync (collection): ${result.tags} tags, ${result.assets} assets`);
+                } catch (e) {
+                  console.error("Tag sync error:", e);
                 }
               }
 

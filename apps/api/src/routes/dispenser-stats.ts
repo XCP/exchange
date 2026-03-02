@@ -1,3 +1,5 @@
+import { cacheControl } from "../utils/cache";
+
 export async function handleDispenserStatsList(
   request: Request,
   db: D1Database
@@ -80,11 +82,12 @@ export async function handleDispenserStatsList(
         unique_buyers: summary?.unique_buyers ?? 0,
       },
     },
-    { headers: { "Cache-Control": "public, max-age=60" } }
+    { headers: { "Cache-Control": cacheControl(url, 60) } }
   );
 }
 
 export async function handleDispenserStats(
+  url: URL,
   db: D1Database,
   asset: string
 ): Promise<Response> {
@@ -143,7 +146,7 @@ export async function handleDispenserStats(
         total_dispensers_created: null,
         avg_dispense_btc: null,
       },
-      { headers: { "Cache-Control": "public, max-age=300" } }
+      { headers: { "Cache-Control": cacheControl(url, 300) } }
     );
   }
 

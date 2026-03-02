@@ -1,3 +1,5 @@
+import { cacheControl } from "../utils/cache";
+
 export async function handleAnalytics(
   request: Request,
   db: D1Database
@@ -268,7 +270,7 @@ export async function handleAnalytics(
       top_btc_sellers: topBtcSellersResults,
     },
     {
-      headers: { "Cache-Control": "public, max-age=3600" },
+      headers: { "Cache-Control": cacheControl(url, 3600) },
     }
   );
 }

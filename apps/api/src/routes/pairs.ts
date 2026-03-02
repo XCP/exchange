@@ -1,3 +1,5 @@
+import { cacheControl } from "../utils/cache";
+
 const VALID_SORTS = new Set([
   "volume_24h", "volume_7d", "volume_30d", "total_volume",
   "trade_count_24h", "trade_count_7d", "trade_count_30d", "total_trade_count",
@@ -6,6 +8,7 @@ const VALID_SORTS = new Set([
 ]);
 
 export async function handlePair(
+  url: URL,
   db: D1Database,
   pair: string
 ): Promise<Response> {
@@ -30,7 +33,7 @@ export async function handlePair(
   }
 
   return Response.json(row, {
-    headers: { "Cache-Control": "public, max-age=60" },
+    headers: { "Cache-Control": cacheControl(url, 60) },
   });
 }
 
@@ -111,7 +114,7 @@ export async function handlePairs(
     { pairs: result.results, total: countResult?.total ?? 0, limit, offset },
     {
       headers: {
-        "Cache-Control": "public, max-age=60",
+        "Cache-Control": cacheControl(url, 60),
       },
     }
   );

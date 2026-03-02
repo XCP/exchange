@@ -1,5 +1,5 @@
-import useSWR from 'swr'
-import { fetcher, dexUrl } from '@/lib/api/client'
+import { dexUrl } from '@/lib/api/client'
+import { useDexSWR } from '@/lib/api/use-dex-swr'
 
 export interface PairStats {
   pair: string
@@ -44,10 +44,8 @@ export interface PairStats {
 }
 
 export function usePairStats(pairSlug: string) {
-  const { data, error, isLoading } = useSWR<PairStats>(
-    pairSlug ? dexUrl(`/pair/${pairSlug}`) : null,
-    fetcher,
-    { refreshInterval: 60_000 }
+  const { data, error, isLoading } = useDexSWR<PairStats>(
+    pairSlug ? dexUrl(`/pair/${pairSlug}`) : null
   )
 
   return { data, error, isLoading }

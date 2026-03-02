@@ -1,5 +1,5 @@
-import useSWR from 'swr'
-import { fetcher, dexUrl } from '@/lib/api/client'
+import { dexUrl } from '@/lib/api/client'
+import { useDexSWR } from '@/lib/api/use-dex-swr'
 
 export interface LatestOrder {
   tx_hash: string
@@ -34,6 +34,7 @@ export interface OrderFilters {
   baseAsset?: string
   quoteAsset?: string
   source?: string
+  tag?: string
 }
 
 function buildUrl(tab: OrderTab, filters?: OrderFilters): string {
@@ -61,16 +62,17 @@ function buildUrl(tab: OrderTab, filters?: OrderFilters): string {
   if (filters?.source) {
     params.set('source', filters.source)
   }
+  if (filters?.tag) {
+    params.set('tag', filters.tag)
+  }
 
   const qs = params.toString()
   return dexUrl(`/orders/latest${qs ? `?${qs}` : ''}`)
 }
 
 export function useLatestOrders(tab: OrderTab, filters?: OrderFilters) {
-  const { data, error, isLoading } = useSWR<LatestOrdersResponse>(
-    buildUrl(tab, filters),
-    fetcher,
-    { refreshInterval: 30_000 }
+  const { data, error, isLoading } = useDexSWR<LatestOrdersResponse>(
+    buildUrl(tab, filters)
   )
 
   return {

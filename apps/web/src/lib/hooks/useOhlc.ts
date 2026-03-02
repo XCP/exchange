@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import useSWR from 'swr'
 import { fetcher, dexUrl } from '@/lib/api/client'
+import { useDexSWR } from '@/lib/api/use-dex-swr'
 
 export interface OhlcCandle {
   t: number
@@ -37,10 +37,9 @@ export function useOhlc(pairSlug: string, timeframe: string = '1D') {
     : null
 
   // SWR for the latest candles (auto-refreshes)
-  const { data, error, isLoading } = useSWR<OhlcResponse>(
+  const { data, error, isLoading } = useDexSWR<OhlcResponse>(
     url,
-    fetcher,
-    { refreshInterval: 60_000, revalidateOnFocus: false }
+    { revalidateOnFocus: false }
   )
 
   // Accumulated historical candles (prepended via loadMore)

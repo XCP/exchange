@@ -1,5 +1,5 @@
-import useSWR from 'swr'
-import { fetcher, dexUrl } from '@/lib/api/client'
+import { dexUrl } from '@/lib/api/client'
+import { useDexSWR } from '@/lib/api/use-dex-swr'
 
 export interface PairEntry {
   pair: string
@@ -19,10 +19,8 @@ interface PairsResponse {
 }
 
 export function useAssetMarkets(asset: string) {
-  const { data, error, isLoading } = useSWR<PairsResponse>(
-    asset ? dexUrl(`/pairs?base=${asset}&limit=50`) : null,
-    fetcher,
-    { refreshInterval: 60_000 }
+  const { data, error, isLoading } = useDexSWR<PairsResponse>(
+    asset ? dexUrl(`/pairs?base=${asset}&limit=50`) : null
   )
 
   return {
@@ -37,15 +35,11 @@ export function useAssetMarkets(asset: string) {
  * Useful for asset hub pages that need the full picture.
  */
 export function useAllAssetMarkets(asset: string) {
-  const { data: baseData, isLoading: baseLoading } = useSWR<PairsResponse>(
-    asset ? dexUrl(`/pairs?base=${asset}&timeframe=all&limit=50`) : null,
-    fetcher,
-    { refreshInterval: 60_000 }
+  const { data: baseData, isLoading: baseLoading } = useDexSWR<PairsResponse>(
+    asset ? dexUrl(`/pairs?base=${asset}&timeframe=all&limit=50`) : null
   )
-  const { data: quoteData, isLoading: quoteLoading } = useSWR<PairsResponse>(
-    asset ? dexUrl(`/pairs?quote=${asset}&timeframe=all&limit=50`) : null,
-    fetcher,
-    { refreshInterval: 60_000 }
+  const { data: quoteData, isLoading: quoteLoading } = useDexSWR<PairsResponse>(
+    asset ? dexUrl(`/pairs?quote=${asset}&timeframe=all&limit=50`) : null
   )
 
   const basePairs = baseData?.pairs ?? []

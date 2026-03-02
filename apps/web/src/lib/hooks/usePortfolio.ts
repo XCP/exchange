@@ -1,5 +1,6 @@
 import useSWR from 'swr'
 import { fetcher, dexUrl, counterpartyUrl } from '@/lib/api/client'
+import { useDexSWR } from '@/lib/api/use-dex-swr'
 
 interface PortfolioOrder {
   pair: string
@@ -23,10 +24,8 @@ interface OrdersResponse {
 }
 
 export function usePortfolioOrders(address: string | null) {
-  const { data, error, isLoading } = useSWR<OrdersResponse>(
-    address ? dexUrl(`/portfolio/${address}/orders`) : null,
-    fetcher,
-    { refreshInterval: 30_000 }
+  const { data, error, isLoading } = useDexSWR<OrdersResponse>(
+    address ? dexUrl(`/portfolio/${address}/orders`) : null
   )
   return { orders: data?.orders ?? [], error, isLoading }
 }
@@ -50,10 +49,8 @@ interface DispensersResponse {
 }
 
 export function usePortfolioDispensers(address: string | null) {
-  const { data, error, isLoading } = useSWR<DispensersResponse>(
-    address ? dexUrl(`/portfolio/${address}/dispensers`) : null,
-    fetcher,
-    { refreshInterval: 30_000 }
+  const { data, error, isLoading } = useDexSWR<DispensersResponse>(
+    address ? dexUrl(`/portfolio/${address}/dispensers`) : null
   )
   return { dispensers: data?.dispensers ?? [], error, isLoading }
 }
@@ -97,10 +94,8 @@ interface BidsResponse {
 }
 
 export function usePortfolioBids(address: string | null) {
-  const { data, error, isLoading } = useSWR<BidsResponse>(
-    address ? dexUrl(`/portfolio/${address}/bids`) : null,
-    fetcher,
-    { refreshInterval: 60_000 }
+  const { data, error, isLoading } = useDexSWR<BidsResponse>(
+    address ? dexUrl(`/portfolio/${address}/bids`) : null
   )
   return { bids: data?.bids ?? [], error, isLoading }
 }

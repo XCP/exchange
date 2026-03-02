@@ -1,3 +1,5 @@
+import { cacheControl } from "../utils/cache";
+
 export async function handleBook(
   request: Request,
   db: D1Database,
@@ -37,7 +39,7 @@ export async function handleBook(
     { pair, bids: bids.results, asks: asks.results },
     {
       headers: {
-        "Cache-Control": "public, max-age=60",
+        "Cache-Control": cacheControl(url, 60),
       },
     }
   );

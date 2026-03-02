@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { RiFilter3Line } from 'react-icons/ri'
 import { useBlockHeight } from '@/lib/hooks/useNetworkInfo'
 import { useLatestOrders, type OrderTab, type LatestOrder } from '@/lib/hooks/useLatestOrders'
+import { useTags } from '@/lib/hooks/useTags'
 import { formatAddress } from '@/utils/format-address'
 import { formatPrice } from '@/utils/format-price'
 import { XCP_IMG_BASE } from '@/utils/constants'
@@ -46,6 +47,8 @@ export default function TradePage() {
   const [debouncedBase, setDebouncedBase] = useState('')
   const [debouncedQuote, setDebouncedQuote] = useState('')
   const [sourceFilter, setSourceFilter] = useState<string | null>(null)
+  const [tag, setTag] = useState<string | null>(null)
+  const collections = useTags('collection')
   const blockHeight = useBlockHeight()
 
   useEffect(() => {
@@ -59,6 +62,7 @@ export default function TradePage() {
   }, [quoteSearch])
 
   const filters = {
+    ...(tag ? { tag } : {}),
     ...(debouncedBase ? { baseAsset: debouncedBase } : {}),
     ...(debouncedQuote ? { quoteAsset: debouncedQuote } : {}),
     ...(sourceFilter ? { source: sourceFilter } : {}),
@@ -80,8 +84,20 @@ export default function TradePage() {
         </div>
         <div className="bg-zinc-900/50 border border-zinc-800 rounded-sm">
           <div className="px-3 py-2 flex items-center gap-2">
+            <select
+              value={tag ?? ''}
+              onChange={(e) => setTag(e.target.value || null)}
+              className="px-2 py-0.5 text-[10px] font-mono bg-zinc-800 border border-zinc-700 rounded-sm text-zinc-300 outline-none"
+            >
+              <option value="">All Trading Pairs</option>
+              {collections.map(c => (
+                <option key={c.slug} value={c.slug}>
+                  {c.name}{c.open_orders_count > 0 ? ` (${c.open_orders_count})` : ''}
+                </option>
+              ))}
+            </select>
             {sourceFilter && (
-              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 text-[10px] font-mono bg-zinc-800 border border-zinc-700 rounded-sm text-zinc-300 ml-2">
+              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 text-[10px] font-mono bg-zinc-800 border border-zinc-700 rounded-sm text-zinc-300">
                 {formatAddress(sourceFilter)}
                 <button onClick={() => setSourceFilter(null)} className="text-zinc-500 hover:text-zinc-200 transition-colors">&times;</button>
               </span>

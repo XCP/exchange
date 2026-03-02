@@ -1,4 +1,7 @@
+import { cacheControl } from "../utils/cache";
+
 export async function handleAsset(
+  url: URL,
   db: D1Database,
   asset: string
 ): Promise<Response> {
@@ -63,6 +66,6 @@ export async function handleAsset(
       pairs: pairs.results,
       last_trade: lastTrade,
     },
-    { headers: { "Cache-Control": "public, max-age=60" } }
+    { headers: { "Cache-Control": cacheControl(url, 60) } }
   );
 }

@@ -1,3 +1,5 @@
+import { cacheControl } from "../utils/cache";
+
 export async function handleTradeSummary(
   request: Request,
   db: D1Database
@@ -19,6 +21,6 @@ export async function handleTradeSummary(
     .first();
 
   return Response.json(row ?? {}, {
-    headers: { "Cache-Control": "public, max-age=60" },
+    headers: { "Cache-Control": cacheControl(url, 60) },
   });
 }
