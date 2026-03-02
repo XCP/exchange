@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { RiTerminalBoxLine } from 'react-icons/ri'
@@ -13,15 +14,16 @@ export function TopBar() {
   const btcPrice = useBtcPrice()
   const { xcpUsd } = useXcpPrice()
   const { satsMode, toggleSatsMode } = useSatsMode()
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false)
 
   return (
-    <header className="sticky top-0 z-50 flex items-center justify-between gap-4 border-b border-zinc-800 bg-zinc-950/95 backdrop-blur-sm px-4 py-2">
-      <div className="flex items-center gap-6">
+    <header className="sticky top-0 z-50 flex items-center justify-between gap-2 sm:gap-4 border-b border-zinc-800 bg-zinc-950/95 backdrop-blur-sm px-4 py-2">
+      <div className="flex items-center gap-3 sm:gap-6">
         <Link href="/" className="flex items-center gap-2.5 text-sm font-bold tracking-wider text-green-500 font-mono">
           <RiTerminalBoxLine className="text-lg relative" style={{ color: '#c8b898', top: '-0.5px' }} />
-          XCP DEX
+          <span className="hidden sm:inline">XCP DEX</span>
         </Link>
-        <nav className="hidden sm:flex items-center gap-4">
+        <nav className="flex items-center gap-3 sm:gap-4">
           {[
             { label: 'Trade', href: '/trade' },
             { label: 'Dispense', href: '/dispense' },
@@ -40,9 +42,18 @@ export function TopBar() {
         </nav>
       </div>
 
-      <SearchInput />
+      <SearchInput mobileOpen={mobileSearchOpen} onMobileOpenChange={setMobileSearchOpen} />
 
-      <div className="flex items-center gap-5">
+      <div className="flex items-center gap-3 sm:gap-5">
+        {/* Mobile search icon */}
+        <button
+          className="sm:hidden flex items-center justify-center h-7 w-7 rounded-sm border border-zinc-800 bg-zinc-900 text-zinc-500 hover:text-zinc-300 hover:border-zinc-700 transition-colors"
+          onClick={() => setMobileSearchOpen(true)}
+        >
+          <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+          </svg>
+        </button>
         <div className="hidden md:flex items-center gap-2">
           <span className="text-xs text-zinc-500">BTC</span>
           <span className="text-xs text-zinc-300 font-mono">
@@ -64,7 +75,7 @@ export function TopBar() {
           <span className="text-zinc-600">/</span>
           <span className={satsMode ? 'text-orange-400' : 'text-zinc-500'}>SATS</span>
         </button>
-        <div className="h-4 w-px bg-zinc-800" />
+        <div className="h-4 w-px bg-zinc-800 hidden sm:block" />
         <WalletButton />
       </div>
     </header>

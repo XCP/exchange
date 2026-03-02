@@ -12,13 +12,13 @@ function formatBtc(val: number | null): string {
   return `${(val * 1e8).toFixed(0)} sats`
 }
 
-export function SearchInput() {
+export function SearchInput({ mobileOpen = false, onMobileOpenChange }: { mobileOpen?: boolean; onMobileOpenChange?: (open: boolean) => void } = {}) {
   const router = useRouter()
   const [query, setQuery] = useState('')
   const [debouncedQuery, setDebouncedQuery] = useState('')
   const [open, setOpen] = useState(false)
   const [selectedIndex, setSelectedIndex] = useState(-1)
-  const [mobileOpen, setMobileOpen] = useState(false)
+  const setMobileOpen = onMobileOpenChange ?? (() => {})
   const inputRef = useRef<HTMLInputElement>(null)
   const mobileInputRef = useRef<HTMLInputElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -58,6 +58,16 @@ export function SearchInput() {
     document.addEventListener('keydown', handleSlash)
     return () => document.removeEventListener('keydown', handleSlash)
   }, [])
+
+  // Focus mobile input when overlay opens
+  useEffect(() => {
+    if (mobileOpen) {
+      setTimeout(() => mobileInputRef.current?.focus(), 50)
+    } else {
+      setQuery('')
+      setDebouncedQuery('')
+    }
+  }, [mobileOpen])
 
   // Click outside to close
   useEffect(() => {
@@ -230,16 +240,6 @@ export function SearchInput() {
         </div>
       </div>
 
-      {/* Mobile search button */}
-      <button
-        className="sm:hidden flex items-center justify-center h-7 w-7 rounded-sm border border-zinc-800 bg-zinc-900 text-zinc-500 hover:text-zinc-300 hover:border-zinc-700 transition-colors"
-        onClick={() => { setMobileOpen(true); setTimeout(() => mobileInputRef.current?.focus(), 50) }}
-      >
-        <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
-        </svg>
-      </button>
-
       {/* Mobile search overlay */}
       {mobileOpen && (
         <div className="sm:hidden fixed inset-0 z-[200] bg-zinc-950/95 backdrop-blur-sm">
@@ -263,18 +263,16 @@ export function SearchInput() {
                   onKeyDown={(e) => {
                     if (e.key === 'Escape') {
                       setMobileOpen(false)
-                      setQuery('')
-                      setDebouncedQuery('')
                     } else {
                       handleKeyDown(e)
                     }
                   }}
                   placeholder="Search markets..."
-                  className="w-full rounded-sm border border-zinc-700 bg-zinc-900 py-2 pl-8 pr-4 text-sm text-zinc-200 placeholder-zinc-600 outline-none focus:border-zinc-600"
+                  className="w-full rounded-sm border border-zinc-700 bg-zinc-900 py-1.5 pl-8 pr-4 text-xs text-zinc-200 placeholder-zinc-600 outline-none focus:border-zinc-600"
                 />
               </div>
               <button
-                onClick={() => { setMobileOpen(false); setQuery(''); setDebouncedQuery('') }}
+                onClick={() => setMobileOpen(false)}
                 className="text-xs text-zinc-400 hover:text-zinc-200 px-2 py-2"
               >
                 Cancel
