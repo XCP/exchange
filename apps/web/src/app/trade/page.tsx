@@ -203,7 +203,7 @@ function TradePageInner() {
           </div>
 
           <div className="overflow-x-auto">
-            <OrdersTable orders={orders} isLoading={isLoading} blockHeight={blockHeight} baseSearch={baseSearch} quoteSearch={quoteSearch} onBaseSearch={setBaseSearch} onQuoteSearch={setQuoteSearch} onFilterAddress={setSourceFilter} sourceFilter={sourceFilter} onClearAddress={() => setSourceFilter(null)} sideFilter={sideFilter} onSideFilter={setSideFilter} sortCol={sortCol} onSortCol={setSortCol} />
+            <OrdersTable tab={tab} orders={orders} isLoading={isLoading} blockHeight={blockHeight} baseSearch={baseSearch} quoteSearch={quoteSearch} onBaseSearch={setBaseSearch} onQuoteSearch={setQuoteSearch} onFilterAddress={setSourceFilter} sourceFilter={sourceFilter} onClearAddress={() => setSourceFilter(null)} sideFilter={sideFilter} onSideFilter={setSideFilter} sortCol={sortCol} onSortCol={setSortCol} />
           </div>
           <Pagination total={total} offset={offset} limit={250} onOffsetChange={setOffset} />
         </div>
@@ -212,7 +212,8 @@ function TradePageInner() {
   )
 }
 
-function OrdersTable({ orders, isLoading, blockHeight, baseSearch, quoteSearch, onBaseSearch, onQuoteSearch, onFilterAddress, sourceFilter, onClearAddress, sideFilter, onSideFilter, sortCol, onSortCol }: {
+function OrdersTable({ tab, orders, isLoading, blockHeight, baseSearch, quoteSearch, onBaseSearch, onQuoteSearch, onFilterAddress, sourceFilter, onClearAddress, sideFilter, onSideFilter, sortCol, onSortCol }: {
+  tab: OrderTab
   orders: LatestOrder[]
   isLoading: boolean
   blockHeight: number | null
@@ -228,6 +229,9 @@ function OrdersTable({ orders, isLoading, blockHeight, baseSearch, quoteSearch, 
   sortCol: 'price:asc' | 'price:desc' | null
   onSortCol: (v: 'price:asc' | 'price:desc' | null) => void
 }) {
+  const showLastCol = tab !== 'all'
+  const lastColHeader = tab === 'filled' ? 'Filled' : tab === 'expired' ? 'Expired' : tab === 'cancelled' ? 'Cancelled' : 'Expires'
+  const lastColIsAgo = tab === 'filled' || tab === 'expired' || tab === 'cancelled'
   const [showSideMenu, setShowSideMenu] = useState(false)
   const [showAddrInput, setShowAddrInput] = useState(false)
   const [addrDraft, setAddrDraft] = useState('')
@@ -346,12 +350,12 @@ function OrdersTable({ orders, isLoading, blockHeight, baseSearch, quoteSearch, 
             </div>
           </th>
           <th className="text-left font-normal px-3 py-1.5">Status</th>
-          <th className="text-right font-normal px-3 py-1.5">Expires</th>
+          {showLastCol && <th className="text-right font-normal px-3 py-1.5">{lastColHeader}</th>}
         </tr>
       </thead>
       <tbody>
         {isLoading || orders.length === 0 ? (
-          <EmptyRows loading={isLoading} label="orders" cols={10} />
+          <EmptyRows loading={isLoading} label="orders" cols={showLastCol ? 10 : 9} />
         ) : (
           orders.map((order) => {
             const [base, quote] = order.pair.split('_')
@@ -408,9 +412,15 @@ function OrdersTable({ orders, isLoading, blockHeight, baseSearch, quoteSearch, 
                 <td className={`text-left font-mono px-3 py-1.5 capitalize ${isClosed ? 'text-zinc-500' : 'text-zinc-400'}`}>
                   {order.status}
                 </td>
-                <td className="text-right text-zinc-500 font-mono px-3 py-1.5">
-                  {blockHeight != null ? `${Math.max(0, order.expire_index - blockHeight).toLocaleString()} blocks` : '—'}
-                </td>
+                {showLastCol && (
+                  <td className="text-right text-zinc-500 font-mono px-3 py-1.5">
+                    {blockHeight != null
+                      ? lastColIsAgo
+                        ? `${(blockHeight - order.block_index).toLocaleString()} blocks ago`
+                        : `${Math.max(0, order.expire_index - blockHeight).toLocaleString()} blocks`
+                      : '—'}
+                  </td>
+                )}
               </tr>
             )
           })
