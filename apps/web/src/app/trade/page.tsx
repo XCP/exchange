@@ -89,7 +89,7 @@ export default function TradePage() {
               onChange={(e) => setTag(e.target.value || null)}
               className="px-2 py-0.5 text-[10px] font-mono bg-zinc-800 border border-zinc-700 rounded-sm text-zinc-300 outline-none"
             >
-              <option value="">All Trading Pairs</option>
+              <option value="">All Orders</option>
               {collections.filter(c => c.open_orders_count > 0).map(c => (
                 <option key={c.slug} value={c.slug}>
                   {c.name} ({c.open_orders_count})
