@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { Suspense, useState, useEffect, useCallback } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Image from 'next/image'
 import Link from 'next/link'
@@ -48,6 +48,10 @@ const TABS: [DispenserTab, string][] = [
 ]
 
 export default function DispensePage() {
+  return <Suspense><DispensePageInner /></Suspense>
+}
+
+function DispensePageInner() {
   const searchParams = useSearchParams()
   const [tab, setTab] = useState<DispenserTab>('open')
   const [tag, setTag] = useState<string | null>(() => searchParams.get('v'))

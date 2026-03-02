@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { Suspense, useState, useEffect, useCallback } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Image from 'next/image'
 import Link from 'next/link'
@@ -42,6 +42,10 @@ const ORDER_TABS: [OrderTab, string][] = [
 ]
 
 export default function TradePage() {
+  return <Suspense><TradePageInner /></Suspense>
+}
+
+function TradePageInner() {
   const searchParams = useSearchParams()
   const [tab, setTab] = useState<OrderTab>('open')
   const [baseSearch, setBaseSearch] = useState('')
