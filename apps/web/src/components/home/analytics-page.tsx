@@ -64,6 +64,12 @@ export default function AnalyticsPage() {
   const [hideLowQuality, setHideLowQuality] = useState(true)
   const includeHidden = !hideLowQuality
 
+  // Cascade: summary loads first → traders fires once summary done → charts fires once traders done
+  const { isLoading: summaryLoading, ...summaryProps } = useSummaryData(timeframe, includeHidden)
+  const tradersReady = !summaryLoading
+  const { isLoading: tradersLoading, ...tradersProps } = useAnalyticsTraders(timeframe, includeHidden, tradersReady)
+  const chartsReady = tradersReady && !tradersLoading
+
   return (
     <div className="px-4 py-8">
       {/* Header + Controls */}
@@ -91,30 +97,36 @@ export default function AnalyticsPage() {
         </div>
       </div>
 
-      <SummarySection timeframe={timeframe} includeHidden={includeHidden} />
-      <ChartsSection timeframe={timeframe} includeHidden={includeHidden} />
-      <TradersSection timeframe={timeframe} includeHidden={includeHidden} />
+      <SummarySection timeframe={timeframe} includeHidden={includeHidden} isLoading={summaryLoading} {...summaryProps} />
+      <ChartsSection timeframe={timeframe} includeHidden={includeHidden} ready={chartsReady} />
+      <TradersSection isLoading={tradersLoading} {...tradersProps} />
     </div>
   )
 }
 
+// ── Lifted summary hook for cascading ────────────────────────────────
+
+function useSummaryData(timeframe: Timeframe, includeHidden: boolean) {
+  return useAnalyticsSummary(timeframe, includeHidden)
+}
+
 // ── Summary: Counter Cards + Marquee + Leaderboards ─────────────────
 
-function SummarySection({ timeframe, includeHidden }: { timeframe: Timeframe; includeHidden: boolean }) {
+function SummarySection({ timeframe, includeHidden, isLoading, tradeSummary, dispenseSummary, topPairs, topDispensers, quoteVolumes, topTradedCollections, topDispensedCollections }: {
+  timeframe: Timeframe
+  includeHidden: boolean
+  isLoading: boolean
+  tradeSummary: ReturnType<typeof useAnalyticsSummary>['tradeSummary']
+  dispenseSummary: ReturnType<typeof useAnalyticsSummary>['dispenseSummary']
+  topPairs: ReturnType<typeof useAnalyticsSummary>['topPairs']
+  topDispensers: ReturnType<typeof useAnalyticsSummary>['topDispensers']
+  quoteVolumes: ReturnType<typeof useAnalyticsSummary>['quoteVolumes']
+  topTradedCollections: ReturnType<typeof useAnalyticsSummary>['topTradedCollections']
+  topDispensedCollections: ReturnType<typeof useAnalyticsSummary>['topDispensedCollections']
+}) {
   const { satsMode } = useSatsMode()
   const btcLabel = satsMode ? 'sats' : 'BTC'
   const isAll = timeframe === 'all'
-
-  const {
-    tradeSummary,
-    dispenseSummary,
-    topPairs,
-    topDispensers,
-    quoteVolumes,
-    topTradedCollections,
-    topDispensedCollections,
-    isLoading,
-  } = useAnalyticsSummary(timeframe, includeHidden)
 
   // Build leaderboard row data
   const tradedAssetRows: LeaderboardRow[] = topPairs.map((p) => ({
@@ -249,9 +261,9 @@ function SummarySection({ timeframe, includeHidden }: { timeframe: Timeframe; in
 
 // ── Charts: Volume History ──────────────────────────────────────────
 
-function ChartsSection({ timeframe, includeHidden }: { timeframe: Timeframe; includeHidden: boolean }) {
+function ChartsSection({ timeframe, includeHidden, ready }: { timeframe: Timeframe; includeHidden: boolean; ready: boolean }) {
   const { dailyTradeVolume, dailyDispenseVolume, dailyBtcTradeVolume, isLoading } =
-    useAnalyticsCharts(timeframe, includeHidden)
+    useAnalyticsCharts(timeframe, includeHidden, ready)
 
   const mergedBtcVolume = mergeDailyVolumes(dailyBtcTradeVolume, dailyDispenseVolume)
 
@@ -272,10 +284,13 @@ function ChartsSection({ timeframe, includeHidden }: { timeframe: Timeframe; inc
 
 // ── Traders: Top Traders ────────────────────────────────────────────
 
-function TradersSection({ timeframe, includeHidden }: { timeframe: Timeframe; includeHidden: boolean }) {
-  const { topMakers, topTakers, topBtcBuyers, topBtcSellers, isLoading } =
-    useAnalyticsTraders(timeframe, includeHidden)
-
+function TradersSection({ topMakers, topTakers, topBtcBuyers, topBtcSellers, isLoading }: {
+  topMakers: ReturnType<typeof useAnalyticsTraders>['topMakers']
+  topTakers: ReturnType<typeof useAnalyticsTraders>['topTakers']
+  topBtcBuyers: ReturnType<typeof useAnalyticsTraders>['topBtcBuyers']
+  topBtcSellers: ReturnType<typeof useAnalyticsTraders>['topBtcSellers']
+  isLoading: boolean
+}) {
   return (
     <>
       <h2 className="text-sm uppercase tracking-wider text-zinc-400 mb-2">Top Traders</h2>

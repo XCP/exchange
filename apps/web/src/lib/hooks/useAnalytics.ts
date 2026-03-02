@@ -148,27 +148,27 @@ export function useAnalyticsSummary(timeframe: Timeframe, includeHidden: boolean
   }
 }
 
-export function useAnalyticsCharts(timeframe: Timeframe, includeHidden: boolean) {
-  const key = dexUrl(`/analytics?${buildParams(timeframe, includeHidden, 'charts')}`)
+export function useAnalyticsCharts(timeframe: Timeframe, includeHidden: boolean, ready = true) {
+  const key = ready ? dexUrl(`/analytics?${buildParams(timeframe, includeHidden, 'charts')}`) : null
   const { data, isLoading, error } = useSWR<ChartsResponse>(key, fetcher, ANALYTICS_SWR_OPTS)
   return {
     dailyTradeVolume: data?.daily_trade_volume ?? [],
     dailyDispenseVolume: data?.daily_dispense_volume ?? [],
     dailyBtcTradeVolume: data?.daily_btc_trade_volume ?? [],
-    isLoading,
+    isLoading: ready ? isLoading : true,
     error,
   }
 }
 
-export function useAnalyticsTraders(timeframe: Timeframe, includeHidden: boolean) {
-  const key = dexUrl(`/analytics?${buildParams(timeframe, includeHidden, 'traders')}`)
+export function useAnalyticsTraders(timeframe: Timeframe, includeHidden: boolean, ready = true) {
+  const key = ready ? dexUrl(`/analytics?${buildParams(timeframe, includeHidden, 'traders')}`) : null
   const { data, isLoading, error } = useSWR<TradersResponse>(key, fetcher, ANALYTICS_SWR_OPTS)
   return {
     topMakers: data?.top_makers ?? [],
     topTakers: data?.top_takers ?? [],
     topBtcBuyers: data?.top_btc_buyers ?? [],
     topBtcSellers: data?.top_btc_sellers ?? [],
-    isLoading,
+    isLoading: ready ? isLoading : true,
     error,
   }
 }
