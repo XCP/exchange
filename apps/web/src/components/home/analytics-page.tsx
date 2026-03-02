@@ -17,7 +17,6 @@ import { LeaderboardTable, type LeaderboardRow } from './leaderboard-table'
 import { TopTradersTable } from './top-traders-table'
 import { QuoteMarquee } from './quote-marquee'
 import {
-  Bone,
   LeaderboardSkeleton,
   ChartsSkeleton,
   TradersSkeleton,
@@ -65,7 +64,7 @@ export default function AnalyticsPage() {
   const includeHidden = !hideLowQuality
 
   // Cascade: summary first → charts after summary → traders after charts
-  const { isLoading: summaryLoading, ...summaryProps } = useSummaryData(timeframe, includeHidden)
+  const { isLoading: summaryLoading, ...summaryProps } = useAnalyticsSummary(timeframe, includeHidden)
   const chartsReady = !summaryLoading
   const { isLoading: chartsLoading } = useAnalyticsCharts(timeframe, includeHidden, chartsReady)
   const tradersReady = chartsReady && !chartsLoading
@@ -103,12 +102,6 @@ export default function AnalyticsPage() {
       <TradersSection isLoading={tradersLoading} {...tradersProps} />
     </div>
   )
-}
-
-// ── Lifted summary hook for cascading ────────────────────────────────
-
-function useSummaryData(timeframe: Timeframe, includeHidden: boolean) {
-  return useAnalyticsSummary(timeframe, includeHidden)
 }
 
 // ── Summary: Counter Cards + Marquee + Leaderboards ─────────────────

@@ -38,10 +38,10 @@ export async function handleAnalytics(
   // For "all" timeframe, SQL returns 0 — overridden by Counterparty API result_count
   const tfOrdersExpr = tf === "all"
     ? "0"
-    : `(SELECT COUNT(*) FROM orders WHERE 1=1${timeFilt})`;
+    : `(SELECT COUNT(*) FROM orders WHERE 1=1${timeFilt}${tradeHidden})`;
   const tfDispCreatedExpr = tf === "all"
     ? "0"
-    : `(SELECT COUNT(*) FROM dispensers WHERE 1=1${timeFilt})`;
+    : `(SELECT COUNT(*) FROM dispensers WHERE 1=1${timeFilt}${dispenseHidden})`;
 
   // Default empty results
   let tradeSummaryData: Record<string, number> | undefined;
@@ -73,7 +73,7 @@ export async function handleAnalytics(
           (SELECT COUNT(*) FROM orders o WHERE o.status = 'open'${includeHidden ? "" : " AND o.pair NOT IN (SELECT pair FROM pair_stats WHERE hidden = 1)"}) AS open_orders,
           ${tfOrdersExpr} AS tf_orders,
           (SELECT COUNT(*) FROM (SELECT maker AS a FROM trades WHERE 1=1${timeFilt}${tradeHidden} UNION SELECT taker FROM trades WHERE 1=1${timeFilt}${tradeHidden})) AS tf_unique_traders,
-          ${cutoff > 0 ? `(SELECT COUNT(*) FROM (SELECT pair FROM trades GROUP BY pair HAVING MIN(block_time) >= ${cutoff}))` : "0"} AS new_pairs
+          ${cutoff > 0 ? `(SELECT COUNT(*) FROM (SELECT pair FROM trades WHERE 1=1${tradeHidden} GROUP BY pair HAVING MIN(block_time) >= ${cutoff}))` : "0"} AS new_pairs
          FROM pair_stats
          WHERE 1=1${pairHidden}`
       ),
@@ -88,7 +88,7 @@ export async function handleAnalytics(
           COUNT(*) AS total_assets,
           ${tfDispCreatedExpr} AS tf_dispensers_created,
           (SELECT COUNT(DISTINCT destination) FROM dispenses WHERE 1=1${timeFilt}${dispenseHidden}) AS tf_unique_buyers,
-          ${cutoff > 0 ? `(SELECT COUNT(*) FROM (SELECT asset FROM dispenses GROUP BY asset HAVING MIN(block_time) >= ${cutoff}))` : "0"} AS new_assets
+          ${cutoff > 0 ? `(SELECT COUNT(*) FROM (SELECT asset FROM dispenses WHERE 1=1${dispenseHidden} GROUP BY asset HAVING MIN(block_time) >= ${cutoff}))` : "0"} AS new_assets
          FROM dispenser_stats ds
          WHERE 1=1${dispHidden}`
       ),
