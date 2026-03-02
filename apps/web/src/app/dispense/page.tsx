@@ -29,12 +29,13 @@ function EmptyRows({ loading, label, cols }: { loading: boolean; label: string; 
   )
 }
 
-type DispenserTab = 'all' | 'open' | 'dispenses' | 'closed'
+type DispenserTab = 'all' | 'open' | 'dispenses' | 'closing' | 'closed'
 
 const TABS: [DispenserTab, string][] = [
   ['all', 'All'],
   ['open', 'Open'],
   ['dispenses', 'Dispenses'],
+  ['closing', 'Closing'],
   ['closed', 'Closed'],
 ]
 

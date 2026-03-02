@@ -18,8 +18,10 @@ export async function handleDispensersLatest(
 
   if (status === "open") {
     conditions.push(`d.status < 10`);
+  } else if (status === "closing") {
+    conditions.push(`d.status = 11`);
   } else if (status === "closed") {
-    conditions.push(`d.status >= 10`);
+    conditions.push(`d.status = 10`);
   }
   // "all" or null = no status filter
 
