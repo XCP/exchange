@@ -17,6 +17,7 @@ import type {
   AnalyticsTopPair,
   AnalyticsTopDispenser,
   AnalyticsTopTrader,
+  AnalyticsTopCollection,
 } from '@/lib/hooks/useAnalytics'
 import { formatPrice } from '@/utils/format-price'
 import { useSatsMode } from '@/lib/sats-context'
@@ -293,92 +294,182 @@ function ComboVolumeChart({
 
 // ── LeaderboardTable ────────────────────────────────────────────────
 
-function TopPairsTable({ pairs, tfLabel }: { pairs: AnalyticsTopPair[]; tfLabel: string }) {
+function TopTradedTable({ pairs, collections, tfLabel }: { pairs: AnalyticsTopPair[]; collections: AnalyticsTopCollection[]; tfLabel: string }) {
+  const [tab, setTab] = useState<'assets' | 'collections'>('assets')
+
   return (
     <div className="bg-zinc-900/50 border border-zinc-800 rounded-sm">
-      <div className="px-3 py-2 text-xs text-zinc-500">Top Pairs ({tfLabel} Trades)</div>
-      <table className="w-full text-xs whitespace-nowrap">
-        <thead>
-          <tr className="text-zinc-500 border-b border-zinc-800">
-            <th className="text-left font-normal px-3 py-1.5">#</th>
-            <th className="text-left font-normal px-3 py-1.5">Pair</th>
-            <th className="text-right font-normal px-3 py-1.5">Trades</th>
-            <th className="text-right font-normal px-3 py-1.5">Chg</th>
-          </tr>
-        </thead>
-        <tbody>
-          {pairs.map((p, i) => (
-            <tr key={p.pair} className="hover:bg-zinc-800/50 transition-colors border-b border-zinc-800/30 last:border-0">
-              <td className="px-3 py-1.5 text-zinc-500">{i + 1}</td>
-              <td className="px-3 py-1.5">
-                <Link href={`/trade/${p.pair}`} className="flex items-center gap-1.5 hover:underline">
-                  <Image
-                    src={`${XCP_IMG_BASE}/icon/${p.base_asset}`}
-                    alt=""
-                    width={14}
-                    height={14}
-                    className="rounded-sm"
-                    unoptimized
-                  />
-                  <span className="text-zinc-200">{(p.base_asset_longname ?? p.base_asset)}/{p.quote_asset}</span>
-                </Link>
-              </td>
-              <td className="text-right text-zinc-400 font-mono px-3 py-1.5">{p.trade_count.toLocaleString()}</td>
-              <td className={`text-right font-mono px-3 py-1.5 ${pctColor(p.price_change)}`}>
-                {fmtPct(p.price_change)}
-              </td>
-            </tr>
+      <div className="px-3 py-2 flex items-center gap-2">
+        <span className="text-xs text-zinc-500">Top Traded (By Trades)</span>
+        <div className="flex gap-0.5 ml-auto">
+          {(['assets', 'collections'] as const).map((t) => (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              className={`px-2 py-0.5 text-[10px] font-mono rounded-sm transition-colors ${
+                tab === t
+                  ? 'bg-zinc-700 text-zinc-100'
+                  : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900'
+              }`}
+            >
+              {t === 'assets' ? 'Assets' : 'Collections'}
+            </button>
           ))}
-          {pairs.length === 0 && (
-            <tr><td colSpan={4} className="text-center py-6 text-zinc-500">No data</td></tr>
-          )}
-        </tbody>
-      </table>
+        </div>
+      </div>
+      {tab === 'assets' ? (
+        <table className="w-full text-xs whitespace-nowrap">
+          <thead>
+            <tr className="text-zinc-500 border-b border-zinc-800">
+              <th className="text-left font-normal px-3 py-1.5">#</th>
+              <th className="text-left font-normal px-3 py-1.5">Pair</th>
+              <th className="text-right font-normal px-3 py-1.5">Trades</th>
+              <th className="text-right font-normal px-3 py-1.5">Chg</th>
+            </tr>
+          </thead>
+          <tbody>
+            {pairs.map((p, i) => (
+              <tr key={p.pair} className="hover:bg-zinc-800/50 transition-colors border-b border-zinc-800/30 last:border-0">
+                <td className="px-3 py-1.5 text-zinc-500">{i + 1}</td>
+                <td className="px-3 py-1.5">
+                  <Link href={`/trade/${p.pair}`} className="flex items-center gap-1.5 hover:underline">
+                    <Image
+                      src={`${XCP_IMG_BASE}/icon/${p.base_asset}`}
+                      alt=""
+                      width={14}
+                      height={14}
+                      className="rounded-sm"
+                      unoptimized
+                    />
+                    <span className="text-zinc-200">{(p.base_asset_longname ?? p.base_asset)}/{p.quote_asset}</span>
+                  </Link>
+                </td>
+                <td className="text-right text-zinc-400 font-mono px-3 py-1.5">{p.trade_count.toLocaleString()}</td>
+                <td className={`text-right font-mono px-3 py-1.5 ${pctColor(p.price_change)}`}>
+                  {fmtPct(p.price_change)}
+                </td>
+              </tr>
+            ))}
+            {pairs.length === 0 && (
+              <tr><td colSpan={4} className="text-center py-6 text-zinc-500">No data</td></tr>
+            )}
+          </tbody>
+        </table>
+      ) : (
+        <table className="w-full text-xs whitespace-nowrap">
+          <thead>
+            <tr className="text-zinc-500 border-b border-zinc-800">
+              <th className="text-left font-normal px-3 py-1.5">#</th>
+              <th className="text-left font-normal px-3 py-1.5">Collection</th>
+              <th className="text-right font-normal px-3 py-1.5">Trades</th>
+            </tr>
+          </thead>
+          <tbody>
+            {collections.map((c, i) => (
+              <tr key={c.slug} className="hover:bg-zinc-800/50 transition-colors border-b border-zinc-800/30 last:border-0">
+                <td className="px-3 py-1.5 text-zinc-500">{i + 1}</td>
+                <td className="px-3 py-1.5">
+                  <Link href={`/trade?v=${c.slug}`} className="text-zinc-200 hover:underline">{c.name}</Link>
+                </td>
+                <td className="text-right text-zinc-400 font-mono px-3 py-1.5">{(c.trade_count ?? 0).toLocaleString()}</td>
+              </tr>
+            ))}
+            {collections.length === 0 && (
+              <tr><td colSpan={3} className="text-center py-6 text-zinc-500">No data</td></tr>
+            )}
+          </tbody>
+        </table>
+      )}
     </div>
   )
 }
 
-function TopDispensersTable({ dispensers, tfLabel, satsMode }: { dispensers: AnalyticsTopDispenser[]; tfLabel: string; satsMode: boolean }) {
+function TopDispensedTable({ dispensers, collections, tfLabel, satsMode }: { dispensers: AnalyticsTopDispenser[]; collections: AnalyticsTopCollection[]; tfLabel: string; satsMode: boolean }) {
+  const [tab, setTab] = useState<'assets' | 'collections'>('assets')
+
   return (
     <div className="bg-zinc-900/50 border border-zinc-800 rounded-sm">
-      <div className="px-3 py-2 text-xs text-zinc-500">Top Dispensers ({tfLabel} Volume)</div>
-      <table className="w-full text-xs whitespace-nowrap">
-        <thead>
-          <tr className="text-zinc-500 border-b border-zinc-800">
-            <th className="text-left font-normal px-3 py-1.5">#</th>
-            <th className="text-left font-normal px-3 py-1.5">Asset</th>
-            <th className="text-right font-normal px-3 py-1.5">Volume</th>
-            <th className="text-right font-normal px-3 py-1.5">Chg</th>
-          </tr>
-        </thead>
-        <tbody>
-          {dispensers.map((d, i) => (
-            <tr key={d.asset} className="hover:bg-zinc-800/50 transition-colors border-b border-zinc-800/30 last:border-0">
-              <td className="px-3 py-1.5 text-zinc-500">{i + 1}</td>
-              <td className="px-3 py-1.5">
-                <Link href={`/dispense/${d.asset}`} className="flex items-center gap-1.5 hover:underline">
-                  <Image
-                    src={`${XCP_IMG_BASE}/icon/${d.asset}`}
-                    alt=""
-                    width={14}
-                    height={14}
-                    className="rounded-sm"
-                    unoptimized
-                  />
-                  <span className="text-zinc-200">{d.asset_longname ?? d.asset}</span>
-                </Link>
-              </td>
-              <td className="text-right text-zinc-400 font-mono px-3 py-1.5">{formatPrice(d.volume, satsMode)}</td>
-              <td className={`text-right font-mono px-3 py-1.5 ${pctColor(d.price_change)}`}>
-                {fmtPct(d.price_change)}
-              </td>
-            </tr>
+      <div className="px-3 py-2 flex items-center gap-2">
+        <span className="text-xs text-zinc-500">Top Dispensed (By Volume)</span>
+        <div className="flex gap-0.5 ml-auto">
+          {(['assets', 'collections'] as const).map((t) => (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              className={`px-2 py-0.5 text-[10px] font-mono rounded-sm transition-colors ${
+                tab === t
+                  ? 'bg-zinc-700 text-zinc-100'
+                  : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900'
+              }`}
+            >
+              {t === 'assets' ? 'Assets' : 'Collections'}
+            </button>
           ))}
-          {dispensers.length === 0 && (
-            <tr><td colSpan={4} className="text-center py-6 text-zinc-500">No data</td></tr>
-          )}
-        </tbody>
-      </table>
+        </div>
+      </div>
+      {tab === 'assets' ? (
+        <table className="w-full text-xs whitespace-nowrap">
+          <thead>
+            <tr className="text-zinc-500 border-b border-zinc-800">
+              <th className="text-left font-normal px-3 py-1.5">#</th>
+              <th className="text-left font-normal px-3 py-1.5">Asset</th>
+              <th className="text-right font-normal px-3 py-1.5">Volume</th>
+              <th className="text-right font-normal px-3 py-1.5">Chg</th>
+            </tr>
+          </thead>
+          <tbody>
+            {dispensers.map((d, i) => (
+              <tr key={d.asset} className="hover:bg-zinc-800/50 transition-colors border-b border-zinc-800/30 last:border-0">
+                <td className="px-3 py-1.5 text-zinc-500">{i + 1}</td>
+                <td className="px-3 py-1.5">
+                  <Link href={`/dispense/${d.asset}`} className="flex items-center gap-1.5 hover:underline">
+                    <Image
+                      src={`${XCP_IMG_BASE}/icon/${d.asset}`}
+                      alt=""
+                      width={14}
+                      height={14}
+                      className="rounded-sm"
+                      unoptimized
+                    />
+                    <span className="text-zinc-200">{d.asset_longname ?? d.asset}</span>
+                  </Link>
+                </td>
+                <td className="text-right text-zinc-400 font-mono px-3 py-1.5">{formatPrice(d.volume, satsMode)}</td>
+                <td className={`text-right font-mono px-3 py-1.5 ${pctColor(d.price_change)}`}>
+                  {fmtPct(d.price_change)}
+                </td>
+              </tr>
+            ))}
+            {dispensers.length === 0 && (
+              <tr><td colSpan={4} className="text-center py-6 text-zinc-500">No data</td></tr>
+            )}
+          </tbody>
+        </table>
+      ) : (
+        <table className="w-full text-xs whitespace-nowrap">
+          <thead>
+            <tr className="text-zinc-500 border-b border-zinc-800">
+              <th className="text-left font-normal px-3 py-1.5">#</th>
+              <th className="text-left font-normal px-3 py-1.5">Collection</th>
+              <th className="text-right font-normal px-3 py-1.5">Volume</th>
+            </tr>
+          </thead>
+          <tbody>
+            {collections.map((c, i) => (
+              <tr key={c.slug} className="hover:bg-zinc-800/50 transition-colors border-b border-zinc-800/30 last:border-0">
+                <td className="px-3 py-1.5 text-zinc-500">{i + 1}</td>
+                <td className="px-3 py-1.5">
+                  <Link href={`/dispense?v=${c.slug}`} className="text-zinc-200 hover:underline">{c.name}</Link>
+                </td>
+                <td className="text-right text-zinc-400 font-mono px-3 py-1.5">{formatPrice(c.volume ?? 0, satsMode)}</td>
+              </tr>
+            ))}
+            {collections.length === 0 && (
+              <tr><td colSpan={3} className="text-center py-6 text-zinc-500">No data</td></tr>
+            )}
+          </tbody>
+        </table>
+      )}
     </div>
   )
 }
@@ -479,6 +570,8 @@ export default function AnalyticsPage() {
     topPairs,
     topDispensers,
     quoteVolumes,
+    topTradedCollections,
+    topDispensedCollections,
     topMakers,
     topTakers,
     topBtcBuyers,
@@ -645,8 +738,8 @@ export default function AnalyticsPage() {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-8">
-            <TopPairsTable pairs={topPairs} tfLabel={tfLabel} />
-            <TopDispensersTable dispensers={topDispensers} tfLabel={tfLabel} satsMode={satsMode} />
+            <TopTradedTable pairs={topPairs} collections={topTradedCollections} tfLabel={tfLabel} />
+            <TopDispensedTable dispensers={topDispensers} collections={topDispensedCollections} tfLabel={tfLabel} satsMode={satsMode} />
           </div>
         )}
 

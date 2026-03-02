@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
+import { useSearchParams } from 'next/navigation'
 import Image from 'next/image'
 import Link from 'next/link'
 import { RiFilter3Line } from 'react-icons/ri'
@@ -41,13 +42,22 @@ const ORDER_TABS: [OrderTab, string][] = [
 ]
 
 export default function TradePage() {
+  const searchParams = useSearchParams()
   const [tab, setTab] = useState<OrderTab>('open')
   const [baseSearch, setBaseSearch] = useState('')
   const [quoteSearch, setQuoteSearch] = useState('')
   const [debouncedBase, setDebouncedBase] = useState('')
   const [debouncedQuote, setDebouncedQuote] = useState('')
   const [sourceFilter, setSourceFilter] = useState<string | null>(null)
-  const [tag, setTag] = useState<string | null>(null)
+  const [tag, setTag] = useState<string | null>(() => searchParams.get('v'))
+
+  const handleTagChange = useCallback((slug: string | null) => {
+    setTag(slug)
+    const url = new URL(window.location.href)
+    if (slug) url.searchParams.set('v', slug)
+    else url.searchParams.delete('v')
+    window.history.replaceState(null, '', url.toString())
+  }, [])
   const [offset, setOffset] = useState(0)
   const collections = useTags('collection')
   const blockHeight = useBlockHeight()
@@ -93,12 +103,12 @@ export default function TradePage() {
             {sourceFilter ? (
               <span className="inline-flex items-center gap-1.5 px-2 py-px text-[10px] font-mono bg-zinc-800 border border-zinc-700 rounded-sm text-zinc-300">
                 {sourceFilter}
-                <button onClick={() => setSourceFilter(null)} className="text-zinc-500 hover:text-zinc-200 transition-colors">&times;</button>
+                <button onClick={() => { setSourceFilter(null); handleTagChange(null) }} className="text-zinc-500 hover:text-zinc-200 transition-colors">&times;</button>
               </span>
             ) : (
               <select
                 value={tag ?? ''}
-                onChange={(e) => setTag(e.target.value || null)}
+                onChange={(e) => handleTagChange(e.target.value || null)}
                 className="px-2 py-0.5 text-[10px] font-mono bg-zinc-800 border border-zinc-700 rounded-sm text-zinc-300 outline-none"
               >
                 <option value="">All Orders</option>
@@ -126,7 +136,7 @@ export default function TradePage() {
             </div>
           </div>
 
-          <OrdersTable orders={orders} isLoading={isLoading} blockHeight={blockHeight} baseSearch={baseSearch} quoteSearch={quoteSearch} onBaseSearch={setBaseSearch} onQuoteSearch={setQuoteSearch} onFilterAddress={setSourceFilter} />
+          <OrdersTable orders={orders} isLoading={isLoading} blockHeight={blockHeight} baseSearch={baseSearch} quoteSearch={quoteSearch} onBaseSearch={setBaseSearch} onQuoteSearch={setQuoteSearch} onFilterAddress={(addr) => { setSourceFilter(addr); handleTagChange(null) }} />
           <Pagination total={total} offset={offset} limit={250} onOffsetChange={setOffset} />
         </div>
       </div>

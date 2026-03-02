@@ -73,6 +73,13 @@ export interface AnalyticsTopTrader {
   trades: number
 }
 
+export interface AnalyticsTopCollection {
+  slug: string
+  name: string
+  trade_count?: number
+  volume?: number
+}
+
 interface AnalyticsResponse {
   timeframe: string
   trade_summary: TradeSummary
@@ -83,6 +90,8 @@ interface AnalyticsResponse {
   top_pairs: AnalyticsTopPair[]
   top_dispensers: AnalyticsTopDispenser[]
   quote_volumes: QuoteVolume[]
+  top_traded_collections: AnalyticsTopCollection[]
+  top_dispensed_collections: AnalyticsTopCollection[]
   top_makers: AnalyticsTopTrader[]
   top_takers: AnalyticsTopTrader[]
   top_btc_buyers: AnalyticsTopTrader[]
@@ -113,6 +122,8 @@ export function useAnalytics(timeframe: Timeframe = '24h', includeHidden: boolea
     topPairs: summary.data?.top_pairs ?? [],
     topDispensers: summary.data?.top_dispensers ?? [],
     quoteVolumes: summary.data?.quote_volumes ?? [],
+    topTradedCollections: summary.data?.top_traded_collections ?? [],
+    topDispensedCollections: summary.data?.top_dispensed_collections ?? [],
     dailyTradeVolume: charts.data?.daily_trade_volume ?? [],
     dailyDispenseVolume: charts.data?.daily_dispense_volume ?? [],
     dailyBtcTradeVolume: charts.data?.daily_btc_trade_volume ?? [],

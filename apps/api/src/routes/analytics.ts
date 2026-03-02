@@ -52,6 +52,8 @@ export async function handleAnalytics(
   let topPairsResults: unknown[] = [];
   let topDispensersResults: unknown[] = [];
   let quoteVolumeResults: unknown[] = [];
+  let topTradedCollResults: unknown[] = [];
+  let topDispensedCollResults: unknown[] = [];
   let topMakersResults: unknown[] = [];
   let topTakersResults: unknown[] = [];
   let topBtcBuyersResults: unknown[] = [];
@@ -117,6 +119,26 @@ export async function handleAnalytics(
          GROUP BY quote_asset
          ORDER BY trade_count DESC`
       ),
+      db.prepare(
+        `SELECT t.slug, t.name, COALESCE(SUM(ps.${tradeCountCol}), 0) AS trade_count
+         FROM tags t
+         JOIN tag_assets ta ON t.id = ta.tag_id
+         JOIN pair_stats ps ON ta.asset = ps.base_asset
+         WHERE t.tag_type = 'collection' AND ps.hidden = 0
+         GROUP BY t.id, t.slug, t.name
+         HAVING trade_count > 0
+         ORDER BY trade_count DESC LIMIT 10`
+      ),
+      db.prepare(
+        `SELECT t.slug, t.name, COALESCE(SUM(ds.${dispVolCol}), 0) AS volume
+         FROM tags t
+         JOIN tag_assets ta ON t.id = ta.tag_id
+         JOIN dispenser_stats ds ON ta.asset = ds.asset
+         WHERE t.tag_type = 'collection' AND ds.hidden = 0
+         GROUP BY t.id, t.slug, t.name
+         HAVING volume > 0
+         ORDER BY volume DESC LIMIT 10`
+      ),
     ]);
 
     // For "all" timeframe, fetch true all-time totals from Counterparty API in parallel
@@ -129,7 +151,7 @@ export async function handleAnalytics(
         ])
       : null;
 
-    const [tradeSummary, dispenseSummary, topPairs, topDispensers, quoteVolumes] = await dbPromise;
+    const [tradeSummary, dispenseSummary, topPairs, topDispensers, quoteVolumes, topTradedColl, topDispensedColl] = await dbPromise;
 
     tradeSummaryData = tradeSummary.results[0] as Record<string, number> | undefined;
     dispenseSummaryData = dispenseSummary.results[0] as Record<string, number> | undefined;
@@ -147,6 +169,8 @@ export async function handleAnalytics(
     topPairsResults = topPairs.results;
     topDispensersResults = topDispensers.results;
     quoteVolumeResults = quoteVolumes.results;
+    topTradedCollResults = topTradedColl.results;
+    topDispensedCollResults = topDispensedColl.results;
   }
 
   // Section: charts — volume timeseries from raw tables
@@ -264,6 +288,8 @@ export async function handleAnalytics(
       top_pairs: topPairsResults,
       top_dispensers: topDispensersResults,
       quote_volumes: quoteVolumeResults,
+      top_traded_collections: topTradedCollResults,
+      top_dispensed_collections: topDispensedCollResults,
       top_makers: topMakersResults,
       top_takers: topTakersResults,
       top_btc_buyers: topBtcBuyersResults,
