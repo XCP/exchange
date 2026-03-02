@@ -66,7 +66,6 @@ const COLLECTION_ICONS: Record<string, string> = {
   'penisium': 'PENISIMOON',
   'pepe-flags': 'PEPEFLAGPA',
   'phockheads': 'PHOCKHEADS',
-  'fake-munchkin': 'PEPEAQUA',
   'rare-bobo': 'BOBOCASH',
   'rare-coco': 'RARECOCO',
   'rare-gogo': 'RAREGOGO',
@@ -221,6 +220,7 @@ function SummarySection({ timeframe, includeHidden, isLoading, mobileMode, trade
     icon: d.asset,
     label: d.asset_longname ?? d.asset,
     cells: [
+      { value: d.dispense_count.toLocaleString() },
       { value: formatPrice(d.volume, satsMode) },
       { value: formatPct(d.price_change), className: pctColor(d.price_change) },
     ],
@@ -329,7 +329,7 @@ function SummarySection({ timeframe, includeHidden, isLoading, mobileMode, trade
             <LeaderboardTable
               title="Most Dispensed (By Volume)"
               tabs={[
-                { label: 'Assets', headers: ['Asset', 'Volume (BTC)', 'Chg'], rows: dispensedAssetRows },
+                { label: 'Assets', headers: ['Asset', 'Dispenses', 'Volume (BTC)', 'Chg'], rows: dispensedAssetRows },
                 { label: 'Collections', headers: ['Collection', 'Dispenses', 'Volume (BTC)', 'Chg'], rows: dispensedCollRows },
               ]}
             />

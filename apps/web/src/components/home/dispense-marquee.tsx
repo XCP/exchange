@@ -1,6 +1,7 @@
 'use client'
 
 import Image from 'next/image'
+import Link from 'next/link'
 import type { AnalyticsTopDispenser } from '@/lib/hooks/useAnalytics'
 import { formatPrice } from '@/utils/format-price'
 import { XCP_IMG_BASE } from '@/utils/constants'
@@ -21,7 +22,7 @@ export function DispenseMarquee({ topDispensers, satsMode }: { topDispensers: An
         style={{ '--marquee-duration': duration } as React.CSSProperties}
       >
         {doubled.map((d, i) => (
-          <div key={`${d.asset}-${i}`} className="flex items-center gap-2 shrink-0 min-w-0 px-3">
+          <Link key={`${d.asset}-${i}`} href={`/${d.asset}`} className="flex items-center gap-2 shrink-0 min-w-0 px-3 hover:bg-zinc-800/50 rounded-sm transition-colors">
             <Image
               src={`${XCP_IMG_BASE}/icon/${d.asset}`}
               alt=""
@@ -33,7 +34,7 @@ export function DispenseMarquee({ topDispensers, satsMode }: { topDispensers: An
             <span className="text-xs text-zinc-400 font-mono">{d.asset_longname ?? d.asset}</span>
             <span className="text-xs text-zinc-200 font-mono font-semibold">{d.dispense_count.toLocaleString()} dispenses</span>
             <span className="text-[10px] text-zinc-500 font-mono">{formatPrice(d.volume, satsMode)} vol</span>
-          </div>
+          </Link>
         ))}
       </div>
     </div>

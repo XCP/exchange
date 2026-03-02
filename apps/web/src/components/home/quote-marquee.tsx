@@ -1,6 +1,7 @@
 'use client'
 
 import Image from 'next/image'
+import Link from 'next/link'
 import type { QuoteVolume } from '@/lib/hooks/useAnalytics'
 import { formatBig } from '@/utils/format-analytics'
 import { XCP_IMG_BASE } from '@/utils/constants'
@@ -22,7 +23,7 @@ export function QuoteMarquee({ quoteVolumes }: { quoteVolumes: QuoteVolume[] }) 
         style={{ '--marquee-duration': duration } as React.CSSProperties}
       >
         {doubled.map((q, i) => (
-          <div key={`${q.quote_asset}-${i}`} className="flex items-center gap-2 shrink-0 min-w-0 px-3">
+          <Link key={`${q.quote_asset}-${i}`} href={`/${q.quote_asset}`} className="flex items-center gap-2 shrink-0 min-w-0 px-3 hover:bg-zinc-800/50 rounded-sm transition-colors">
             <Image
               src={`${XCP_IMG_BASE}/icon/${q.quote_asset}`}
               alt=""
@@ -34,7 +35,7 @@ export function QuoteMarquee({ quoteVolumes }: { quoteVolumes: QuoteVolume[] }) 
             <span className="text-xs text-zinc-400 font-mono">{q.quote_asset_longname ?? q.quote_asset}</span>
             <span className="text-xs text-zinc-200 font-mono font-semibold">{q.trade_count.toLocaleString()} trades</span>
             <span className="text-[10px] text-zinc-500 font-mono">{formatBig(q.volume)} vol</span>
-          </div>
+          </Link>
         ))}
       </div>
     </div>
