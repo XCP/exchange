@@ -64,11 +64,12 @@ export default function AnalyticsPage() {
   const [hideLowQuality, setHideLowQuality] = useState(true)
   const includeHidden = !hideLowQuality
 
-  // Cascade: summary loads first → traders fires once summary done → charts fires once traders done
+  // Cascade: summary first → charts after summary → traders after charts
   const { isLoading: summaryLoading, ...summaryProps } = useSummaryData(timeframe, includeHidden)
-  const tradersReady = !summaryLoading
+  const chartsReady = !summaryLoading
+  const { isLoading: chartsLoading } = useAnalyticsCharts(timeframe, includeHidden, chartsReady)
+  const tradersReady = chartsReady && !chartsLoading
   const { isLoading: tradersLoading, ...tradersProps } = useAnalyticsTraders(timeframe, includeHidden, tradersReady)
-  const chartsReady = tradersReady && !tradersLoading
 
   return (
     <div className="px-4 py-8">
