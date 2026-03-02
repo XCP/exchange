@@ -162,27 +162,29 @@ function TradePageInner() {
         <div className="bg-zinc-900/50 border border-zinc-800 rounded-sm">
           {/* Mobile: stacked rows */}
           <div className="sm:hidden px-3 py-2 flex flex-col gap-2">
-            <select
-              value={tag ?? ''}
-              onChange={(e) => handleTagChange(e.target.value || null)}
-              className="w-full px-2 py-1 text-xs font-mono bg-zinc-800 border border-zinc-700 rounded-sm text-zinc-300 outline-none"
-            >
-              <option value="">All Orders</option>
-              {collections.filter(c => tab === 'open' || tab === 'expiring' ? c.open_orders_count > 0 : true).map(c => (
-                <option key={c.slug} value={c.slug}>
-                  {c.name}{tab === 'open' || tab === 'expiring' ? ` (${c.open_orders_count})` : ''}
-                </option>
-              ))}
-            </select>
-            <select
-              value={tab}
-              onChange={(e) => setTab(e.target.value as OrderTab)}
-              className="w-full px-2 py-1 text-xs font-mono bg-zinc-800 border border-zinc-700 rounded-sm text-zinc-300 outline-none"
-            >
-              {ORDER_TABS.map(([key, label]) => (
-                <option key={key} value={key}>{label}</option>
-              ))}
-            </select>
+            <div className="flex gap-2">
+              <select
+                value={tag ?? ''}
+                onChange={(e) => handleTagChange(e.target.value || null)}
+                className="flex-1 min-w-0 px-2 py-1 text-xs font-mono bg-zinc-800 border border-zinc-700 rounded-sm text-zinc-300 outline-none"
+              >
+                <option value="">All Orders</option>
+                {collections.filter(c => tab === 'open' || tab === 'expiring' ? c.open_orders_count > 0 : true).map(c => (
+                  <option key={c.slug} value={c.slug}>
+                    {c.name}{tab === 'open' || tab === 'expiring' ? ` (${c.open_orders_count})` : ''}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={tab}
+                onChange={(e) => setTab(e.target.value as OrderTab)}
+                className="flex-1 min-w-0 px-2 py-1 text-xs font-mono bg-zinc-800 border border-zinc-700 rounded-sm text-zinc-300 outline-none"
+              >
+                {ORDER_TABS.map(([key, label]) => (
+                  <option key={key} value={key}>{label}</option>
+                ))}
+              </select>
+            </div>
             {(sourceFilter || sideFilter) && (
               <div className="flex items-center gap-2">
                 {sourceFilter && (
