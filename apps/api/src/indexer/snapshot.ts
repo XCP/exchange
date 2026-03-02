@@ -53,19 +53,52 @@ export async function syncOrders(
   const closeStmts: D1PreparedStatement[] = [];
 
   for (const r of toClose) {
-    let realStatus: string;
     if (r.expire_index <= lastBlock) {
-      realStatus = "expired";
+      // Clearly expired — no need to hit the API
+      closeStmts.push(
+        db
+          .prepare(`UPDATE orders SET status = 'expired', closed_at = ? WHERE tx_hash = ?`)
+          .bind(now, r.tx_hash)
+      );
     } else {
-      // Look up the real status from the Counterparty API
+      // Look up the real status + remaining from the Counterparty API
       const cpOrder = await fetchOrderByHash(apiBase, r.tx_hash);
-      realStatus = cpOrder?.status ?? "filled";
+      const realStatus = cpOrder?.status ?? "filled";
+
+      if (cpOrder) {
+        // Use actual remaining values from the API for full accuracy
+        const giveRem = parseFloat(cpOrder.give_remaining_normalized);
+        const getRem = parseFloat(cpOrder.get_remaining_normalized);
+        closeStmts.push(
+          db
+            .prepare(
+              `UPDATE orders SET status = ?, closed_at = ?,
+                 give_remaining = ?, get_remaining = ?,
+                 remaining = MAX(0, CASE WHEN side = 'bid' THEN ? ELSE ? END)
+               WHERE tx_hash = ?`
+            )
+            .bind(
+              realStatus, now,
+              isFinite(giveRem) ? giveRem : 0,
+              isFinite(getRem) ? getRem : 0,
+              isFinite(getRem) ? getRem : 0,
+              isFinite(giveRem) ? giveRem : 0,
+              r.tx_hash
+            )
+        );
+      } else {
+        // API fetch failed — default to filled with zeroed remaining
+        closeStmts.push(
+          db
+            .prepare(
+              `UPDATE orders SET status = ?, closed_at = ?,
+                 give_remaining = 0, get_remaining = 0, remaining = 0
+               WHERE tx_hash = ?`
+            )
+            .bind(realStatus, now, r.tx_hash)
+        );
+      }
     }
-    closeStmts.push(
-      db
-        .prepare(`UPDATE orders SET status = ?, closed_at = ? WHERE tx_hash = ?`)
-        .bind(realStatus, now, r.tx_hash)
-    );
   }
   await batchExec(db, closeStmts);
 
