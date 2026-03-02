@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import dynamic from 'next/dynamic'
+import Image from 'next/image'
 import type { Timeframe } from '@/lib/hooks/useAnalytics'
 import {
   useAnalyticsSummary,
@@ -11,6 +12,7 @@ import {
 import { useSatsMode } from '@/lib/sats-context'
 import { formatBig, formatPct, pctColor, mergeDailyVolumes } from '@/utils/format-analytics'
 import { formatPrice } from '@/utils/format-price'
+import { XCP_IMG_BASE } from '@/utils/constants'
 import { TogglePills } from './toggle-pills'
 import { CounterCard } from './counter-card'
 import { LeaderboardTable, type LeaderboardRow } from './leaderboard-table'
@@ -29,37 +31,69 @@ const ComboVolumeChart = dynamic(() => import('./combo-volume-chart'), { ssr: fa
 // Representative icon asset for known collections
 const COLLECTION_ICONS: Record<string, string> = {
   '17art': 'USDBITCOIN',
-  'avime': 'A10829912527089297000',
+  'age-of-chains': 'GUARDIANCARD',
+  'age-of-rust': 'RUSTBITS',
+  'assetic': 'DATASSPEPE',
+  'atomo': 'LATOMOC',
+  'barnyard-club': 'BARNYARDCLUB',
+  'bassmint': 'OFFTHEGRID',
+  'bitcoin-war-bonds': 'A9919438720381432551',
   'bitcorn-crops': 'BITCORN',
-  'book-of-stamp': 'A2100000000000001918',
-  'comediananas': 'A1234000000000000004',
+  'bitgirls': 'TSUKASAVIX',
+  'common-coco': 'A666240355190303432',
+  'community-rewards': 'MEMEFAMILY',
+  'counterparty-bitbowl': 'BEARSB',
+  'crystalscraft': 'BITSUPREME',
   'dank-directory': 'DANKMEMECASH',
+  'diecast': 'BPOLOSOMCXVI',
+  'drooling-ape-bus-club': 'DABPOUILLOT',
+  'fake-ape-club': 'HUSLEVERYDAY',
   'fake-commons': 'NOTAFAKERARE',
+  'fake-munchkin': 'PEPEAQUA',
   'fake-rare': 'FAKEASF',
+  'faux-bitcorn': 'KERNELISLAND',
+  'faux-sogs': 'STSHRDX',
+  'footballcoin': 'XFCPDANALVES',
+  'force-of-will': 'FWSDLSUMMONC',
+  'gameicon': 'YUMMYISLAND',
+  'hodlpet': 'HODLPET',
   'kaleidoscope': 'BITROCK',
+  'lfg-collection': 'ORANGEFIGHT',
+  'mafia-wars': 'MALVERDE',
+  'memorychain': 'SARUTOBIISL',
+  'modern-relics': 'RELICASH',
+  'oasis-mining': 'CCGBTCONE',
+  'penisium': 'PENISIMOON',
+  'pepe-flags': 'PEPEFLAGPA',
   'phockheads': 'PHOCKHEADS',
-  'quakestamps': 'A13683381182187633000',
+  'phunchkins': 'PEPEAQUA',
   'rare-bobo': 'BOBOCASH',
   'rare-coco': 'RARECOCO',
+  'rare-gogo': 'RAREGOGO',
   'rare-ordinal-directory': 'ORDINALPEPE',
+  'rare-penpen': 'PEPENDULUM',
   'rare-pepe': 'PEPECASH',
-  'rarestamps': 'A14542805176082311886',
+  'rare-pigeons': 'RAREPIGEON',
+  'rare-shadilay': 'SHADILAYCASH',
+  'raresocks': 'SOCKSCAMCASH',
+  'retroxcp': 'MARIOMOTO',
+  'rude-relics': 'RELICASH',
   'sarutobi-island': 'NINJASUIT',
+  'scannable-nfts': 'QRSEURAT',
+  'skara': 'MANTLEASKAR',
+  'spamgelo': 'DANKSPAMGELO',
   'spells-of-genesis': 'BITCRYSTALS',
-  'stamhams': 'A14886788522262906986',
-  'stampcash': 'A1337420691337420699',
-  'stampepes': 'STAMPEPES',
-  'stampshroomz': 'A14006156065045391000',
-  'stampunks': 'A4604886946827439000',
+  'stamps': 'A808011111111111111',
   'the-pepe-project': 'ORANGEMAN',
+  'the-wojak-way': 'RAREWOJAK',
+  'wojak-npc': 'A4003111400514243181',
+  'xcpinata': 'CUPCAKE',
 }
 
 const TF_OPTIONS = ['24h', '7d', '30d', 'all'] as const
 const TF_LABELS: Record<Timeframe, string> = { '24h': '24h', '7d': '7d', '30d': '30d', all: 'All' }
 
 type MobileMode = 'xcp' | 'btc'
-const MODE_OPTIONS = ['xcp', 'btc'] as const
-const MODE_LABELS: Record<MobileMode, string> = { xcp: 'XCP', btc: 'BTC' }
 
 // ── Main Orchestrator ───────────────────────────────────────────────
 
@@ -103,19 +137,36 @@ export default function AnalyticsPage() {
         </div>
       </div>
 
-      {/* Mobile XCP/BTC toggle */}
-      <div className="md:hidden flex justify-center mb-4">
-        <TogglePills
-          options={MODE_OPTIONS}
-          value={mobileMode}
-          onChange={setMobileMode}
-          label={(m) => MODE_LABELS[m]}
-        />
-      </div>
-
       <SummarySection timeframe={timeframe} includeHidden={includeHidden} isLoading={summaryLoading} mobileMode={mobileMode} {...summaryProps} />
       <ChartsSection timeframe={timeframe} includeHidden={includeHidden} ready={chartsReady} mobileMode={mobileMode} />
       <TradersSection isLoading={tradersLoading} mobileMode={mobileMode} {...tradersProps} />
+
+      {/* Floating mobile XCP/BTC toggle */}
+      <div className="md:hidden fixed bottom-4 left-1/2 -translate-x-1/2 z-50">
+        <div className="flex bg-zinc-900/90 backdrop-blur border border-zinc-700 rounded-full p-1 gap-1 shadow-lg shadow-black/40">
+          {(['xcp', 'btc'] as const).map((mode) => (
+            <button
+              key={mode}
+              onClick={() => setMobileMode(mode)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-colors ${
+                mobileMode === mode
+                  ? 'bg-zinc-700 text-zinc-100'
+                  : 'text-zinc-500'
+              }`}
+            >
+              <Image
+                src={`${XCP_IMG_BASE}/icon/${mode === 'xcp' ? 'XCP' : 'BTC'}`}
+                alt=""
+                width={16}
+                height={16}
+                className="rounded-full"
+                unoptimized
+              />
+              {mode === 'xcp' ? 'XCP' : 'BTC'}
+            </button>
+          ))}
+        </div>
+      </div>
     </div>
   )
 }
