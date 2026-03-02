@@ -45,6 +45,7 @@ button, [role="button"] {
   will-change: transform;
   -webkit-backface-visibility: hidden;
   backface-visibility: hidden;
+  animation: marquee var(--marquee-duration, 40s) linear infinite;
 }
 
 .marquee-container:hover .marquee-strip {

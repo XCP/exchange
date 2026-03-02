@@ -12,11 +12,13 @@ export function DispenseMarquee({ topDispensers, satsMode }: { topDispensers: An
   const strip = Array<AnalyticsTopDispenser[]>(reps).fill(topDispensers).flat()
   const doubled = [...strip, ...strip]
 
+  const duration = `${Math.max(strip.length * 6, 40)}s`
+
   return (
     <div className="marquee-container overflow-hidden mb-6 bg-zinc-900/50 border border-zinc-800 rounded-sm">
       <div
         className="marquee-strip flex w-max gap-4 py-2"
-        style={{ animation: `marquee ${Math.max(strip.length * 6, 40)}s linear infinite` }}
+        style={{ '--marquee-duration': duration } as React.CSSProperties}
       >
         {doubled.map((d, i) => (
           <div key={`${d.asset}-${i}`} className="flex items-center gap-2 shrink-0 min-w-0 px-3">
