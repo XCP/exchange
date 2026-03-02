@@ -169,7 +169,7 @@ function SummarySection({ timeframe, includeHidden }: { timeframe: Timeframe; in
       {/* Counter Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-6">
         <CounterCard
-          label="Trade Volume"
+          label="Trade Volume (XCP)"
           loading={isLoading}
           value={tradeSummary ? formatBig(tradeSummary.tf_volume) + ' XCP' : '\u2014'}
           sub={tradeSummary && tradeSummary.tf_trades > 0 ? `Avg: ${formatBig(tradeSummary.tf_volume / tradeSummary.tf_trades)} XCP` : undefined}

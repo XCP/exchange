@@ -70,7 +70,7 @@ export async function handleAnalytics(
           SUM(CASE WHEN ${tradeCountCol} > 0 THEN 1 ELSE 0 END) AS active_pairs,
           COALESCE(SUM(CASE WHEN quote_asset = 'XCP' THEN ${volCol} ELSE 0 END), 0) AS tf_volume,
           COALESCE(SUM(${tradeCountCol}), 0) AS tf_trades,
-          (SELECT COUNT(*) FROM orders WHERE status = 'open') AS open_orders,
+          (SELECT COUNT(*) FROM orders o WHERE o.status = 'open'${includeHidden ? "" : " AND o.pair NOT IN (SELECT pair FROM pair_stats WHERE hidden = 1)"}) AS open_orders,
           ${tfOrdersExpr} AS tf_orders,
           (SELECT COUNT(*) FROM (SELECT maker AS a FROM trades WHERE 1=1${timeFilt}${tradeHidden} UNION SELECT taker FROM trades WHERE 1=1${timeFilt}${tradeHidden})) AS tf_unique_traders,
           ${cutoff > 0 ? `(SELECT COUNT(*) FROM (SELECT pair FROM trades GROUP BY pair HAVING MIN(block_time) >= ${cutoff}))` : "0"} AS new_pairs
@@ -81,7 +81,7 @@ export async function handleAnalytics(
         `SELECT
           COALESCE(SUM(total_btc_spent), 0) AS total_btc_spent,
           COALESCE(SUM(total_dispense_count), 0) AS total_dispense_count,
-          (SELECT COUNT(*) FROM dispensers WHERE status < 10) AS open_dispensers,
+          (SELECT COUNT(*) FROM dispensers dd WHERE dd.status < 10${includeHidden ? "" : " AND dd.asset NOT IN (SELECT asset FROM dispenser_stats WHERE hidden = 1)"}) AS open_dispensers,
           COALESCE(SUM(${dispVolCol}), 0) AS tf_volume,
           COALESCE(SUM(${dispCountCol}), 0) AS tf_dispenses,
           SUM(CASE WHEN ${dispCountCol} > 0 THEN 1 ELSE 0 END) AS active_assets,
