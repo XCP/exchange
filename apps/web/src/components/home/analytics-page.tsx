@@ -135,7 +135,8 @@ function SummarySection({ timeframe, includeHidden }: { timeframe: Timeframe; in
     label: c.name,
     cells: [
       { value: c.trade_count.toLocaleString() },
-      { value: '\u2014' },
+      { value: fmtBig(c.volume) },
+      { value: fmtPct(c.price_change), className: pctColor(c.price_change) },
     ],
   }))
 
@@ -156,8 +157,9 @@ function SummarySection({ timeframe, includeHidden }: { timeframe: Timeframe; in
     icon: COLLECTION_ICONS[c.slug],
     label: c.name,
     cells: [
+      { value: c.dispense_count.toLocaleString() },
       { value: formatPrice(c.volume, satsMode) },
-      { value: '\u2014' },
+      { value: fmtPct(c.price_change), className: pctColor(c.price_change) },
     ],
   }))
 
@@ -228,14 +230,14 @@ function SummarySection({ timeframe, includeHidden }: { timeframe: Timeframe; in
             title="Most Traded (By Count)"
             tabs={[
               { label: 'Assets', headers: ['Pair', 'Trades', 'Chg'], rows: tradedAssetRows },
-              { label: 'Collections', headers: ['Collection', 'Trades', 'Chg'], rows: tradedCollRows },
+              { label: 'Collections', headers: ['Collection', 'Trades', 'Volume', 'Chg'], rows: tradedCollRows },
             ]}
           />
           <LeaderboardTable
             title="Most Dispensed (By Volume)"
             tabs={[
               { label: 'Assets', headers: ['Asset', 'Volume', 'Chg'], rows: dispensedAssetRows },
-              { label: 'Collections', headers: ['Collection', 'Volume', 'Chg'], rows: dispensedCollRows },
+              { label: 'Collections', headers: ['Collection', 'Dispenses', 'Volume', 'Chg'], rows: dispensedCollRows },
             ]}
           />
         </div>

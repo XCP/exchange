@@ -78,12 +78,16 @@ export interface TopTradedCollection {
   slug: string
   name: string
   trade_count: number
+  volume: number
+  price_change: number
 }
 
 export interface TopDispensedCollection {
   slug: string
   name: string
   volume: number
+  dispense_count: number
+  price_change: number
 }
 
 // Per-section response types

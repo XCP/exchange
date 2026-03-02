@@ -121,7 +121,12 @@ export async function handleAnalytics(
          ORDER BY trade_count DESC`
       ),
       db.prepare(
-        `SELECT t.slug, t.name, COALESCE(SUM(ps.${tradeCountCol}), 0) AS trade_count
+        `SELECT t.slug, t.name,
+                COALESCE(SUM(ps.${tradeCountCol}), 0) AS trade_count,
+                ROUND(COALESCE(SUM(CASE WHEN ps.quote_asset = 'XCP' THEN ps.${volCol} ELSE 0 END), 0), 2) AS volume,
+                CASE WHEN SUM(ps.${tradeCountCol}) > 0
+                     THEN ROUND(SUM(${tf === "all" ? "0" : `ps.${pctCol}`} * ps.${tradeCountCol}) * 1.0 / SUM(ps.${tradeCountCol}), 1)
+                     ELSE 0 END AS price_change
          FROM tags t
          JOIN tag_assets ta ON t.id = ta.tag_id
          JOIN pair_stats ps ON ta.asset = ps.base_asset
@@ -131,7 +136,12 @@ export async function handleAnalytics(
          ORDER BY trade_count DESC LIMIT 10`
       ),
       db.prepare(
-        `SELECT t.slug, t.name, COALESCE(SUM(ds.${dispVolCol}), 0) AS volume
+        `SELECT t.slug, t.name,
+                COALESCE(SUM(ds.${dispVolCol}), 0) AS volume,
+                COALESCE(SUM(ds.${dispCountCol}), 0) AS dispense_count,
+                CASE WHEN SUM(ds.${dispCountCol}) > 0
+                     THEN ROUND(SUM(${tf === "all" ? "0" : `ds.${dispPctCol}`} * ds.${dispCountCol}) * 1.0 / SUM(ds.${dispCountCol}), 1)
+                     ELSE 0 END AS price_change
          FROM tags t
          JOIN tag_assets ta ON t.id = ta.tag_id
          JOIN dispenser_stats ds ON ta.asset = ds.asset

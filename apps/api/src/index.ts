@@ -16,7 +16,7 @@ import { handleSearch } from "./routes/search";
 import { handleBlock } from "./routes/block";
 import { handleTags } from "./routes/tags";
 import { handleDispensersLatest, handleDispensesLatest } from "./routes/dispensers-latest";
-import { syncTags, syncTokenscanCollections } from "./indexer/tags";
+import { syncTags, syncTokenscanCollections, syncPepeWtfCollections, syncStampchainCollection, syncScannableNfts, syncKaleidoscope } from "./indexer/tags";
 import { handleGetSwaps, handleGetSwap, handleCancelSwap, handlePrepareListingPsbt, handleCompleteListingPsbt, handlePrepareFill, handleCompleteFill, handlePrepareCancelSwap } from "./routes/swaps";
 import { checkPendingFills } from "./lib/swap-monitor";
 import { syncBlocks } from "./indexer/sync-block";
@@ -419,6 +419,22 @@ export default {
           const result = await syncTokenscanCollections(env.DB);
           return await withCors(Response.json({ ok: true, ...result }));
         }
+        if (tagType === "pepewtf") {
+          const result = await syncPepeWtfCollections(env.DB);
+          return await withCors(Response.json({ ok: true, ...result }));
+        }
+        if (tagType === "stampchain") {
+          const result = await syncStampchainCollection(env.DB);
+          return await withCors(Response.json({ ok: true, ...result }));
+        }
+        if (tagType === "scannable") {
+          const result = await syncScannableNfts(env.DB);
+          return await withCors(Response.json({ ok: true, ...result }));
+        }
+        if (tagType === "kaleidoscope") {
+          const result = await syncKaleidoscope(env.DB);
+          return await withCors(Response.json({ ok: true, ...result }));
+        }
         const result = await syncTags(env.DB, tagType);
         return await withCors(Response.json({ ok: true, ...result }));
       }
@@ -651,19 +667,31 @@ export default {
                 }
               }
 
-              // Periodic tokenscan collection sync: secondary NFT data source every 24h
-              const TOKENSCAN_SYNC_INTERVAL = 24 * 3600;
-              const lastTsSyncRow = await env.DB
-                .prepare(`SELECT value FROM indexer_state WHERE key = 'last_tag_sync_tokenscan'`)
-                .first<{ value: string }>();
-              const lastTsSync = lastTsSyncRow ? parseInt(lastTsSyncRow.value, 10) : 0;
+              // Periodic secondary collection syncs (all 24h interval)
+              const SECONDARY_SYNC_INTERVAL = 24 * 3600;
+              const secondarySources: { key: string; fn: (db: D1Database) => Promise<{ tags: number; assets: number }>; label: string }[] = [
+                { key: "last_tag_sync_tokenscan", fn: syncTokenscanCollections, label: "tokenscan" },
+                { key: "last_tag_sync_pepewtf", fn: syncPepeWtfCollections, label: "pepe.wtf" },
+                { key: "last_tag_sync_stampchain", fn: syncStampchainCollection, label: "stampchain" },
+                { key: "last_tag_sync_scannable", fn: syncScannableNfts, label: "scannable" },
+                { key: "last_tag_sync_kaleidoscope", fn: syncKaleidoscope, label: "kaleidoscope" },
+              ];
 
-              if (now - lastTsSync >= TOKENSCAN_SYNC_INTERVAL) {
-                try {
-                  const result = await syncTokenscanCollections(env.DB);
-                  console.log(`Tokenscan sync: ${result.tags} new tags, ${result.assets} assets`);
-                } catch (e) {
-                  console.error("Tokenscan sync error:", e);
+              for (const src of secondarySources) {
+                const row = await env.DB
+                  .prepare(`SELECT value FROM indexer_state WHERE key = ?`)
+                  .bind(src.key)
+                  .first<{ value: string }>();
+                const lastSync = row ? parseInt(row.value, 10) : 0;
+                if (now - lastSync >= SECONDARY_SYNC_INTERVAL) {
+                  try {
+                    const result = await src.fn(env.DB);
+                    if (result.tags > 0) {
+                      console.log(`${src.label} sync: ${result.tags} new tags, ${result.assets} assets`);
+                    }
+                  } catch (e) {
+                    console.error(`${src.label} sync error:`, e);
+                  }
                 }
               }
 
