@@ -22,6 +22,14 @@ const PEPE_WTF_SLUG_OVERRIDES: Record<string, string> = {
   "fake-rares": "fake-rare",
 };
 
+/** Slugs to skip during xcp.io sync (stamps sub-collections absorbed into STAMPs) */
+const SKIP_SLUGS = new Set([
+  "stampunks", "comediananas", "stampshroomz", "this-is-not-a-stamp",
+  "quakestamps", "twistedpepes", "hunt", "stamhams", "stamp-baby-stamp",
+  "avime", "rarestamps", "stampcash", "weird-memes", "txampstamp",
+  "book-of-stamp", "stampepes", "vivalastamps",
+]);
+
 function slugify(name: string): string {
   return name
     .toLowerCase()
@@ -71,6 +79,8 @@ export async function syncTags(db: D1Database, tagType: string): Promise<{ tags:
   let totalAssets = 0;
 
   for (const tag of tags) {
+    if (SKIP_SLUGS.has(tag.slug)) continue;
+
     // 2. Fetch all assets for this tag (paginated)
     const assets: string[] = [];
     let offset = 0;

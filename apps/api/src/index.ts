@@ -671,10 +671,10 @@ export default {
               const SECONDARY_SYNC_INTERVAL = 24 * 3600;
               const secondarySources: { key: string; fn: (db: D1Database) => Promise<{ tags: number; assets: number }>; label: string }[] = [
                 { key: "last_tag_sync_tokenscan", fn: syncTokenscanCollections, label: "tokenscan" },
-                { key: "last_tag_sync_pepewtf", fn: syncPepeWtfCollections, label: "pepe.wtf" },
-                { key: "last_tag_sync_stampchain", fn: syncStampchainCollection, label: "stampchain" },
-                { key: "last_tag_sync_scannable", fn: syncScannableNfts, label: "scannable" },
-                { key: "last_tag_sync_kaleidoscope", fn: syncKaleidoscope, label: "kaleidoscope" },
+                // { key: "last_tag_sync_pepewtf", fn: syncPepeWtfCollections, label: "pepe.wtf" },
+                // { key: "last_tag_sync_stampchain", fn: syncStampchainCollection, label: "stampchain" },
+                // { key: "last_tag_sync_scannable", fn: syncScannableNfts, label: "scannable" },
+                // { key: "last_tag_sync_kaleidoscope", fn: syncKaleidoscope, label: "kaleidoscope" },
               ];
 
               for (const src of secondarySources) {
