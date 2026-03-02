@@ -216,7 +216,7 @@ export async function fetchOrderByHash(
   txHash: string
 ): Promise<Order | null> {
   try {
-    const res = await fetchWithRetry(`${apiBase}/orders/${txHash}`);
+    const res = await fetchWithRetry(`${apiBase}/orders/${txHash}?verbose=true`);
     const data: { result: Order } = await res.json();
     return data.result ?? null;
   } catch {

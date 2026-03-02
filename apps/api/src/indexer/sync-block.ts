@@ -1,4 +1,4 @@
-import { OrderMatch, Order, CounterpartyDispenser } from "../lib/counterparty";
+import { OrderMatch, Order, CounterpartyDispenser, fetchOrderByHash } from "../lib/counterparty";
 import { API_TIMEOUT_MS, LOCK_TIMEOUT_SECONDS } from "../lib/constants";
 import { batchExec } from "../lib/batch";
 import { normalizeOrderMatch, normalizeOrder, normalizeDispenser, normalizeDispensePrice, buildOrderUpsertStmt, buildDispenserUpsertStmt } from "./normalize";
@@ -24,8 +24,8 @@ interface BlockEvent {
   event: string;
   params: Record<string, unknown>;
   tx_hash: string;
-  block_index: number;
-  block_time: number;
+  block_index?: number;  // Present in /v2/events, absent in /blocks/{N}/events
+  block_time?: number;   // Present in some event types (ORDER_MATCH, OPEN_ORDER) but not others
 }
 
 interface SyncResult {
@@ -196,12 +196,10 @@ function processOpenOrder(
 }
 
 function processOrderPartialFill(
-  params: Record<string, unknown>
+  txHash: string,
+  giveRemaining: number,
+  getRemaining: number
 ): (db: D1Database) => D1PreparedStatement {
-  const txHash = params.tx_hash as string;
-  const giveRemaining = parseFloat(params.give_remaining_normalized as string);
-  const getRemaining = parseFloat(params.get_remaining_normalized as string);
-
   return (db) =>
     db
       .prepare(
@@ -219,6 +217,18 @@ function processOrderClose(
 ): (db: D1Database) => D1PreparedStatement {
   // ORDER_UPDATE uses tx_hash, CANCEL_ORDER uses offer_hash, ORDER_EXPIRATION uses order_hash
   const txHash = (params.tx_hash ?? params.offer_hash ?? params.order_hash) as string;
+
+  // When filled, zero out remaining — the order is fully consumed
+  if (closedStatus === "filled") {
+    return (db) =>
+      db
+        .prepare(
+          `UPDATE orders SET status = ?, closed_at = ?,
+             give_remaining = 0, get_remaining = 0, remaining = 0
+           WHERE tx_hash = ? AND status = 'open'`
+        )
+        .bind(closedStatus, now, txHash);
+  }
 
   return (db) =>
     db
@@ -264,34 +274,68 @@ function processOpenDispenser(
   return (db) => buildDispenserUpsertStmt(db, d, now);
 }
 
+function normalizeRawQuantity(
+  raw: number,
+  assetInfo: Record<string, unknown> | undefined
+): number {
+  const divisible = assetInfo?.divisible === true;
+  return divisible ? raw / 1e8 : raw;
+}
+
 function processDispenserUpdate(
   params: Record<string, unknown>,
   now: number
 ): (db: D1Database) => D1PreparedStatement {
   const txHash = params.tx_hash as string;
   const status = params.status as number;
-  const giveRemaining = parseFloat(params.give_remaining_normalized as string);
-  const dispenseCount = (params.dispense_count as number) ?? 0;
+
+  // Normalize give_remaining: prefer _normalized, fall back to raw + asset_info.divisible
+  let giveRemaining: number | null = null;
+  if (params.give_remaining_normalized != null) {
+    giveRemaining = parseFloat(params.give_remaining_normalized as string);
+  } else if (params.give_remaining != null) {
+    giveRemaining = normalizeRawQuantity(
+      params.give_remaining as number,
+      params.asset_info as Record<string, unknown> | undefined
+    );
+  }
+  if (giveRemaining != null && !isFinite(giveRemaining)) giveRemaining = null;
+
+  const dispenseCount = params.dispense_count as number | undefined;
 
   if (status >= 10) {
     // Dispenser closed (10=STATUS_CLOSED) or closing (11=STATUS_CLOSING)
+    if (giveRemaining != null && dispenseCount != null) {
+      return (db) =>
+        db
+          .prepare(
+            `UPDATE dispensers SET status = ?, give_remaining = ?,
+             dispense_count = ?, closed_at = ? WHERE tx_hash = ?`
+          )
+          .bind(status, giveRemaining, dispenseCount, now, txHash);
+    }
+    // Some close events (status=11) omit remaining/count — just update status
     return (db) =>
       db
-        .prepare(
-          `UPDATE dispensers SET status = ?, give_remaining = ?,
-           dispense_count = ?, closed_at = ? WHERE tx_hash = ?`
-        )
-        .bind(status, giveRemaining, dispenseCount, now, txHash);
+        .prepare(`UPDATE dispensers SET status = ?, closed_at = ? WHERE tx_hash = ?`)
+        .bind(status, now, txHash);
   }
 
   // status 0 (STATUS_OPEN) or 1 (STATUS_OPEN_EMPTY_ADDRESS) — still open
+  if (giveRemaining != null && dispenseCount != null) {
+    return (db) =>
+      db
+        .prepare(
+          `UPDATE dispensers SET status = ?, give_remaining = ?, dispense_count = ?
+           WHERE tx_hash = ?`
+        )
+        .bind(status, giveRemaining, dispenseCount, txHash);
+  }
+  // Fallback: just update status
   return (db) =>
     db
-      .prepare(
-        `UPDATE dispensers SET status = ?, give_remaining = ?, dispense_count = ?
-         WHERE tx_hash = ?`
-      )
-      .bind(status, giveRemaining, dispenseCount, txHash);
+      .prepare(`UPDATE dispensers SET status = ? WHERE tx_hash = ?`)
+      .bind(status, txHash);
 }
 
 function processDispense(
@@ -511,39 +555,54 @@ export async function syncBlocks(
   for (let blockIdx = lastBlock + 1; blockIdx <= targetBlock; blockIdx++) {
     const events = await fetchBlockEvents(apiBase, blockIdx);
 
+    // Sort by event_index ASC — the Counterparty API returns DESC order,
+    // but we need ASC so that OPEN_ORDER runs before ORDER_UPDATE (fill)
+    // when an order is created and filled in the same block.
+    events.sort((a, b) => a.event_index - b.event_index);
+
+    // Derive block_time from any event that carries it (ORDER_MATCH, OPEN_ORDER,
+    // OPEN_DISPENSER, DISPENSE all include block_time; ORDER_UPDATE and others don't).
+    let blockTime: number | undefined;
+    for (const ev of events) {
+      blockTime = ev.block_time ?? (ev.params.block_time as number | undefined);
+      if (blockTime) break;
+    }
+
     const stmts: ((db: D1Database) => D1PreparedStatement)[] = [];
 
     for (const event of events) {
       try {
         const params = event.params;
-        // block_index/block_time come from the event envelope; params as fallback
         const blockIndex = event.block_index ?? (params.block_index as number | undefined) ?? blockIdx;
-        const blockTime = event.block_time ?? (params.block_time as number | undefined);
-        if (!blockTime) {
-          console.error(`Block ${blockIdx}: skipping ${event.event} — no block_time`);
-          continue;
-        }
+        // Per-event block_time if available, otherwise fall back to block-level.
+        // Some events (ORDER_UPDATE, CANCEL_ORDER, ORDER_EXPIRATION, DISPENSER_UPDATE)
+        // don't carry block_time — that's fine, they don't need it for their SQL ops.
+        const eventBlockTime = event.block_time ?? (params.block_time as number | undefined) ?? blockTime;
 
         switch (event.event) {
           case "ORDER_MATCH": {
+            if (!eventBlockTime) {
+              console.error(`Block ${blockIdx}: skipping ORDER_MATCH — no block_time`);
+              break;
+            }
             // Only insert completed order matches — pending/expired matches
             // produce phantom trades with wrong prices (especially BTC pairs)
             const matchStatus = params.status as string | undefined;
             if (matchStatus && matchStatus !== "completed") {
               break;
             }
-            const trade = processOrderMatch(params, blockIndex, blockTime);
+            const trade = processOrderMatch(params, blockIndex, eventBlockTime);
             stmts.push(trade.stmt);
             result.trades_inserted++;
 
             const existing = affectedPairs.get(trade.pair);
-            if (!existing || blockTime < existing.earliestTime) {
+            if (!existing || eventBlockTime < existing.earliestTime) {
               affectedPairs.set(trade.pair, {
                 base: trade.base,
                 quote: trade.quote,
                 baseLongname: trade.baseLongname ?? existing?.baseLongname ?? null,
                 quoteLongname: trade.quoteLongname ?? existing?.quoteLongname ?? null,
-                earliestTime: blockTime,
+                earliestTime: eventBlockTime,
               });
             } else {
               if (trade.baseLongname && !existing.baseLongname) {
@@ -557,7 +616,11 @@ export async function syncBlocks(
           }
 
           case "OPEN_ORDER": {
-            stmts.push(processOpenOrder(params, blockIndex, blockTime, now));
+            if (!eventBlockTime) {
+              console.error(`Block ${blockIdx}: skipping OPEN_ORDER — no block_time`);
+              break;
+            }
+            stmts.push(processOpenOrder(params, blockIndex, eventBlockTime, now));
             result.orders_upserted++;
             break;
           }
@@ -565,8 +628,18 @@ export async function syncBlocks(
           case "ORDER_UPDATE": {
             const orderStatus = params.status as string;
             if (orderStatus === "open") {
-              stmts.push(processOrderPartialFill(params));
-              result.orders_upserted++;
+              // Partial fill — ORDER_UPDATE events don't include _normalized remaining
+              // fields, so fetch the full order from the Counterparty API with verbose=true.
+              const txHash = params.tx_hash as string;
+              const cpOrder = await fetchOrderByHash(apiBase, txHash);
+              if (cpOrder) {
+                const giveRemaining = parseFloat(cpOrder.give_remaining_normalized);
+                const getRemaining = parseFloat(cpOrder.get_remaining_normalized);
+                if (isFinite(giveRemaining) && isFinite(getRemaining)) {
+                  stmts.push(processOrderPartialFill(txHash, giveRemaining, getRemaining));
+                  result.orders_upserted++;
+                }
+              }
             } else if (
               orderStatus === "expired" ||
               orderStatus === "filled" ||
@@ -597,7 +670,11 @@ export async function syncBlocks(
           }
 
           case "OPEN_DISPENSER": {
-            const dispenserStmt = processOpenDispenser(params, blockIndex, blockTime, now);
+            if (!eventBlockTime) {
+              console.error(`Block ${blockIdx}: skipping OPEN_DISPENSER — no block_time`);
+              break;
+            }
+            const dispenserStmt = processOpenDispenser(params, blockIndex, eventBlockTime, now);
             if (dispenserStmt) {
               stmts.push(dispenserStmt);
               result.dispensers_upserted++;
@@ -622,7 +699,11 @@ export async function syncBlocks(
           }
 
           case "DISPENSE": {
-            const dispense = processDispense(params, blockIndex, blockTime);
+            if (!eventBlockTime) {
+              console.error(`Block ${blockIdx}: skipping DISPENSE — no block_time`);
+              break;
+            }
+            const dispense = processDispense(params, blockIndex, eventBlockTime);
             stmts.push(dispense.stmt);
             const longname = extractAssetLongname(params.asset_info);
             if (!affectedDispenseAssets.has(dispense.asset) || longname) {
