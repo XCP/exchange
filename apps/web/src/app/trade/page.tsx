@@ -313,7 +313,6 @@ function OrdersTable({ orders, isLoading, blockHeight, baseSearch, quoteSearch, 
             </span>
           </th>
           <th className="text-right font-normal px-3 py-1.5">Total</th>
-          <th className="text-left font-normal px-3 py-1.5"></th>
           <th className="text-left font-normal px-3 py-1.5 max-sm:hidden">
             <div className="relative inline-flex items-center gap-1" ref={addrRef}>
               <span>Address</span>
@@ -350,7 +349,7 @@ function OrdersTable({ orders, isLoading, blockHeight, baseSearch, quoteSearch, 
       </thead>
       <tbody>
         {isLoading || orders.length === 0 ? (
-          <EmptyRows loading={isLoading} label="orders" cols={11} />
+          <EmptyRows loading={isLoading} label="orders" cols={10} />
         ) : (
           orders.map((order) => {
             const [base, quote] = order.pair.split('_')
@@ -389,12 +388,6 @@ function OrdersTable({ orders, isLoading, blockHeight, baseSearch, quoteSearch, 
                 </td>
                 <td className="text-right text-zinc-400 font-mono px-3 py-1.5">
                   {isFinite(order.price) ? formatPrice(order.price * displayAmount) : '—'}
-                </td>
-                <td className="px-3 py-1.5">
-                  <Link href={`/trade/${order.pair}`} className="flex items-center gap-1.5 hover:underline decoration-zinc-400">
-                    <Image src={`${XCP_IMG_BASE}/icon/${order.quote_asset}`} alt="" width={14} height={14} className="rounded-sm" unoptimized />
-                    <span className="text-zinc-400 truncate">{quoteDisplay}</span>
-                  </Link>
                 </td>
                 <td className="text-left font-mono px-3 py-1.5 max-sm:hidden">
                   <span className="inline-flex items-center gap-1">

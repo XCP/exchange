@@ -247,7 +247,6 @@ function DispensersTable({ dispensers, isLoading, assetSearch, onAssetSearch, on
             </span>
           </th>
           <th className="text-right font-normal px-3 py-1.5">Price</th>
-          <th className="text-left font-normal px-3 py-1.5">BTC</th>
           <th className="text-left font-normal px-3 py-1.5 max-sm:hidden">Address</th>
           <th className="text-left font-normal px-3 py-1.5 max-sm:hidden">Status</th>
           <th className="text-right font-normal px-3 py-1.5 max-sm:hidden">Dispenses</th>
@@ -255,7 +254,7 @@ function DispensersTable({ dispensers, isLoading, assetSearch, onAssetSearch, on
       </thead>
       <tbody>
         {isLoading || dispensers.length === 0 ? (
-          <EmptyRows loading={isLoading} label="dispensers" cols={8} />
+          <EmptyRows loading={isLoading} label="dispensers" cols={7} />
         ) : (
           dispensers.map((d) => {
             const isOpen = d.status < 10
@@ -278,12 +277,6 @@ function DispensersTable({ dispensers, isLoading, assetSearch, onAssetSearch, on
                 </td>
                 <td className="text-right text-zinc-400 font-mono px-3 py-1.5">
                   {formatPrice(d.price)}
-                </td>
-                <td className="px-3 py-1.5">
-                  <span className="flex items-center gap-1.5">
-                    <Image src={`${XCP_IMG_BASE}/icon/BTC`} alt="" width={14} height={14} className="rounded-sm" unoptimized />
-                    <span className="text-zinc-400">BTC</span>
-                  </span>
                 </td>
                 <td className="text-left font-mono px-3 py-1.5 max-sm:hidden">
                   <span className="inline-flex items-center gap-1">
