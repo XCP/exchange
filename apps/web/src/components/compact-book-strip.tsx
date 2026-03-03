@@ -38,12 +38,12 @@ export function CompactBookStrip({ bids, asks, spread, spreadPct, onRowClick }: 
       </div>
 
       <div className="grid grid-cols-2 divide-x divide-zinc-800">
-        {/* Bids (left) — highest first, bars grow from right */}
+        {/* Bids (left) — highest first, bars grow from right, columns reversed so price is near spread */}
         <div>
-          <div className="grid grid-cols-3 gap-0 px-3 py-1 text-[10px] text-zinc-500">
-            <span>Price</span>
-            <span className="text-right">Amt</span>
-            <span className="text-right">Total</span>
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-0 px-3 py-1 text-[10px] text-zinc-500">
+            <span className="hidden md:block">Total</span>
+            <span>Amt</span>
+            <span className="text-right">Price</span>
           </div>
           <div className="px-0.5 overflow-y-auto" style={{ height: `${ROW_HEIGHT}px` }}>
             {bids.length > 0 ? (
@@ -52,16 +52,16 @@ export function CompactBookStrip({ bids, asks, spread, spreadPct, onRowClick }: 
                 return (
                   <div
                     key={`strip-bid-${i}`}
-                    className="relative grid grid-cols-3 gap-0 px-2 py-px hover:bg-zinc-900 cursor-pointer"
+                    className="relative grid grid-cols-2 md:grid-cols-3 gap-0 px-2 py-px hover:bg-zinc-900 cursor-pointer"
                     onClick={() => onRowClick?.(bid, 'sell')}
                   >
                     <div
                       className="absolute inset-y-0 right-0 bg-green-500/10"
                       style={{ width: `${depthPct}%` }}
                     />
-                    <span className="relative z-10 text-green-400 font-mono text-[11px]">{bid.price}</span>
-                    <span className="relative z-10 text-right text-zinc-400 font-mono text-[11px]">{bid.amount}</span>
-                    <span className="relative z-10 text-right text-zinc-500 font-mono text-[11px]">{bid.total}</span>
+                    <span className="relative z-10 text-zinc-500 font-mono text-[11px] hidden md:block">{bid.total}</span>
+                    <span className="relative z-10 text-zinc-400 font-mono text-[11px]">{bid.amount}</span>
+                    <span className="relative z-10 text-right text-green-400 font-mono text-[11px]">{bid.price}</span>
                   </div>
                 )
               })
@@ -73,10 +73,10 @@ export function CompactBookStrip({ bids, asks, spread, spreadPct, onRowClick }: 
 
         {/* Asks (right) — lowest first, bars grow from left */}
         <div>
-          <div className="grid grid-cols-3 gap-0 px-3 py-1 text-[10px] text-zinc-500">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-0 px-3 py-1 text-[10px] text-zinc-500">
             <span>Price</span>
             <span className="text-right">Amt</span>
-            <span className="text-right">Total</span>
+            <span className="text-right hidden md:block">Total</span>
           </div>
           <div className="px-0.5 overflow-y-auto" style={{ height: `${ROW_HEIGHT}px` }}>
             {asks.length > 0 ? (
@@ -85,7 +85,7 @@ export function CompactBookStrip({ bids, asks, spread, spreadPct, onRowClick }: 
                 return (
                   <div
                     key={`strip-ask-${i}`}
-                    className="relative grid grid-cols-3 gap-0 px-2 py-px hover:bg-zinc-900 cursor-pointer"
+                    className="relative grid grid-cols-2 md:grid-cols-3 gap-0 px-2 py-px hover:bg-zinc-900 cursor-pointer"
                     onClick={() => onRowClick?.(ask, 'buy')}
                   >
                     <div
@@ -94,7 +94,7 @@ export function CompactBookStrip({ bids, asks, spread, spreadPct, onRowClick }: 
                     />
                     <span className="relative z-10 text-red-400 font-mono text-[11px]">{ask.price}</span>
                     <span className="relative z-10 text-right text-zinc-400 font-mono text-[11px]">{ask.amount}</span>
-                    <span className="relative z-10 text-right text-zinc-500 font-mono text-[11px]">{ask.total}</span>
+                    <span className="relative z-10 text-right text-zinc-500 font-mono text-[11px] hidden md:block">{ask.total}</span>
                   </div>
                 )
               })
