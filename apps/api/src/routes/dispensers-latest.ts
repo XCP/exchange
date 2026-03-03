@@ -70,7 +70,13 @@ export async function handleDispensersLatest(
                       d.status, d.block_index, d.block_time`;
   const whereClause = conditions.length > 0 ? ` WHERE ${conditions.join(" AND ")}` : "";
 
-  const dataQuery = `SELECT ${columns} FROM dispensers d${whereClause} ORDER BY d.block_index DESC LIMIT ? OFFSET ?`;
+  const sort = url.searchParams.get("sort");
+  let orderClause = "ORDER BY d.block_index DESC";
+  if (sort === "price") orderClause = "ORDER BY d.price ASC";
+  else if (sort === "price_desc") orderClause = "ORDER BY d.price DESC";
+  else if (sort === "dispenses") orderClause = "ORDER BY d.dispense_count DESC";
+
+  const dataQuery = `SELECT ${columns} FROM dispensers d${whereClause} ${orderClause} LIMIT ? OFFSET ?`;
   const countQuery = `SELECT COUNT(*) as total FROM dispensers d${whereClause}`;
 
   const dataStmt = db.prepare(dataQuery).bind(...binds, limit, offset);

@@ -47,7 +47,7 @@ type DispenserTab = 'all' | 'open' | 'dispenses' | 'closing' | 'closed'
 const TABS: [DispenserTab, string][] = [
   ['all', 'All'],
   ['open', 'Open'],
-  ['dispenses', 'Dispenses'],
+  ['dispenses', 'Dispensed'],
   ['closing', 'Closing'],
   ['closed', 'Closed'],
 ]
@@ -80,6 +80,7 @@ function DispensePageInner() {
   const [debouncedAsset, setDebouncedAsset] = useState('')
   const [sourceFilter, setSourceFilter] = useState<string | null>(null)
   const [offset, setOffset] = useState(0)
+  const [sort, setSort] = useState<string | null>(null)
   const collections = useTags('collection')
 
   const { dispenseSummary, isLoading: summaryLoading } = useAnalyticsSummary(timeframe, includeHidden, tag)
@@ -91,7 +92,7 @@ function DispensePageInner() {
 
   useEffect(() => {
     setOffset(0)
-  }, [tab, tag, debouncedAsset, sourceFilter])
+  }, [tab, tag, debouncedAsset, sourceFilter, sort])
 
   const dispenserStatus = tab === 'dispenses' ? undefined : tab
   const dispenserFilters = {
@@ -101,6 +102,7 @@ function DispensePageInner() {
     ...(sourceFilter ? { source: sourceFilter } : {}),
     ...(offset > 0 ? { offset } : {}),
     ...(includeHidden ? { includeHidden: true } : {}),
+    ...(sort ? { sort } : {}),
   }
   const { dispensers, total: dispensersTotal, isLoading: dispensersLoading } = useDispensersLatest(
     Object.keys(dispenserFilters).length > 0 ? dispenserFilters : undefined, 250
@@ -244,7 +246,7 @@ function DispensePageInner() {
           {isDispensesTab ? (
             <DispensesTable dispenses={dispenses} isLoading={dispensesLoading} />
           ) : (
-            <DispensersTable dispensers={dispensers} isLoading={dispensersLoading} assetSearch={assetSearch} onAssetSearch={setAssetSearch} onFilterAddress={(addr) => { setSourceFilter(addr); handleTagChange(null) }} />
+            <DispensersTable dispensers={dispensers} isLoading={dispensersLoading} assetSearch={assetSearch} onAssetSearch={setAssetSearch} onFilterAddress={(addr) => { setSourceFilter(addr); handleTagChange(null) }} sort={sort} onSort={setSort} satsMode={satsMode} />
           )}
           <Pagination total={activeTotal} offset={offset} limit={250} onOffsetChange={setOffset} />
         </div>
@@ -253,12 +255,35 @@ function DispensePageInner() {
   )
 }
 
-function DispensersTable({ dispensers, isLoading, assetSearch, onAssetSearch, onFilterAddress }: {
+function SortHeader({ label, sortKey, currentSort, onSort, className }: {
+  label: string; sortKey: string; currentSort: string | null; onSort: (s: string | null) => void; className?: string
+}) {
+  const isActive = currentSort === sortKey || currentSort === `${sortKey}_desc`
+  const isDesc = currentSort === `${sortKey}_desc`
+  const arrow = isActive ? (isDesc ? ' ↓' : ' ↑') : ''
+  return (
+    <th
+      className={`font-normal px-3 py-1.5 cursor-pointer select-none hover:text-zinc-300 transition-colors ${className ?? ''} ${isActive ? 'text-zinc-300' : ''}`}
+      onClick={() => {
+        if (!isActive) onSort(sortKey)
+        else if (!isDesc) onSort(`${sortKey}_desc`)
+        else onSort(null)
+      }}
+    >
+      {label}{arrow}
+    </th>
+  )
+}
+
+function DispensersTable({ dispensers, isLoading, assetSearch, onAssetSearch, onFilterAddress, sort, onSort, satsMode }: {
   dispensers: LatestDispenser[]
   isLoading: boolean
   assetSearch: string
   onAssetSearch: (v: string) => void
   onFilterAddress: (addr: string) => void
+  sort: string | null
+  onSort: (s: string | null) => void
+  satsMode: boolean
 }) {
   return (
     <table className="w-full text-xs whitespace-nowrap">
@@ -280,19 +305,22 @@ function DispensersTable({ dispensers, isLoading, assetSearch, onAssetSearch, on
               )}
             </span>
           </th>
-          <th className="text-right font-normal px-3 py-1.5">Price</th>
+          <SortHeader label="Price" sortKey="price" currentSort={sort} onSort={onSort} className="text-right" />
+          <th className="px-3 py-1.5 w-0" />
+          <th className="text-right font-normal px-3 py-1.5 max-sm:hidden">Total</th>
           <th className="text-left font-normal px-3 py-1.5 max-sm:hidden">Address</th>
           <th className="text-left font-normal px-3 py-1.5 max-sm:hidden">Status</th>
-          <th className="text-right font-normal px-3 py-1.5 max-sm:hidden">Dispenses</th>
+          <SortHeader label="Dispensed" sortKey="dispenses" currentSort={sort} onSort={onSort} className="text-right max-sm:hidden" />
         </tr>
       </thead>
       <tbody>
         {isLoading || dispensers.length === 0 ? (
-          <EmptyRows loading={isLoading} label="dispensers" cols={7} />
+          <EmptyRows loading={isLoading} label="dispensers" cols={9} />
         ) : (
           dispensers.map((d) => {
             const isOpen = d.status < 10
             const displayAmount = isOpen ? d.give_remaining : d.give_quantity
+            const total = d.price * displayAmount
             const status = statusLabel(d.status)
 
             return (
@@ -310,7 +338,16 @@ function DispensersTable({ dispensers, isLoading, assetSearch, onAssetSearch, on
                   </Link>
                 </td>
                 <td className="text-right text-zinc-400 font-mono px-3 py-1.5">
-                  {formatPrice(d.price)}
+                  {formatPrice(d.price, satsMode)}
+                </td>
+                <td className="px-1 py-1.5">
+                  <span className="inline-flex items-center gap-1">
+                    <Image src={`${XCP_IMG_BASE}/icon/BTC`} alt="" width={14} height={14} className="rounded-sm" unoptimized />
+                    <span className="text-zinc-500 text-[10px]">{satsMode ? 'sats' : 'BTC'}</span>
+                  </span>
+                </td>
+                <td className="text-right text-zinc-500 font-mono px-3 py-1.5 max-sm:hidden">
+                  {formatPrice(total, satsMode)}
                 </td>
                 <td className="text-left font-mono px-3 py-1.5 max-sm:hidden">
                   <span className="inline-flex items-center gap-1">
