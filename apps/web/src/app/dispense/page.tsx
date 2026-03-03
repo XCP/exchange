@@ -249,11 +249,13 @@ function DispensePageInner() {
               ))}
             </div>
           </div>
+          <div className="overflow-x-auto">
           {isDispensesTab ? (
             <DispensesTable dispenses={dispenses} isLoading={dispensesLoading} satsMode={satsMode} assetSearch={assetSearch} debouncedAsset={debouncedAsset} onAssetSearch={setAssetSearch} onFilterAddress={(addr) => { setSourceFilter(addr) }} sourceFilter={sourceFilter} onClearAddress={() => setSourceFilter(null)} sort={sort} onSort={setSort} hasFilter={hasFilter} />
           ) : (
             <DispensersTable dispensers={dispensers} isLoading={dispensersLoading} assetSearch={assetSearch} debouncedAsset={debouncedAsset} onAssetSearch={setAssetSearch} onFilterAddress={(addr) => { setSourceFilter(addr) }} sourceFilter={sourceFilter} onClearAddress={() => setSourceFilter(null)} sort={sort} onSort={setSort} satsMode={satsMode} hasFilter={hasFilter} />
           )}
+          </div>
           <Pagination total={activeTotal} offset={offset} limit={250} onOffsetChange={setOffset} />
         </div>
       </div>
@@ -330,9 +332,9 @@ function DispensersTable({ dispensers, isLoading, assetSearch, debouncedAsset, o
               )}
             </span>
           </th>
-          <th className="text-right font-normal px-3 py-1.5 max-sm:hidden">Dispense Cost</th>
-          <th className="text-right font-normal px-3 py-1.5 max-sm:hidden">Remaining</th>
-          <th className="text-left font-normal px-3 py-1.5 max-sm:hidden">
+          <th className="text-right font-normal px-3 py-1.5">Dispense Cost</th>
+          <th className="text-right font-normal px-3 py-1.5">Remaining</th>
+          <th className="text-left font-normal px-3 py-1.5">
             <div className="relative inline-flex items-center gap-1" ref={addrRef}>
               <span>Address</span>
               {sourceFilter ? (
@@ -362,8 +364,8 @@ function DispensersTable({ dispensers, isLoading, assetSearch, debouncedAsset, o
               )}
             </div>
           </th>
-          <th className="text-left font-normal px-3 py-1.5 max-sm:hidden">Status</th>
-          <SortHeader label="#" sortKey="dispenses" currentSort={sort} onSort={onSort} disabled={!hasFilter} className="text-right max-sm:hidden" />
+          <th className="text-left font-normal px-3 py-1.5">Status</th>
+          <SortHeader label="#" sortKey="dispenses" currentSort={sort} onSort={onSort} disabled={!hasFilter} className="text-right" />
         </tr>
       </thead>
       <tbody>
@@ -415,13 +417,13 @@ function DispensersTable({ dispensers, isLoading, assetSearch, debouncedAsset, o
                     </button>
                   )}
                 </td>
-                <td className="text-right text-zinc-500 font-mono px-3 py-1.5 max-sm:hidden">
+                <td className="text-right text-zinc-500 font-mono px-3 py-1.5">
                   {d.give_quantity > 1 ? formatPrice(d.satoshi_price / 1e8, satsMode) : ''}
                 </td>
-                <td className="text-right text-zinc-500 font-mono px-3 py-1.5 max-sm:hidden">
+                <td className="text-right text-zinc-500 font-mono px-3 py-1.5">
                   {formatPrice(remaining)}
                 </td>
-                <td className="text-left font-mono px-3 py-1.5 max-sm:hidden">
+                <td className="text-left font-mono px-3 py-1.5">
                   <span className="inline-flex items-center gap-1">
                     <span className="text-zinc-500">{formatAddress(d.source)}</span>
                     <button
@@ -433,10 +435,10 @@ function DispensersTable({ dispensers, isLoading, assetSearch, debouncedAsset, o
                     </button>
                   </span>
                 </td>
-                <td className={`text-left font-mono px-3 py-1.5 max-sm:hidden capitalize ${isOpen ? 'text-zinc-400' : 'text-zinc-500'}`}>
+                <td className={`text-left font-mono px-3 py-1.5 capitalize ${isOpen ? 'text-zinc-400' : 'text-zinc-500'}`}>
                   {status}
                 </td>
-                <td className="text-right text-zinc-500 font-mono px-3 py-1.5 max-sm:hidden">
+                <td className="text-right text-zinc-500 font-mono px-3 py-1.5">
                   {d.dispense_count}
                 </td>
               </tr>
@@ -492,8 +494,8 @@ function DispensesTable({ dispenses, isLoading, satsMode, assetSearch, debounced
               )}
             </span>
           </th>
-          <th className="text-right font-normal px-3 py-1.5 max-sm:hidden">Total ({satsMode ? 'sats' : 'BTC'})</th>
-          <th className="text-left font-normal px-3 py-1.5 max-sm:hidden">
+          <th className="text-right font-normal px-3 py-1.5">Total ({satsMode ? 'sats' : 'BTC'})</th>
+          <th className="text-left font-normal px-3 py-1.5">
             <div className="relative inline-flex items-center gap-1" ref={buyerRef}>
               <span>Buyer</span>
               {sourceFilter ? (
@@ -523,7 +525,7 @@ function DispensesTable({ dispenses, isLoading, satsMode, assetSearch, debounced
               )}
             </div>
           </th>
-          <th className="text-left font-normal px-3 py-1.5 max-sm:hidden">
+          <th className="text-left font-normal px-3 py-1.5">
             <div className="relative inline-flex items-center gap-1" ref={sellerRef}>
               <span>Dispenser</span>
               {sourceFilter ? (
@@ -592,10 +594,10 @@ function DispensesTable({ dispenses, isLoading, satsMode, assetSearch, debounced
                   </button>
                 )}
               </td>
-              <td className="text-right text-zinc-500 font-mono px-3 py-1.5 max-sm:hidden">
+              <td className="text-right text-zinc-500 font-mono px-3 py-1.5">
                 {d.btc_amount > 0 ? formatPrice(d.btc_amount, satsMode) : '—'}
               </td>
-              <td className="text-left font-mono px-3 py-1.5 max-sm:hidden">
+              <td className="text-left font-mono px-3 py-1.5">
                 <span className="inline-flex items-center gap-1">
                   <span className="text-zinc-500">{formatAddress(d.destination)}</span>
                   <button onClick={() => onFilterAddress(d.destination)} className="text-zinc-600 hover:text-zinc-400 transition-colors" title="Filter by this address">
@@ -603,7 +605,7 @@ function DispensesTable({ dispenses, isLoading, satsMode, assetSearch, debounced
                   </button>
                 </span>
               </td>
-              <td className="text-left font-mono px-3 py-1.5 max-sm:hidden">
+              <td className="text-left font-mono px-3 py-1.5">
                 <span className="inline-flex items-center gap-1">
                   <span className="text-zinc-500">{formatAddress(d.source)}</span>
                   <button onClick={() => onFilterAddress(d.source)} className="text-zinc-600 hover:text-zinc-400 transition-colors" title="Filter by this address">
