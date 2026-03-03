@@ -91,7 +91,7 @@ function DispensePageInner() {
   }, [assetSearch])
 
   // Default to price low-to-high when filtering, revert to newest when no filters
-  const hasFilter = !!debouncedAsset || !!sourceFilter
+  const hasFilter = !!debouncedAsset || !!sourceFilter || !!tag
   useEffect(() => {
     if (hasFilter) setSort(s => s ?? 'price')
     else setSort(null)
