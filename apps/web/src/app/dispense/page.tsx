@@ -291,6 +291,7 @@ function DispensersTable({ dispensers, isLoading, assetSearch, onAssetSearch, on
         <tr className="text-zinc-500 border-b border-zinc-800">
           <th className="text-left font-normal px-3 py-1.5 w-8">Time</th>
           <SortHeader label="Effective Price" sortKey="price" currentSort={sort} onSort={onSort} className="text-right" />
+          <th className="py-1.5" />
           <th className="text-right font-normal px-3 py-1.5">Per Dispense</th>
           <th className="text-left font-normal px-3 py-0.5">
             <span className="relative flex items-center">
@@ -314,7 +315,7 @@ function DispensersTable({ dispensers, isLoading, assetSearch, onAssetSearch, on
       </thead>
       <tbody>
         {isLoading || dispensers.length === 0 ? (
-          <EmptyRows loading={isLoading} label="dispensers" cols={9} />
+          <EmptyRows loading={isLoading} label="dispensers" cols={10} />
         ) : (
           dispensers.map((d) => {
             const isOpen = d.status < 10
@@ -327,13 +328,13 @@ function DispensersTable({ dispensers, isLoading, assetSearch, onAssetSearch, on
                   {d.block_time ? compactTime(d.block_time) : '—'}
                 </td>
                 <td className="text-right text-zinc-400 font-mono px-3 py-1.5">
-                  <span className="inline-flex items-center justify-end gap-1.5">
-                    {formatPrice(d.price, satsMode)}
-                    <Link href={`/dispense/${encodeURIComponent(d.asset)}`} className="inline-flex items-center gap-1.5 hover:underline decoration-zinc-400">
-                      <Image src={`${XCP_IMG_BASE}/icon/BTC`} alt="" width={14} height={14} className="rounded-sm" unoptimized />
-                      <span className="text-zinc-400">{satsMode ? 'sats' : 'BTC'}</span>
-                    </Link>
-                  </span>
+                  {formatPrice(d.price, satsMode)}
+                </td>
+                <td className="px-3 py-1.5">
+                  <Link href={`/dispense/${encodeURIComponent(d.asset)}`} className="flex items-center gap-1.5 hover:underline decoration-zinc-400">
+                    <Image src={`${XCP_IMG_BASE}/icon/BTC`} alt="" width={14} height={14} className="rounded-sm" unoptimized />
+                    <span className="text-zinc-400 truncate">{satsMode ? 'sats' : 'BTC'}</span>
+                  </Link>
                 </td>
                 <td className="text-right text-zinc-400 font-mono px-3 py-1.5">
                   {formatPrice(d.give_quantity)}
