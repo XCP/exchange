@@ -119,6 +119,7 @@ function DispensePageInner() {
     ...(debouncedAsset ? { asset: debouncedAsset } : {}),
     ...(offset > 0 ? { offset } : {}),
     ...(includeHidden ? { includeHidden: true } : {}),
+    ...(sort ? { sort } : {}),
   }
   const { dispenses, total: dispensesTotal, isLoading: dispensesLoading } = useDispensesLatest(
     Object.keys(dispenseFilters).length > 0 ? dispenseFilters : undefined, 250
@@ -249,7 +250,7 @@ function DispensePageInner() {
             </div>
           </div>
           {isDispensesTab ? (
-            <DispensesTable dispenses={dispenses} isLoading={dispensesLoading} satsMode={satsMode} assetSearch={assetSearch} debouncedAsset={debouncedAsset} onAssetSearch={setAssetSearch} onFilterAddress={(addr) => { setSourceFilter(addr) }} sourceFilter={sourceFilter} onClearAddress={() => setSourceFilter(null)} />
+            <DispensesTable dispenses={dispenses} isLoading={dispensesLoading} satsMode={satsMode} assetSearch={assetSearch} debouncedAsset={debouncedAsset} onAssetSearch={setAssetSearch} onFilterAddress={(addr) => { setSourceFilter(addr) }} sourceFilter={sourceFilter} onClearAddress={() => setSourceFilter(null)} sort={sort} onSort={setSort} hasFilter={hasFilter} />
           ) : (
             <DispensersTable dispensers={dispensers} isLoading={dispensersLoading} assetSearch={assetSearch} debouncedAsset={debouncedAsset} onAssetSearch={setAssetSearch} onFilterAddress={(addr) => { setSourceFilter(addr) }} sourceFilter={sourceFilter} onClearAddress={() => setSourceFilter(null)} sort={sort} onSort={setSort} satsMode={satsMode} hasFilter={hasFilter} />
           )}
@@ -436,9 +437,10 @@ function DispensersTable({ dispensers, isLoading, assetSearch, debouncedAsset, o
   )
 }
 
-function DispensesTable({ dispenses, isLoading, satsMode, assetSearch, debouncedAsset, onAssetSearch, onFilterAddress, sourceFilter, onClearAddress }: {
+function DispensesTable({ dispenses, isLoading, satsMode, assetSearch, debouncedAsset, onAssetSearch, onFilterAddress, sourceFilter, onClearAddress, sort, onSort, hasFilter }: {
   dispenses: LatestDispense[]; isLoading: boolean; satsMode: boolean; assetSearch: string; debouncedAsset: string; onAssetSearch: (v: string) => void
   onFilterAddress: (addr: string) => void; sourceFilter: string | null; onClearAddress: () => void
+  sort: string | null; onSort: (s: string | null) => void; hasFilter: boolean
 }) {
   const isExactMatch = debouncedAsset && dispenses.length > 0 && dispenses.every(d => d.asset === debouncedAsset.toUpperCase())
   const [showBuyerInput, setShowBuyerInput] = useState(false)
@@ -461,9 +463,9 @@ function DispensesTable({ dispenses, isLoading, satsMode, assetSearch, debounced
     <table className="w-full text-xs whitespace-nowrap">
       <thead>
         <tr className="text-zinc-500 border-b border-zinc-800">
-          <th className="text-left font-normal px-3 py-1.5 w-8">Time</th>
+          <SortHeader label="Time" sortKey="time" currentSort={sort} onSort={onSort} disabled={!hasFilter} className="text-left w-8" />
           <th className="py-1.5" />
-          <th className="text-right font-normal px-3 py-1.5">Effective Price</th>
+          <SortHeader label="Effective Price" sortKey="price" currentSort={sort} onSort={onSort} disabled={!hasFilter} className="text-right" />
           <th className="py-1.5" />
           <th className="text-right font-normal px-3 py-1.5">Dispensed</th>
           <th className="text-left font-normal px-3 py-0.5 min-w-0">

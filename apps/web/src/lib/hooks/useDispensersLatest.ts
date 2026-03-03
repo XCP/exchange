@@ -61,6 +61,7 @@ function buildDispensesUrl(filters?: DispenserFilters, limit: number = 250): str
   if (filters?.tag) params.set('tag', filters.tag)
   if (filters?.offset) params.set('offset', String(filters.offset))
   if (filters?.includeHidden) params.set('include_hidden', '1')
+  if (filters?.sort) params.set('sort', filters.sort)
   const qs = params.toString()
   return dexUrl(`/dispenses/latest?${qs}`)
 }

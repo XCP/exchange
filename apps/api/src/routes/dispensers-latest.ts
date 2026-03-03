@@ -172,7 +172,14 @@ export async function handleDispensesLatest(
                       e.block_index, e.block_time`;
   const whereClause = conditions.length > 0 ? ` WHERE ${conditions.join(" AND ")}` : "";
 
-  const dataQuery = `SELECT ${columns} FROM dispenses e${whereClause} ORDER BY e.block_index DESC LIMIT ? OFFSET ?`;
+  const sort = url.searchParams.get("sort");
+  let orderClause = "ORDER BY e.block_index DESC";
+  if (sort === "price") orderClause = "ORDER BY e.price ASC";
+  else if (sort === "price_desc") orderClause = "ORDER BY e.price DESC";
+  else if (sort === "time") orderClause = "ORDER BY e.block_index ASC";
+  else if (sort === "time_desc") orderClause = "ORDER BY e.block_index DESC";
+
+  const dataQuery = `SELECT ${columns} FROM dispenses e${whereClause} ${orderClause} LIMIT ? OFFSET ?`;
   const countQuery = `SELECT COUNT(*) as total FROM dispenses e${whereClause}`;
 
   const dataStmt = db.prepare(dataQuery).bind(...binds, limit, offset);
