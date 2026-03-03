@@ -330,9 +330,9 @@ function DispensersTable({ dispensers, isLoading, assetSearch, onAssetSearch, on
                 <td className="text-right text-zinc-400 font-mono px-3 py-1.5">
                   {formatPrice(d.price, satsMode)}
                 </td>
-                <td className="pl-1 pr-3 py-1.5">
-                  <Link href={`/dispense/${encodeURIComponent(d.asset)}`} className="flex items-center gap-1.5 hover:underline decoration-zinc-400">
-                    <Image src={`${XCP_IMG_BASE}/icon/BTC`} alt="" width={14} height={14} className="rounded-sm shrink-0" unoptimized />
+                <td className="px-3 py-1.5">
+                  <Link href={`/dispense/${encodeURIComponent(d.asset)}`} className="inline-flex items-center gap-1.5 whitespace-nowrap hover:underline decoration-zinc-400">
+                    <Image src={`${XCP_IMG_BASE}/icon/BTC`} alt="" width={14} height={14} className="rounded-sm" unoptimized />
                     <span className="text-zinc-400">{satsMode ? 'sats' : 'BTC'}</span>
                   </Link>
                 </td>
