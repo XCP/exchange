@@ -291,6 +291,7 @@ function DispensersTable({ dispensers, isLoading, assetSearch, onAssetSearch, on
         <tr className="text-zinc-500 border-b border-zinc-800">
           <th className="text-left font-normal px-3 py-1.5 w-8">Time</th>
           <SortHeader label="Price" sortKey="price" currentSort={sort} onSort={onSort} className="text-right" />
+          <th className="text-right font-normal px-3 py-1.5">Per Dispense</th>
           <th className="text-left font-normal px-3 py-0.5">
             <span className="relative flex items-center">
               <input
@@ -305,7 +306,6 @@ function DispensersTable({ dispensers, isLoading, assetSearch, onAssetSearch, on
               )}
             </span>
           </th>
-          <th className="text-right font-normal px-3 py-1.5">Per Dispense</th>
           <th className="text-right font-normal px-3 py-1.5 max-sm:hidden">Remaining</th>
           <th className="text-left font-normal px-3 py-1.5 max-sm:hidden">Address</th>
           <th className="text-left font-normal px-3 py-1.5 max-sm:hidden">Status</th>
@@ -335,14 +335,14 @@ function DispensersTable({ dispensers, isLoading, assetSearch, onAssetSearch, on
                     </Link>
                   </span>
                 </td>
+                <td className="text-right text-zinc-400 font-mono px-3 py-1.5">
+                  {formatPrice(d.give_quantity)}
+                </td>
                 <td className="px-3 py-1.5">
                   <Link href={`/dispense/${encodeURIComponent(d.asset)}`} className="flex items-center gap-1.5 hover:underline">
                     <Image src={`${XCP_IMG_BASE}/icon/${d.asset}`} alt="" width={14} height={14} className="rounded-sm" unoptimized />
                     <span className="text-zinc-200 truncate">{d.asset}</span>
                   </Link>
-                </td>
-                <td className="text-right text-zinc-400 font-mono px-3 py-1.5">
-                  {formatPrice(d.give_quantity)}
                 </td>
                 <td className="text-right text-zinc-500 font-mono px-3 py-1.5 max-sm:hidden">
                   {formatPrice(remaining)}
