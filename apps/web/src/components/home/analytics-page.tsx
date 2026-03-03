@@ -329,8 +329,8 @@ function SummarySection({ timeframe, includeHidden, isLoading, mobileMode, trade
             <LeaderboardTable
               title="Most Dispensed (By Volume)"
               tabs={[
-                { label: 'Assets', headers: ['Asset', 'Dispenses', 'Volume (BTC)', 'Chg'], rows: dispensedAssetRows.slice(0, 10) },
-                { label: 'Collections', headers: ['Collection', 'Dispenses', 'Volume (BTC)', 'Chg'], rows: dispensedCollRows.slice(0, 10) },
+                { label: 'Assets', headers: ['Asset', 'Dispenses', `Volume (${btcLabel})`, 'Chg'], rows: dispensedAssetRows.slice(0, 10) },
+                { label: 'Collections', headers: ['Collection', 'Dispenses', `Volume (${btcLabel})`, 'Chg'], rows: dispensedCollRows.slice(0, 10) },
               ]}
             />
           </div>
@@ -343,10 +343,15 @@ function SummarySection({ timeframe, includeHidden, isLoading, mobileMode, trade
 // ── Charts: Volume History ──────────────────────────────────────────
 
 function ChartsSection({ timeframe, includeHidden, ready, mobileMode }: { timeframe: Timeframe; includeHidden: boolean; ready: boolean; mobileMode: MobileMode }) {
+  const { satsMode } = useSatsMode()
+  const btcLabel = satsMode ? 'sats' : 'BTC'
   const { dailyTradeVolume, dailyDispenseVolume, dailyBtcTradeVolume, isLoading } =
     useAnalyticsCharts(timeframe, includeHidden, ready)
 
   const mergedBtcVolume = mergeDailyVolumes(dailyBtcTradeVolume, dailyDispenseVolume)
+  const btcChartData = satsMode
+    ? mergedBtcVolume.map(d => ({ ...d, volume: d.volume * 1e8 }))
+    : mergedBtcVolume
 
   return (
     <>
@@ -359,7 +364,7 @@ function ChartsSection({ timeframe, includeHidden, ready, mobileMode }: { timefr
             <ComboVolumeChart data={dailyTradeVolume} color="#22c55e" label="Trade Volume (XCP)" />
           </div>
           <div className={mobileMode === 'xcp' ? 'hidden md:block' : ''}>
-            <ComboVolumeChart data={mergedBtcVolume} color="#3b82f6" label="Trade Volume (BTC)" />
+            <ComboVolumeChart data={btcChartData} color="#3b82f6" label={`Trade Volume (${btcLabel})`} />
           </div>
         </div>
       )}
@@ -377,6 +382,8 @@ function TradersSection({ topMakers, topTakers, topBtcBuyers, topBtcSellers, isL
   isLoading: boolean
   mobileMode: MobileMode
 }) {
+  const { satsMode } = useSatsMode()
+  const btcLabel = satsMode ? 'sats' : 'BTC'
   return (
     <>
       <h2 className="text-sm uppercase tracking-wider text-zinc-400 mb-2">Top Traders</h2>
@@ -395,8 +402,8 @@ function TradersSection({ topMakers, topTakers, topBtcBuyers, topBtcSellers, isL
           </div>
           <div className={mobileMode === 'xcp' ? 'hidden md:block' : ''}>
             <TopTradersTable
-              title="Top Traders (BTC)"
-              unit="BTC"
+              title={`Top Traders (${btcLabel})`}
+              unit={btcLabel}
               tabLabels={['Makers', 'Takers']}
               listA={topBtcSellers}
               listB={topBtcBuyers}
