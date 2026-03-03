@@ -67,7 +67,8 @@ function buildDispensesUrl(filters?: DispenserFilters, limit: number = 250): str
 
 export function useDispensersLatest(filters?: DispenserFilters, limit: number = 250) {
   const { data, error, isLoading } = useDexSWR<{ dispensers: LatestDispenser[]; total: number }>(
-    buildDispensersUrl(filters, limit)
+    buildDispensersUrl(filters, limit),
+    { keepPreviousData: true }
   )
   return {
     dispensers: data?.dispensers ?? [],
@@ -79,7 +80,8 @@ export function useDispensersLatest(filters?: DispenserFilters, limit: number = 
 
 export function useDispensesLatest(filters?: DispenserFilters, limit: number = 250) {
   const { data, error, isLoading } = useDexSWR<{ dispenses: LatestDispense[]; total: number }>(
-    buildDispensesUrl(filters, limit)
+    buildDispensesUrl(filters, limit),
+    { keepPreviousData: true }
   )
   return {
     dispenses: data?.dispenses ?? [],

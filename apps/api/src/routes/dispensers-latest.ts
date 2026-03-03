@@ -86,6 +86,8 @@ export async function handleDispensersLatest(
   if (sort === "price") orderClause = "ORDER BY d.price ASC";
   else if (sort === "price_desc") orderClause = "ORDER BY d.price DESC";
   else if (sort === "dispenses") orderClause = "ORDER BY d.dispense_count DESC";
+  else if (sort === "time") orderClause = "ORDER BY d.block_index ASC";
+  else if (sort === "time_desc") orderClause = "ORDER BY d.block_index DESC";
 
   const dataQuery = `SELECT ${columns} FROM dispensers d${whereClause} ${orderClause} LIMIT ? OFFSET ?`;
   const countQuery = `SELECT COUNT(*) as total FROM dispensers d${whereClause}`;

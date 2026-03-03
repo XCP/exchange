@@ -310,7 +310,7 @@ function DispensersTable({ dispensers, isLoading, assetSearch, debouncedAsset, o
     <table className="w-full text-xs whitespace-nowrap">
       <thead>
         <tr className="text-zinc-500 border-b border-zinc-800">
-          <th className="text-left font-normal px-3 py-1.5 w-8">Time</th>
+          <SortHeader label="Time" sortKey="time" currentSort={sort} onSort={onSort} disabled={!hasFilter} className="text-left w-8" />
           <SortHeader label="Effective Price" sortKey="price" currentSort={sort} onSort={onSort} disabled={!hasFilter} className="text-right" />
           <th className="py-1.5" />
           <th className="text-right font-normal px-3 py-1.5">Per Dispense</th>
