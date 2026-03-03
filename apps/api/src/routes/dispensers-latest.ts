@@ -29,8 +29,19 @@ export async function handleDispensersLatest(
   }
 
   if (asset) {
-    conditions.push(`d.asset LIKE ?`);
-    binds.push(`%${asset}%`);
+    const upper = asset.toUpperCase();
+    // Check for exact match first; fall back to fuzzy
+    const exactCheck = await db
+      .prepare(`SELECT 1 FROM dispensers WHERE asset = ? LIMIT 1`)
+      .bind(upper)
+      .first();
+    if (exactCheck) {
+      conditions.push(`d.asset = ?`);
+      binds.push(upper);
+    } else {
+      conditions.push(`d.asset LIKE ?`);
+      binds.push(`%${asset}%`);
+    }
   }
 
   if (source) {
@@ -119,8 +130,18 @@ export async function handleDispensesLatest(
   }
 
   if (asset) {
-    conditions.push(`e.asset LIKE ?`);
-    binds.push(`%${asset}%`);
+    const upper = asset.toUpperCase();
+    const exactCheck = await db
+      .prepare(`SELECT 1 FROM dispenses WHERE asset = ? LIMIT 1`)
+      .bind(upper)
+      .first();
+    if (exactCheck) {
+      conditions.push(`e.asset = ?`);
+      binds.push(upper);
+    } else {
+      conditions.push(`e.asset LIKE ?`);
+      binds.push(`%${asset}%`);
+    }
   }
 
   const tag = url.searchParams.get("tag");

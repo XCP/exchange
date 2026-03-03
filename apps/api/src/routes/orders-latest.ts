@@ -42,18 +42,48 @@ export async function handleOrdersLatest(
   }
 
   if (asset) {
-    conditions.push(`(o.base_asset LIKE ? OR o.quote_asset LIKE ? OR ps.base_asset_longname LIKE ?)`);
-    binds.push(`%${asset}%`, `%${asset}%`, `%${asset}%`);
+    const upper = asset.toUpperCase();
+    const exactCheck = await db
+      .prepare(`SELECT 1 FROM orders WHERE base_asset = ? OR quote_asset = ? LIMIT 1`)
+      .bind(upper, upper)
+      .first();
+    if (exactCheck) {
+      conditions.push(`(o.base_asset = ? OR o.quote_asset = ?)`);
+      binds.push(upper, upper);
+    } else {
+      conditions.push(`(o.base_asset LIKE ? OR o.quote_asset LIKE ? OR ps.base_asset_longname LIKE ?)`);
+      binds.push(`%${asset}%`, `%${asset}%`, `%${asset}%`);
+    }
   }
 
   if (baseAsset) {
-    conditions.push(`(o.base_asset LIKE ? OR ps.base_asset_longname LIKE ?)`);
-    binds.push(`%${baseAsset}%`, `%${baseAsset}%`);
+    const upper = baseAsset.toUpperCase();
+    const exactCheck = await db
+      .prepare(`SELECT 1 FROM orders WHERE base_asset = ? LIMIT 1`)
+      .bind(upper)
+      .first();
+    if (exactCheck) {
+      conditions.push(`o.base_asset = ?`);
+      binds.push(upper);
+    } else {
+      conditions.push(`(o.base_asset LIKE ? OR ps.base_asset_longname LIKE ?)`);
+      binds.push(`%${baseAsset}%`, `%${baseAsset}%`);
+    }
   }
 
   if (quoteAsset) {
-    conditions.push(`o.quote_asset LIKE ?`);
-    binds.push(`%${quoteAsset}%`);
+    const upper = quoteAsset.toUpperCase();
+    const exactCheck = await db
+      .prepare(`SELECT 1 FROM orders WHERE quote_asset = ? LIMIT 1`)
+      .bind(upper)
+      .first();
+    if (exactCheck) {
+      conditions.push(`o.quote_asset = ?`);
+      binds.push(upper);
+    } else {
+      conditions.push(`o.quote_asset LIKE ?`);
+      binds.push(`%${quoteAsset}%`);
+    }
   }
 
   if (source) {
