@@ -121,7 +121,7 @@ export async function handleDispensesLatest(
     0
   );
 
-  const conditions: string[] = [];
+  const conditions: string[] = ["e.dispense_quantity > 0"];
   const binds: (string | number)[] = [];
 
   const includeHiddenDispenses = url.searchParams.get("include_hidden");

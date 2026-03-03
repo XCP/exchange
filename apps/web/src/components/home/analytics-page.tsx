@@ -320,8 +320,8 @@ function SummarySection({ timeframe, includeHidden, isLoading, mobileMode, trade
             <LeaderboardTable
               title="Most Traded (By Count)"
               tabs={[
-                { label: 'Assets', headers: ['Pair', 'Trades', 'Volume', 'Chg'], rows: tradedAssetRows },
-                { label: 'Collections', headers: ['Collection', 'Trades', 'Volume (XCP)', 'Chg'], rows: tradedCollRows },
+                { label: 'Assets', headers: ['Pair', 'Trades', 'Volume', 'Chg'], rows: tradedAssetRows.slice(0, 10) },
+                { label: 'Collections', headers: ['Collection', 'Trades', 'Volume (XCP)', 'Chg'], rows: tradedCollRows.slice(0, 10) },
               ]}
             />
           </div>
@@ -329,8 +329,8 @@ function SummarySection({ timeframe, includeHidden, isLoading, mobileMode, trade
             <LeaderboardTable
               title="Most Dispensed (By Volume)"
               tabs={[
-                { label: 'Assets', headers: ['Asset', 'Dispenses', 'Volume (BTC)', 'Chg'], rows: dispensedAssetRows },
-                { label: 'Collections', headers: ['Collection', 'Dispenses', 'Volume (BTC)', 'Chg'], rows: dispensedCollRows },
+                { label: 'Assets', headers: ['Asset', 'Dispenses', 'Volume (BTC)', 'Chg'], rows: dispensedAssetRows.slice(0, 10) },
+                { label: 'Collections', headers: ['Collection', 'Dispenses', 'Volume (BTC)', 'Chg'], rows: dispensedCollRows.slice(0, 10) },
               ]}
             />
           </div>
