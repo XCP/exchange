@@ -272,8 +272,8 @@ function SummarySection({ timeframe, includeHidden, isLoading, mobileMode, trade
           <CounterCard
             label="Dispense Volume"
             loading={isLoading}
-            value={dispenseSummary ? formatBig(dispenseSummary.tf_volume) + ` ${btcLabel.toUpperCase()}` : '\u2014'}
-            sub={dispenseSummary && dispenseSummary.tf_dispenses > 0 ? `Avg: ${formatBig(dispenseSummary.tf_volume / dispenseSummary.tf_dispenses)} ${btcLabel.toUpperCase()}` : undefined}
+            value={dispenseSummary ? formatBig(satsMode ? dispenseSummary.tf_volume * 1e8 : dispenseSummary.tf_volume) + ` ${btcLabel.toUpperCase()}` : '\u2014'}
+            sub={dispenseSummary && dispenseSummary.tf_dispenses > 0 ? `Avg: ${formatBig(satsMode ? (dispenseSummary.tf_volume / dispenseSummary.tf_dispenses) * 1e8 : dispenseSummary.tf_volume / dispenseSummary.tf_dispenses)} ${btcLabel.toUpperCase()}` : undefined}
           />
           <CounterCard
             label="Dispensers Created"
