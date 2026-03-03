@@ -1,6 +1,7 @@
 'use client'
 
-import { use, useState } from 'react'
+import { use, useState, useEffect } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { useTradingPair } from '@/lib/hooks/useTradingPair'
 import { useDispenserStats } from '@/lib/hooks/useDispenserStats'
 import { useAssetDispensers, useAssetDispenses } from '@/lib/hooks/useAssetDispensers'
@@ -28,6 +29,8 @@ const MOBILE_TAB_LABELS: Record<MobileTabKey, string> = {
 
 export default function AssetDispensersPage({ params }: { params: Promise<{ asset: string }> }) {
   const { asset } = use(params)
+  const searchParams = useSearchParams()
+  const addressParam = searchParams.get('address')
 
   const market = `${asset}/BTC`
 
@@ -37,6 +40,15 @@ export default function AssetDispensersPage({ params }: { params: Promise<{ asse
   const { dispenses, isLoading: dispensesLoading } = useAssetDispenses(asset)
 
   const [selectedIndex, setSelectedIndex] = useState(0)
+
+  // Pre-select dispenser matching ?address= param
+  useEffect(() => {
+    if (addressParam && dispensers.length > 0) {
+      const sorted = [...dispensers].sort((a, b) => a.price - b.price)
+      const idx = sorted.findIndex(d => d.source === addressParam)
+      if (idx >= 0) setSelectedIndex(idx)
+    }
+  }, [addressParam, dispensers])
   const [mobileDataTab, setMobileDataTab] = useState<MobileTabKey>('dispenses')
   const [modalDispenser, setModalDispenser] = useState<Dispenser | null>(null)
 

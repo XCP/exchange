@@ -249,7 +249,7 @@ function DispensePageInner() {
             </div>
           </div>
           {isDispensesTab ? (
-            <DispensesTable dispenses={dispenses} isLoading={dispensesLoading} satsMode={satsMode} assetSearch={assetSearch} onAssetSearch={setAssetSearch} onFilterAddress={(addr) => { setSourceFilter(addr) }} sourceFilter={sourceFilter} onClearAddress={() => setSourceFilter(null)} />
+            <DispensesTable dispenses={dispenses} isLoading={dispensesLoading} satsMode={satsMode} assetSearch={assetSearch} debouncedAsset={debouncedAsset} onAssetSearch={setAssetSearch} onFilterAddress={(addr) => { setSourceFilter(addr) }} sourceFilter={sourceFilter} onClearAddress={() => setSourceFilter(null)} />
           ) : (
             <DispensersTable dispensers={dispensers} isLoading={dispensersLoading} assetSearch={assetSearch} debouncedAsset={debouncedAsset} onAssetSearch={setAssetSearch} onFilterAddress={(addr) => { setSourceFilter(addr) }} sourceFilter={sourceFilter} onClearAddress={() => setSourceFilter(null)} sort={sort} onSort={setSort} satsMode={satsMode} hasFilter={hasFilter} />
           )}
@@ -436,10 +436,11 @@ function DispensersTable({ dispensers, isLoading, assetSearch, debouncedAsset, o
   )
 }
 
-function DispensesTable({ dispenses, isLoading, satsMode, assetSearch, onAssetSearch, onFilterAddress, sourceFilter, onClearAddress }: {
-  dispenses: LatestDispense[]; isLoading: boolean; satsMode: boolean; assetSearch: string; onAssetSearch: (v: string) => void
+function DispensesTable({ dispenses, isLoading, satsMode, assetSearch, debouncedAsset, onAssetSearch, onFilterAddress, sourceFilter, onClearAddress }: {
+  dispenses: LatestDispense[]; isLoading: boolean; satsMode: boolean; assetSearch: string; debouncedAsset: string; onAssetSearch: (v: string) => void
   onFilterAddress: (addr: string) => void; sourceFilter: string | null; onClearAddress: () => void
 }) {
+  const isExactMatch = debouncedAsset && dispenses.length > 0 && dispenses.every(d => d.asset === debouncedAsset.toUpperCase())
   const [showBuyerInput, setShowBuyerInput] = useState(false)
   const [buyerDraft, setBuyerDraft] = useState('')
   const buyerRef = useRef<HTMLDivElement>(null)
@@ -461,6 +462,7 @@ function DispensesTable({ dispenses, isLoading, satsMode, assetSearch, onAssetSe
       <thead>
         <tr className="text-zinc-500 border-b border-zinc-800">
           <th className="text-left font-normal px-3 py-1.5 w-8">Time</th>
+          <th className="py-1.5" />
           <th className="text-right font-normal px-3 py-1.5">Effective Price</th>
           <th className="py-1.5" />
           <th className="text-right font-normal px-3 py-1.5">Dispensed</th>
@@ -543,18 +545,26 @@ function DispensesTable({ dispenses, isLoading, satsMode, assetSearch, onAssetSe
       </thead>
       <tbody>
         {isLoading || dispenses.length === 0 ? (
-          <EmptyRows loading={isLoading} label="dispenses" cols={8} />
+          <EmptyRows loading={isLoading} label="dispenses" cols={9} />
         ) : (
           dispenses.map((d) => (
             <tr key={`${d.tx_hash}-${d.dispense_index}`} className="hover:bg-zinc-800/50 transition-colors border-b border-zinc-800/30 last:border-0">
               <td className="text-zinc-500 font-mono px-3 py-1.5">
                 {d.block_time ? compactTime(d.block_time) : '—'}
               </td>
+              <td className="px-1.5 py-1.5">
+                <Link href={`/dispense/${encodeURIComponent(d.asset)}?address=${d.source}`} className="text-[10px] text-green-500 hover:text-green-400 transition-colors">
+                  Buy
+                </Link>
+              </td>
               <td className="text-right text-zinc-400 font-mono px-3 py-1.5">
-                {isFinite(d.price) && d.price > 0 ? formatPrice(d.price, satsMode) : '—'}
+                {(() => {
+                  const p = (d.price > 0 && isFinite(d.price)) ? d.price : (d.dispense_quantity > 0 && d.btc_amount > 0) ? d.btc_amount / d.dispense_quantity : 0
+                  return p > 0 ? formatPrice(p, satsMode) : '—'
+                })()}
               </td>
               <td className="px-3 py-1.5">
-                <Link href={`/dispense/${encodeURIComponent(d.asset)}`} className="flex items-center gap-1.5 hover:underline decoration-zinc-400">
+                <Link href={`/dispense/${encodeURIComponent(d.asset)}?address=${d.source}`} className="flex items-center gap-1.5 hover:underline decoration-zinc-400">
                   <Image src={`${XCP_IMG_BASE}/icon/BTC`} alt="" width={14} height={14} className="rounded-sm" unoptimized />
                   <span className="text-zinc-400 truncate">{satsMode ? 'sats' : 'BTC'}</span>
                 </Link>
@@ -563,10 +573,17 @@ function DispensesTable({ dispenses, isLoading, satsMode, assetSearch, onAssetSe
                 {formatPrice(d.dispense_quantity)}
               </td>
               <td className="px-3 py-1.5">
-                <Link href={`/dispense/${encodeURIComponent(d.asset)}`} className="flex items-center gap-1.5 hover:underline">
-                  <Image src={`${XCP_IMG_BASE}/icon/${d.asset}`} alt="" width={14} height={14} className="rounded-sm" unoptimized />
-                  <span className="text-zinc-200 truncate">{d.asset}</span>
-                </Link>
+                {isExactMatch ? (
+                  <Link href={`/dispense/${encodeURIComponent(d.asset)}`} className="flex items-center gap-1.5 hover:underline">
+                    <Image src={`${XCP_IMG_BASE}/icon/${d.asset}`} alt="" width={14} height={14} className="rounded-sm" unoptimized />
+                    <span className="text-zinc-200 truncate">{d.asset}</span>
+                  </Link>
+                ) : (
+                  <button onClick={() => onAssetSearch(d.asset)} className="flex items-center gap-1.5 hover:underline text-left">
+                    <Image src={`${XCP_IMG_BASE}/icon/${d.asset}`} alt="" width={14} height={14} className="rounded-sm" unoptimized />
+                    <span className="text-zinc-200 truncate">{d.asset}</span>
+                  </button>
+                )}
               </td>
               <td className="text-right text-zinc-500 font-mono px-3 py-1.5 max-sm:hidden">
                 {d.btc_amount > 0 ? formatPrice(d.btc_amount, satsMode) : '—'}
