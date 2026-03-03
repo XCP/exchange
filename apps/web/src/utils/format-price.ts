@@ -34,11 +34,7 @@ export function formatPrice(amount: string | number, sats: boolean = false): str
   let formattedNumber: string
 
   if (num < 1) {
-    const numStr = num.toString()
-    const significantDigits = numStr.match(/[1-9]/)
-    const significantIndex = significantDigits ? significantDigits.index! - numStr.indexOf('.') - 1 : 0
-
-    if (significantIndex >= 8) {
+    if (num > 0 && num < 0.000000005) {
       formattedNumber = num.toPrecision(2)
     } else {
       formattedNumber = num.toFixed(8)
