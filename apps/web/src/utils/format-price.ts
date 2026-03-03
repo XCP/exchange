@@ -35,7 +35,9 @@ export function formatPrice(amount: string | number, sats: boolean = false): str
 
   if (num < 1) {
     if (num > 0 && num < 0.000000005) {
-      formattedNumber = num.toPrecision(2)
+      // Find how many decimals needed to show 2 significant digits
+      const digits = Math.ceil(-Math.log10(num)) + 1
+      formattedNumber = num.toFixed(digits)
     } else {
       formattedNumber = num.toFixed(8)
     }

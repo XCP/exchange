@@ -182,25 +182,18 @@ function DispensePageInner() {
           {/* Mobile: side-by-side dropdowns */}
           <div className="sm:hidden px-3 py-2 flex flex-col gap-2">
             <div className="flex gap-2">
-              {sourceFilter ? (
-                <span className="flex-1 min-w-0 inline-flex items-center gap-1.5 px-2 py-1 text-xs font-mono bg-zinc-800 border border-zinc-700 rounded-sm text-zinc-300">
-                  {sourceFilter}
-                  <button onClick={() => { setSourceFilter(null); handleTagChange(null) }} className="text-zinc-500 hover:text-zinc-200 transition-colors">&times;</button>
-                </span>
-              ) : (
-                <select
-                  value={tag ?? ''}
-                  onChange={(e) => handleTagChange(e.target.value || null)}
-                  className="flex-1 min-w-0 px-2 py-1 text-xs font-mono bg-zinc-800 border border-zinc-700 rounded-sm text-zinc-300 outline-none"
-                >
-                  <option value="">All Dispensers</option>
-                  {collections.filter(c => c.open_dispensers_count > 0).map(c => (
-                    <option key={c.slug} value={c.slug}>
-                      {c.name} ({c.open_dispensers_count})
-                    </option>
-                  ))}
-                </select>
-              )}
+              <select
+                value={tag ?? ''}
+                onChange={(e) => handleTagChange(e.target.value || null)}
+                className="flex-1 min-w-0 px-2 py-1 text-xs font-mono bg-zinc-800 border border-zinc-700 rounded-sm text-zinc-300 outline-none"
+              >
+                <option value="">All Dispensers</option>
+                {collections.filter(c => c.open_dispensers_count > 0).map(c => (
+                  <option key={c.slug} value={c.slug}>
+                    {c.name} ({c.open_dispensers_count})
+                  </option>
+                ))}
+              </select>
               <select
                 value={tab}
                 onChange={(e) => setTab(e.target.value as DispenserTab)}
@@ -211,27 +204,32 @@ function DispensePageInner() {
                 ))}
               </select>
             </div>
+            {sourceFilter && (
+              <span className="inline-flex items-center gap-1.5 px-2 py-1 text-xs font-mono bg-zinc-800 border border-zinc-700 rounded-sm text-zinc-300">
+                {sourceFilter}
+                <button onClick={() => setSourceFilter(null)} className="text-zinc-500 hover:text-zinc-200 transition-colors">&times;</button>
+              </span>
+            )}
           </div>
           {/* Desktop: single row */}
           <div className="hidden sm:flex px-3 py-2 items-center gap-2">
-            {sourceFilter ? (
+            <select
+              value={tag ?? ''}
+              onChange={(e) => handleTagChange(e.target.value || null)}
+              className="px-2 py-0.5 text-[10px] font-mono bg-zinc-800 border border-zinc-700 rounded-sm text-zinc-300 outline-none"
+            >
+              <option value="">All Dispensers</option>
+              {collections.filter(c => c.open_dispensers_count > 0).map(c => (
+                <option key={c.slug} value={c.slug}>
+                  {c.name} ({c.open_dispensers_count})
+                </option>
+              ))}
+            </select>
+            {sourceFilter && (
               <span className="inline-flex items-center gap-1.5 px-2 py-px text-[10px] font-mono bg-zinc-800 border border-zinc-700 rounded-sm text-zinc-300">
                 {sourceFilter}
-                <button onClick={() => { setSourceFilter(null); handleTagChange(null) }} className="text-zinc-500 hover:text-zinc-200 transition-colors">&times;</button>
+                <button onClick={() => setSourceFilter(null)} className="text-zinc-500 hover:text-zinc-200 transition-colors">&times;</button>
               </span>
-            ) : (
-              <select
-                value={tag ?? ''}
-                onChange={(e) => handleTagChange(e.target.value || null)}
-                className="px-2 py-0.5 text-[10px] font-mono bg-zinc-800 border border-zinc-700 rounded-sm text-zinc-300 outline-none"
-              >
-                <option value="">All Dispensers</option>
-                {collections.filter(c => c.open_dispensers_count > 0).map(c => (
-                  <option key={c.slug} value={c.slug}>
-                    {c.name} ({c.open_dispensers_count})
-                  </option>
-                ))}
-              </select>
             )}
             <div className="flex gap-0.5 ml-auto">
               {TABS.map(([key, label]) => (
@@ -319,7 +317,7 @@ function DispensersTable({ dispensers, isLoading, assetSearch, debouncedAsset, o
           <th className="text-right font-normal px-3 py-1.5 max-sm:hidden">Remaining</th>
           <th className="text-left font-normal px-3 py-1.5 max-sm:hidden">Address</th>
           <th className="text-left font-normal px-3 py-1.5 max-sm:hidden">Status</th>
-          <SortHeader label="Dispensed" sortKey="dispenses" currentSort={sort} onSort={onSort} className="text-right max-sm:hidden" />
+          <SortHeader label="#" sortKey="dispenses" currentSort={sort} onSort={onSort} className="text-right max-sm:hidden" />
         </tr>
       </thead>
       <tbody>
