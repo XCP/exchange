@@ -90,11 +90,12 @@ function DispensePageInner() {
     return () => clearTimeout(timer)
   }, [assetSearch])
 
-  // Default to price low-to-high when searching by asset, revert when cleared
+  // Default to price low-to-high when filtering, revert to newest when no filters
+  const hasFilter = !!debouncedAsset || !!sourceFilter
   useEffect(() => {
-    if (debouncedAsset) setSort('price')
+    if (hasFilter) setSort(s => s ?? 'price')
     else setSort(null)
-  }, [debouncedAsset])
+  }, [hasFilter])
 
   useEffect(() => {
     setOffset(0)
@@ -250,7 +251,7 @@ function DispensePageInner() {
           {isDispensesTab ? (
             <DispensesTable dispenses={dispenses} isLoading={dispensesLoading} />
           ) : (
-            <DispensersTable dispensers={dispensers} isLoading={dispensersLoading} assetSearch={assetSearch} debouncedAsset={debouncedAsset} onAssetSearch={setAssetSearch} onFilterAddress={(addr) => { setSourceFilter(addr) }} sourceFilter={sourceFilter} onClearAddress={() => setSourceFilter(null)} sort={sort} onSort={setSort} satsMode={satsMode} />
+            <DispensersTable dispensers={dispensers} isLoading={dispensersLoading} assetSearch={assetSearch} debouncedAsset={debouncedAsset} onAssetSearch={setAssetSearch} onFilterAddress={(addr) => { setSourceFilter(addr) }} sourceFilter={sourceFilter} onClearAddress={() => setSourceFilter(null)} sort={sort} onSort={setSort} satsMode={satsMode} hasFilter={hasFilter} />
           )}
           <Pagination total={activeTotal} offset={offset} limit={250} onOffsetChange={setOffset} />
         </div>
@@ -259,16 +260,16 @@ function DispensePageInner() {
   )
 }
 
-function SortHeader({ label, sortKey, currentSort, onSort, className }: {
-  label: string; sortKey: string; currentSort: string | null; onSort: (s: string | null) => void; className?: string
+function SortHeader({ label, sortKey, currentSort, onSort, disabled, className }: {
+  label: string; sortKey: string; currentSort: string | null; onSort: (s: string | null) => void; disabled?: boolean; className?: string
 }) {
   const isActive = currentSort === sortKey || currentSort === `${sortKey}_desc`
   const isDesc = currentSort === `${sortKey}_desc`
   const arrow = isActive ? (isDesc ? ' ↓' : ' ↑') : ''
   return (
     <th
-      className={`font-normal px-3 py-1.5 cursor-pointer select-none hover:text-zinc-300 transition-colors ${className ?? ''} ${isActive ? 'text-zinc-300' : ''}`}
-      onClick={() => {
+      className={`font-normal px-3 py-1.5 select-none transition-colors ${className ?? ''} ${disabled ? 'cursor-default' : 'cursor-pointer hover:text-zinc-300'} ${isActive ? 'text-zinc-300' : ''}`}
+      onClick={disabled ? undefined : () => {
         if (!isActive) onSort(sortKey)
         else if (!isDesc) onSort(`${sortKey}_desc`)
         else onSort(null)
@@ -279,7 +280,7 @@ function SortHeader({ label, sortKey, currentSort, onSort, className }: {
   )
 }
 
-function DispensersTable({ dispensers, isLoading, assetSearch, debouncedAsset, onAssetSearch, onFilterAddress, sourceFilter, onClearAddress, sort, onSort, satsMode }: {
+function DispensersTable({ dispensers, isLoading, assetSearch, debouncedAsset, onAssetSearch, onFilterAddress, sourceFilter, onClearAddress, sort, onSort, satsMode, hasFilter }: {
   dispensers: LatestDispenser[]
   isLoading: boolean
   assetSearch: string
@@ -291,6 +292,7 @@ function DispensersTable({ dispensers, isLoading, assetSearch, debouncedAsset, o
   sort: string | null
   onSort: (s: string | null) => void
   satsMode: boolean
+  hasFilter: boolean
 }) {
   const isExactMatch = debouncedAsset && dispensers.length > 0 && dispensers.every(d => d.asset === debouncedAsset.toUpperCase())
   const [showAddrInput, setShowAddrInput] = useState(false)
@@ -309,7 +311,7 @@ function DispensersTable({ dispensers, isLoading, assetSearch, debouncedAsset, o
       <thead>
         <tr className="text-zinc-500 border-b border-zinc-800">
           <th className="text-left font-normal px-3 py-1.5 w-8">Time</th>
-          <SortHeader label="Effective Price" sortKey="price" currentSort={sort} onSort={onSort} className="text-right" />
+          <SortHeader label="Effective Price" sortKey="price" currentSort={sort} onSort={onSort} disabled={!hasFilter} className="text-right" />
           <th className="py-1.5" />
           <th className="text-right font-normal px-3 py-1.5">Per Dispense</th>
           <th className="text-left font-normal px-3 py-0.5 min-w-0">
@@ -359,7 +361,7 @@ function DispensersTable({ dispensers, isLoading, assetSearch, debouncedAsset, o
             </div>
           </th>
           <th className="text-left font-normal px-3 py-1.5 max-sm:hidden">Status</th>
-          <SortHeader label="#" sortKey="dispenses" currentSort={sort} onSort={onSort} className="text-right max-sm:hidden" />
+          <SortHeader label="#" sortKey="dispenses" currentSort={sort} onSort={onSort} disabled={!hasFilter} className="text-right max-sm:hidden" />
         </tr>
       </thead>
       <tbody>
