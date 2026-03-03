@@ -249,7 +249,7 @@ function DispensePageInner() {
             </div>
           </div>
           {isDispensesTab ? (
-            <DispensesTable dispenses={dispenses} isLoading={dispensesLoading} satsMode={satsMode} />
+            <DispensesTable dispenses={dispenses} isLoading={dispensesLoading} satsMode={satsMode} assetSearch={assetSearch} onAssetSearch={setAssetSearch} onFilterAddress={(addr) => { setSourceFilter(addr) }} sourceFilter={sourceFilter} onClearAddress={() => setSourceFilter(null)} />
           ) : (
             <DispensersTable dispensers={dispensers} isLoading={dispensersLoading} assetSearch={assetSearch} debouncedAsset={debouncedAsset} onAssetSearch={setAssetSearch} onFilterAddress={(addr) => { setSourceFilter(addr) }} sourceFilter={sourceFilter} onClearAddress={() => setSourceFilter(null)} sort={sort} onSort={setSort} satsMode={satsMode} hasFilter={hasFilter} />
           )}
@@ -436,23 +436,114 @@ function DispensersTable({ dispensers, isLoading, assetSearch, debouncedAsset, o
   )
 }
 
-function DispensesTable({ dispenses, isLoading, satsMode }: { dispenses: LatestDispense[]; isLoading: boolean; satsMode: boolean }) {
+function DispensesTable({ dispenses, isLoading, satsMode, assetSearch, onAssetSearch, onFilterAddress, sourceFilter, onClearAddress }: {
+  dispenses: LatestDispense[]; isLoading: boolean; satsMode: boolean; assetSearch: string; onAssetSearch: (v: string) => void
+  onFilterAddress: (addr: string) => void; sourceFilter: string | null; onClearAddress: () => void
+}) {
+  const [showBuyerInput, setShowBuyerInput] = useState(false)
+  const [buyerDraft, setBuyerDraft] = useState('')
+  const buyerRef = useRef<HTMLDivElement>(null)
+  const [showSellerInput, setShowSellerInput] = useState(false)
+  const [sellerDraft, setSellerDraft] = useState('')
+  const sellerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (buyerRef.current && !buyerRef.current.contains(e.target as Node)) setShowBuyerInput(false)
+      if (sellerRef.current && !sellerRef.current.contains(e.target as Node)) setShowSellerInput(false)
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [])
+
   return (
     <table className="w-full text-xs whitespace-nowrap">
       <thead>
         <tr className="text-zinc-500 border-b border-zinc-800">
           <th className="text-left font-normal px-3 py-1.5 w-8">Time</th>
-          <th className="text-right font-normal px-3 py-1.5">Price</th>
+          <th className="text-right font-normal px-3 py-1.5">Effective Price</th>
           <th className="py-1.5" />
-          <th className="text-right font-normal px-3 py-1.5">Qty</th>
-          <th className="text-left font-normal px-3 py-1.5">Asset</th>
-          <th className="text-left font-normal px-3 py-1.5 max-sm:hidden">Buyer</th>
-          <th className="text-left font-normal px-3 py-1.5 max-sm:hidden">Seller</th>
+          <th className="text-right font-normal px-3 py-1.5">Dispensed</th>
+          <th className="text-left font-normal px-3 py-0.5 min-w-0">
+            <span className="relative flex items-center">
+              <input
+                type="text"
+                value={assetSearch}
+                onChange={(e) => onAssetSearch(e.target.value)}
+                placeholder="Asset"
+                className="w-full px-1.5 py-0.5 pr-5 text-[11px] font-mono bg-zinc-800 border border-zinc-700 rounded-sm text-zinc-200 placeholder:text-zinc-600 outline-none focus:border-zinc-500 uppercase"
+              />
+              {assetSearch && (
+                <button onClick={() => onAssetSearch('')} className="absolute right-1 text-zinc-600 hover:text-zinc-300 transition-colors text-[10px]">&times;</button>
+              )}
+            </span>
+          </th>
+          <th className="text-right font-normal px-3 py-1.5 max-sm:hidden">Total ({satsMode ? 'sats' : 'BTC'})</th>
+          <th className="text-left font-normal px-3 py-1.5 max-sm:hidden">
+            <div className="relative inline-flex items-center gap-1" ref={buyerRef}>
+              <span>Buyer</span>
+              {sourceFilter ? (
+                <button onClick={onClearAddress} className="text-zinc-300 hover:text-zinc-100 transition-colors">
+                  <RiCloseLine className="w-3 h-3" />
+                </button>
+              ) : (
+                <>
+                  <button onClick={() => { setShowBuyerInput(v => !v); setBuyerDraft('') }} className="text-zinc-600 hover:text-zinc-400 transition-colors">
+                    <RiFilter3Line className="w-3 h-3" />
+                  </button>
+                  {showBuyerInput && (
+                    <div className="absolute top-full left-0 mt-1 z-20 bg-zinc-800 border border-zinc-700 rounded-sm shadow-lg p-1.5">
+                      <form onSubmit={(e) => { e.preventDefault(); if (buyerDraft.trim()) { onFilterAddress(buyerDraft.trim()); setShowBuyerInput(false) } }}>
+                        <input
+                          autoFocus
+                          type="text"
+                          value={buyerDraft}
+                          onChange={(e) => setBuyerDraft(e.target.value)}
+                          placeholder="Paste address..."
+                          className="w-48 px-1.5 py-0.5 text-[10px] font-mono bg-zinc-900 border border-zinc-700 rounded-sm text-zinc-200 placeholder:text-zinc-600 outline-none focus:border-zinc-500"
+                        />
+                      </form>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </th>
+          <th className="text-left font-normal px-3 py-1.5 max-sm:hidden">
+            <div className="relative inline-flex items-center gap-1" ref={sellerRef}>
+              <span>Dispenser</span>
+              {sourceFilter ? (
+                <button onClick={onClearAddress} className="text-zinc-300 hover:text-zinc-100 transition-colors">
+                  <RiCloseLine className="w-3 h-3" />
+                </button>
+              ) : (
+                <>
+                  <button onClick={() => { setShowSellerInput(v => !v); setSellerDraft('') }} className="text-zinc-600 hover:text-zinc-400 transition-colors">
+                    <RiFilter3Line className="w-3 h-3" />
+                  </button>
+                  {showSellerInput && (
+                    <div className="absolute top-full left-0 mt-1 z-20 bg-zinc-800 border border-zinc-700 rounded-sm shadow-lg p-1.5">
+                      <form onSubmit={(e) => { e.preventDefault(); if (sellerDraft.trim()) { onFilterAddress(sellerDraft.trim()); setShowSellerInput(false) } }}>
+                        <input
+                          autoFocus
+                          type="text"
+                          value={sellerDraft}
+                          onChange={(e) => setSellerDraft(e.target.value)}
+                          placeholder="Paste address..."
+                          className="w-48 px-1.5 py-0.5 text-[10px] font-mono bg-zinc-900 border border-zinc-700 rounded-sm text-zinc-200 placeholder:text-zinc-600 outline-none focus:border-zinc-500"
+                        />
+                      </form>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </th>
         </tr>
       </thead>
       <tbody>
         {isLoading || dispenses.length === 0 ? (
-          <EmptyRows loading={isLoading} label="dispenses" cols={7} />
+          <EmptyRows loading={isLoading} label="dispenses" cols={8} />
         ) : (
           dispenses.map((d) => (
             <tr key={`${d.tx_hash}-${d.dispense_index}`} className="hover:bg-zinc-800/50 transition-colors border-b border-zinc-800/30 last:border-0">
@@ -477,11 +568,24 @@ function DispensesTable({ dispenses, isLoading, satsMode }: { dispenses: LatestD
                   <span className="text-zinc-200 truncate">{d.asset}</span>
                 </Link>
               </td>
-              <td className="text-left text-zinc-500 font-mono px-3 py-1.5 max-sm:hidden">
-                {formatAddress(d.destination)}
+              <td className="text-right text-zinc-500 font-mono px-3 py-1.5 max-sm:hidden">
+                {d.btc_amount > 0 ? formatPrice(d.btc_amount, satsMode) : '—'}
               </td>
-              <td className="text-left text-zinc-500 font-mono px-3 py-1.5 max-sm:hidden">
-                {formatAddress(d.source)}
+              <td className="text-left font-mono px-3 py-1.5 max-sm:hidden">
+                <span className="inline-flex items-center gap-1">
+                  <span className="text-zinc-500">{formatAddress(d.destination)}</span>
+                  <button onClick={() => onFilterAddress(d.destination)} className="text-zinc-600 hover:text-zinc-400 transition-colors" title="Filter by this address">
+                    <RiFilter3Line className="w-3 h-3" />
+                  </button>
+                </span>
+              </td>
+              <td className="text-left font-mono px-3 py-1.5 max-sm:hidden">
+                <span className="inline-flex items-center gap-1">
+                  <span className="text-zinc-500">{formatAddress(d.source)}</span>
+                  <button onClick={() => onFilterAddress(d.source)} className="text-zinc-600 hover:text-zinc-400 transition-colors" title="Filter by this address">
+                    <RiFilter3Line className="w-3 h-3" />
+                  </button>
+                </span>
               </td>
             </tr>
           ))
