@@ -8,6 +8,7 @@ import { RiFilter3Line, RiCloseLine } from 'react-icons/ri'
 import { useBlockHeight } from '@/lib/hooks/useNetworkInfo'
 import { useLatestOrders, type OrderTab, type LatestOrder } from '@/lib/hooks/useLatestOrders'
 import { useAnalyticsSummary, type Timeframe } from '@/lib/hooks/useAnalytics'
+import { useSatsMode } from '@/lib/sats-context'
 import { useTags } from '@/lib/hooks/useTags'
 import { Pagination } from '@/components/Pagination'
 import { CounterCard } from '@/components/home/counter-card'
@@ -106,6 +107,7 @@ function TradePageInner() {
   }
 
   const { orders, total, isLoading } = useLatestOrders(tab, Object.keys(filters).length > 0 ? filters : undefined)
+  const { satsMode } = useSatsMode()
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
@@ -246,7 +248,7 @@ function TradePageInner() {
           </div>
 
           <div className="overflow-x-auto">
-            <OrdersTable tab={tab} orders={orders} isLoading={isLoading} blockHeight={blockHeight} baseSearch={baseSearch} quoteSearch={quoteSearch} onBaseSearch={setBaseSearch} onQuoteSearch={setQuoteSearch} onFilterAddress={setSourceFilter} sourceFilter={sourceFilter} onClearAddress={() => setSourceFilter(null)} sideFilter={sideFilter} onSideFilter={setSideFilter} sortCol={sortCol} onSortCol={setSortCol} />
+            <OrdersTable tab={tab} orders={orders} isLoading={isLoading} blockHeight={blockHeight} baseSearch={baseSearch} quoteSearch={quoteSearch} onBaseSearch={setBaseSearch} onQuoteSearch={setQuoteSearch} onFilterAddress={setSourceFilter} sourceFilter={sourceFilter} onClearAddress={() => setSourceFilter(null)} sideFilter={sideFilter} onSideFilter={setSideFilter} sortCol={sortCol} onSortCol={setSortCol} satsMode={satsMode} />
           </div>
           <Pagination total={total} offset={offset} limit={250} onOffsetChange={setOffset} />
         </div>
@@ -255,7 +257,7 @@ function TradePageInner() {
   )
 }
 
-function OrdersTable({ tab, orders, isLoading, blockHeight, baseSearch, quoteSearch, onBaseSearch, onQuoteSearch, onFilterAddress, sourceFilter, onClearAddress, sideFilter, onSideFilter, sortCol, onSortCol }: {
+function OrdersTable({ tab, orders, isLoading, blockHeight, baseSearch, quoteSearch, onBaseSearch, onQuoteSearch, onFilterAddress, sourceFilter, onClearAddress, sideFilter, onSideFilter, sortCol, onSortCol, satsMode }: {
   tab: OrderTab
   orders: LatestOrder[]
   isLoading: boolean
@@ -271,6 +273,7 @@ function OrdersTable({ tab, orders, isLoading, blockHeight, baseSearch, quoteSea
   onSideFilter: (v: 'buy' | 'sell' | null) => void
   sortCol: 'price:asc' | 'price:desc' | null
   onSortCol: (v: 'price:asc' | 'price:desc' | null) => void
+  satsMode: boolean
 }) {
   const showLastCol = tab !== 'all'
   const lastColHeader = tab === 'filled' ? 'Filled' : tab === 'expired' ? 'Expired' : tab === 'cancelled' ? 'Cancelled' : 'Expires'
@@ -437,16 +440,16 @@ function OrdersTable({ tab, orders, isLoading, blockHeight, baseSearch, quoteSea
                   </Link>
                 </td>
                 <td className="text-right text-zinc-400 font-mono px-3 py-1.5">
-                  {isFinite(order.price) && order.price > 0 ? formatPrice(order.price) : '—'}
+                  {isFinite(order.price) && order.price > 0 ? formatPrice(order.price, quote === 'BTC' && satsMode) : '—'}
                 </td>
                 <td className="px-3 py-1.5">
                   <Link href={`/trade/${order.pair}`} className="flex items-center gap-1.5 hover:underline decoration-zinc-400">
                     <Image src={`${XCP_IMG_BASE}/icon/${order.quote_asset}`} alt="" width={14} height={14} className="rounded-sm" unoptimized />
-                    <span className="text-zinc-400 truncate">{quoteDisplay}</span>
+                    <span className="text-zinc-400 truncate">{quote === 'BTC' && satsMode ? 'sats' : quoteDisplay}</span>
                   </Link>
                 </td>
                 <td className="text-right text-zinc-400 font-mono px-3 py-1.5">
-                  {isFinite(order.price) && order.price > 0 ? formatPrice(order.price * displayAmount) : '—'}
+                  {isFinite(order.price) && order.price > 0 ? formatPrice(order.price * displayAmount, quote === 'BTC' && satsMode) : '—'}
                 </td>
                 <td className="text-left font-mono px-3 py-1.5">
                   <span className="inline-flex items-center gap-1">
