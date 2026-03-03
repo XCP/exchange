@@ -1,10 +1,10 @@
 'use client'
 
-import { Suspense, useState, useEffect, useCallback } from 'react'
+import { Suspense, useState, useEffect, useCallback, useRef } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Image from 'next/image'
 import Link from 'next/link'
-import { RiFilter3Line } from 'react-icons/ri'
+import { RiFilter3Line, RiCloseLine } from 'react-icons/ri'
 import { useDispensersLatest, useDispensesLatest, type LatestDispenser, type LatestDispense } from '@/lib/hooks/useDispensersLatest'
 import { useAnalyticsSummary, type Timeframe } from '@/lib/hooks/useAnalytics'
 import { useSatsMode } from '@/lib/sats-context'
@@ -250,7 +250,7 @@ function DispensePageInner() {
           {isDispensesTab ? (
             <DispensesTable dispenses={dispenses} isLoading={dispensesLoading} />
           ) : (
-            <DispensersTable dispensers={dispensers} isLoading={dispensersLoading} assetSearch={assetSearch} debouncedAsset={debouncedAsset} onAssetSearch={setAssetSearch} onFilterAddress={(addr) => { setSourceFilter(addr); handleTagChange(null) }} sort={sort} onSort={setSort} satsMode={satsMode} />
+            <DispensersTable dispensers={dispensers} isLoading={dispensersLoading} assetSearch={assetSearch} debouncedAsset={debouncedAsset} onAssetSearch={setAssetSearch} onFilterAddress={(addr) => { setSourceFilter(addr) }} sourceFilter={sourceFilter} onClearAddress={() => setSourceFilter(null)} sort={sort} onSort={setSort} satsMode={satsMode} />
           )}
           <Pagination total={activeTotal} offset={offset} limit={250} onOffsetChange={setOffset} />
         </div>
@@ -279,18 +279,31 @@ function SortHeader({ label, sortKey, currentSort, onSort, className }: {
   )
 }
 
-function DispensersTable({ dispensers, isLoading, assetSearch, debouncedAsset, onAssetSearch, onFilterAddress, sort, onSort, satsMode }: {
+function DispensersTable({ dispensers, isLoading, assetSearch, debouncedAsset, onAssetSearch, onFilterAddress, sourceFilter, onClearAddress, sort, onSort, satsMode }: {
   dispensers: LatestDispenser[]
   isLoading: boolean
   assetSearch: string
   debouncedAsset: string
   onAssetSearch: (v: string) => void
   onFilterAddress: (addr: string) => void
+  sourceFilter: string | null
+  onClearAddress: () => void
   sort: string | null
   onSort: (s: string | null) => void
   satsMode: boolean
 }) {
   const isExactMatch = debouncedAsset && dispensers.length > 0 && dispensers.every(d => d.asset === debouncedAsset.toUpperCase())
+  const [showAddrInput, setShowAddrInput] = useState(false)
+  const [addrDraft, setAddrDraft] = useState('')
+  const addrRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (addrRef.current && !addrRef.current.contains(e.target as Node)) setShowAddrInput(false)
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [])
   return (
     <table className="w-full text-xs whitespace-nowrap">
       <thead>
@@ -315,7 +328,36 @@ function DispensersTable({ dispensers, isLoading, assetSearch, debouncedAsset, o
           </th>
           <th className="text-right font-normal px-3 py-1.5 max-sm:hidden">Dispense Cost</th>
           <th className="text-right font-normal px-3 py-1.5 max-sm:hidden">Remaining</th>
-          <th className="text-left font-normal px-3 py-1.5 max-sm:hidden">Address</th>
+          <th className="text-left font-normal px-3 py-1.5 max-sm:hidden">
+            <div className="relative inline-flex items-center gap-1" ref={addrRef}>
+              <span>Address</span>
+              {sourceFilter ? (
+                <button onClick={onClearAddress} className="text-zinc-300 hover:text-zinc-100 transition-colors">
+                  <RiCloseLine className="w-3 h-3" />
+                </button>
+              ) : (
+                <>
+                  <button onClick={() => { setShowAddrInput(v => !v); setAddrDraft('') }} className="text-zinc-600 hover:text-zinc-400 transition-colors">
+                    <RiFilter3Line className="w-3 h-3" />
+                  </button>
+                  {showAddrInput && (
+                    <div className="absolute top-full left-0 mt-1 z-20 bg-zinc-800 border border-zinc-700 rounded-sm shadow-lg p-1.5">
+                      <form onSubmit={(e) => { e.preventDefault(); if (addrDraft.trim()) { onFilterAddress(addrDraft.trim()); setShowAddrInput(false) } }}>
+                        <input
+                          autoFocus
+                          type="text"
+                          value={addrDraft}
+                          onChange={(e) => setAddrDraft(e.target.value)}
+                          placeholder="Paste address..."
+                          className="w-48 px-1.5 py-0.5 text-[10px] font-mono bg-zinc-900 border border-zinc-700 rounded-sm text-zinc-200 placeholder:text-zinc-600 outline-none focus:border-zinc-500"
+                        />
+                      </form>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </th>
           <th className="text-left font-normal px-3 py-1.5 max-sm:hidden">Status</th>
           <SortHeader label="#" sortKey="dispenses" currentSort={sort} onSort={onSort} className="text-right max-sm:hidden" />
         </tr>
