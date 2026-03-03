@@ -289,6 +289,7 @@ function DispensersTable({ dispensers, isLoading, assetSearch, onAssetSearch, on
     <table className="w-full text-xs whitespace-nowrap">
       <thead>
         <tr className="text-zinc-500 border-b border-zinc-800">
+          <th className="text-left font-normal px-3 py-1.5 w-8">Time</th>
           <SortHeader label="Price" sortKey="price" currentSort={sort} onSort={onSort} className="text-right" />
           <th className="px-3 py-1.5 w-0" />
           <th className="text-left font-normal px-3 py-0.5">
@@ -314,7 +315,7 @@ function DispensersTable({ dispensers, isLoading, assetSearch, onAssetSearch, on
       </thead>
       <tbody>
         {isLoading || dispensers.length === 0 ? (
-          <EmptyRows loading={isLoading} label="dispensers" cols={9} />
+          <EmptyRows loading={isLoading} label="dispensers" cols={10} />
         ) : (
           dispensers.map((d) => {
             const isOpen = d.status < 10
@@ -323,6 +324,9 @@ function DispensersTable({ dispensers, isLoading, assetSearch, onAssetSearch, on
 
             return (
               <tr key={d.tx_hash} className="hover:bg-zinc-800/50 transition-colors border-b border-zinc-800/30 last:border-0">
+                <td className="text-zinc-500 font-mono px-3 py-1.5">
+                  {d.block_time ? compactTime(d.block_time) : '—'}
+                </td>
                 <td className="text-right text-zinc-400 font-mono px-3 py-1.5">
                   {formatPrice(d.price, satsMode)}
                 </td>
