@@ -258,13 +258,13 @@ export async function handleAnalytics(
         `SELECT maker AS address, ROUND(SUM(volume), 2) AS volume, COUNT(*) AS trades
          FROM trades
          WHERE quote_asset = 'XCP'${timeFilt}${tradeHidden}
-         GROUP BY maker ORDER BY volume DESC LIMIT 30`
+         GROUP BY maker ORDER BY volume DESC LIMIT 21`
       ),
       db.prepare(
         `SELECT taker AS address, ROUND(SUM(volume), 2) AS volume, COUNT(*) AS trades
          FROM trades
          WHERE quote_asset = 'XCP'${timeFilt}${tradeHidden}
-         GROUP BY taker ORDER BY volume DESC LIMIT 30`
+         GROUP BY taker ORDER BY volume DESC LIMIT 21`
       ),
       db.prepare(
         `SELECT address, ROUND(SUM(volume), 8) AS volume, SUM(trades) AS trades FROM (
@@ -275,7 +275,7 @@ export async function handleAnalytics(
            SELECT destination AS address, SUM(btc_amount) AS volume, COUNT(*) AS trades
            FROM dispenses WHERE 1=1${timeFilt}${dispenseHidden}
            GROUP BY destination
-         ) GROUP BY address ORDER BY volume DESC LIMIT 30`
+         ) GROUP BY address ORDER BY volume DESC LIMIT 21`
       ),
       db.prepare(
         `SELECT address, ROUND(SUM(volume), 8) AS volume, SUM(trades) AS trades FROM (
@@ -286,7 +286,7 @@ export async function handleAnalytics(
            SELECT source AS address, SUM(btc_amount) AS volume, COUNT(*) AS trades
            FROM dispenses WHERE 1=1${timeFilt}${dispenseHidden}
            GROUP BY source
-         ) GROUP BY address ORDER BY volume DESC LIMIT 30`
+         ) GROUP BY address ORDER BY volume DESC LIMIT 21`
       ),
     ]);
 
