@@ -327,11 +327,13 @@ function DispensersTable({ dispensers, isLoading, assetSearch, onAssetSearch, on
                   {d.block_time ? compactTime(d.block_time) : '—'}
                 </td>
                 <td className="text-right text-zinc-400 font-mono px-3 py-1.5">
-                  <Link href={`/dispense/${encodeURIComponent(d.asset)}`} className="inline-flex items-center justify-end gap-1.5 hover:underline decoration-zinc-400">
+                  <span className="inline-flex items-center justify-end gap-1.5">
                     {formatPrice(d.price, satsMode)}
-                    <Image src={`${XCP_IMG_BASE}/icon/BTC`} alt="" width={14} height={14} className="rounded-sm" unoptimized />
-                    <span className="text-zinc-400">{satsMode ? 'sats' : 'BTC'}</span>
-                  </Link>
+                    <Link href={`/dispense/${encodeURIComponent(d.asset)}`} className="inline-flex items-center gap-1.5 hover:underline decoration-zinc-400">
+                      <Image src={`${XCP_IMG_BASE}/icon/BTC`} alt="" width={14} height={14} className="rounded-sm" unoptimized />
+                      <span className="text-zinc-400">{satsMode ? 'sats' : 'BTC'}</span>
+                    </Link>
+                  </span>
                 </td>
                 <td className="px-3 py-1.5">
                   <Link href={`/dispense/${encodeURIComponent(d.asset)}`} className="flex items-center gap-1.5 hover:underline">
