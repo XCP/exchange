@@ -249,7 +249,7 @@ function DispensePageInner() {
             </div>
           </div>
           {isDispensesTab ? (
-            <DispensesTable dispenses={dispenses} isLoading={dispensesLoading} />
+            <DispensesTable dispenses={dispenses} isLoading={dispensesLoading} satsMode={satsMode} />
           ) : (
             <DispensersTable dispensers={dispensers} isLoading={dispensersLoading} assetSearch={assetSearch} debouncedAsset={debouncedAsset} onAssetSearch={setAssetSearch} onFilterAddress={(addr) => { setSourceFilter(addr) }} sourceFilter={sourceFilter} onClearAddress={() => setSourceFilter(null)} sort={sort} onSort={setSort} satsMode={satsMode} hasFilter={hasFilter} />
           )}
@@ -436,39 +436,46 @@ function DispensersTable({ dispensers, isLoading, assetSearch, debouncedAsset, o
   )
 }
 
-function DispensesTable({ dispenses, isLoading }: { dispenses: LatestDispense[]; isLoading: boolean }) {
+function DispensesTable({ dispenses, isLoading, satsMode }: { dispenses: LatestDispense[]; isLoading: boolean; satsMode: boolean }) {
   return (
     <table className="w-full text-xs whitespace-nowrap">
       <thead>
         <tr className="text-zinc-500 border-b border-zinc-800">
           <th className="text-left font-normal px-3 py-1.5 w-8">Time</th>
-          <th className="text-left font-normal px-3 py-1.5">Asset</th>
           <th className="text-right font-normal px-3 py-1.5">Price</th>
+          <th className="py-1.5" />
           <th className="text-right font-normal px-3 py-1.5">Qty</th>
+          <th className="text-left font-normal px-3 py-1.5">Asset</th>
           <th className="text-left font-normal px-3 py-1.5 max-sm:hidden">Buyer</th>
           <th className="text-left font-normal px-3 py-1.5 max-sm:hidden">Seller</th>
         </tr>
       </thead>
       <tbody>
         {isLoading || dispenses.length === 0 ? (
-          <EmptyRows loading={isLoading} label="dispenses" cols={6} />
+          <EmptyRows loading={isLoading} label="dispenses" cols={7} />
         ) : (
           dispenses.map((d) => (
             <tr key={`${d.tx_hash}-${d.dispense_index}`} className="hover:bg-zinc-800/50 transition-colors border-b border-zinc-800/30 last:border-0">
               <td className="text-zinc-500 font-mono px-3 py-1.5">
                 {d.block_time ? compactTime(d.block_time) : '—'}
               </td>
+              <td className="text-right text-zinc-400 font-mono px-3 py-1.5">
+                {isFinite(d.price) && d.price > 0 ? formatPrice(d.price, satsMode) : '—'}
+              </td>
+              <td className="px-3 py-1.5">
+                <Link href={`/dispense/${encodeURIComponent(d.asset)}`} className="flex items-center gap-1.5 hover:underline decoration-zinc-400">
+                  <Image src={`${XCP_IMG_BASE}/icon/BTC`} alt="" width={14} height={14} className="rounded-sm" unoptimized />
+                  <span className="text-zinc-400 truncate">{satsMode ? 'sats' : 'BTC'}</span>
+                </Link>
+              </td>
+              <td className="text-right text-zinc-400 font-mono px-3 py-1.5">
+                {formatPrice(d.dispense_quantity)}
+              </td>
               <td className="px-3 py-1.5">
                 <Link href={`/dispense/${encodeURIComponent(d.asset)}`} className="flex items-center gap-1.5 hover:underline">
                   <Image src={`${XCP_IMG_BASE}/icon/${d.asset}`} alt="" width={14} height={14} className="rounded-sm" unoptimized />
                   <span className="text-zinc-200 truncate">{d.asset}</span>
                 </Link>
-              </td>
-              <td className="text-right text-zinc-400 font-mono px-3 py-1.5">
-                {isFinite(d.price) && d.price > 0 ? formatPrice(d.price) : '—'}
-              </td>
-              <td className="text-right text-zinc-400 font-mono px-3 py-1.5">
-                {formatPrice(d.dispense_quantity)}
               </td>
               <td className="text-left text-zinc-500 font-mono px-3 py-1.5 max-sm:hidden">
                 {formatAddress(d.destination)}
