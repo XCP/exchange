@@ -90,6 +90,12 @@ function DispensePageInner() {
     return () => clearTimeout(timer)
   }, [assetSearch])
 
+  // Default to price low-to-high when searching by asset, revert when cleared
+  useEffect(() => {
+    if (debouncedAsset) setSort('price')
+    else setSort(null)
+  }, [debouncedAsset])
+
   useEffect(() => {
     setOffset(0)
   }, [tab, tag, debouncedAsset, sourceFilter, sort])
@@ -343,6 +349,11 @@ function DispensersTable({ dispensers, isLoading, assetSearch, onAssetSearch, on
                   <Link href={`/dispense/${encodeURIComponent(d.asset)}`} className="flex items-center gap-1.5 hover:underline">
                     <Image src={`${XCP_IMG_BASE}/icon/${d.asset}`} alt="" width={14} height={14} className="rounded-sm" unoptimized />
                     <span className="text-zinc-200 truncate">{d.asset}</span>
+                    {d.give_quantity > 1 && (
+                      <span className="text-zinc-600 text-[10px] font-mono ml-0.5">
+                        {formatPrice(d.price / d.give_quantity, satsMode)}/ea
+                      </span>
+                    )}
                   </Link>
                 </td>
                 <td className="text-right text-zinc-500 font-mono px-3 py-1.5 max-sm:hidden">
