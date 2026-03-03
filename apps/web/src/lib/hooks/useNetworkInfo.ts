@@ -70,5 +70,7 @@ export function useFeeRate() {
   )
 
   if (!data || data.length === 0) return null
-  return Math.round(data[0].medianFee)
+  const fee = data[0].medianFee
+  if (fee < 1) return parseFloat(fee.toFixed(2))
+  return Math.round(fee)
 }
