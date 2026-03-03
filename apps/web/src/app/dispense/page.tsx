@@ -289,8 +289,8 @@ function DispensersTable({ dispensers, isLoading, assetSearch, onAssetSearch, on
     <table className="w-full text-xs whitespace-nowrap">
       <thead>
         <tr className="text-zinc-500 border-b border-zinc-800">
-          <th className="text-left font-normal px-3 py-1.5 w-8">Time</th>
-          <th className="text-right font-normal px-3 py-1.5">Amount</th>
+          <SortHeader label="Price" sortKey="price" currentSort={sort} onSort={onSort} className="text-right" />
+          <th className="px-3 py-1.5 w-0" />
           <th className="text-left font-normal px-3 py-0.5">
             <span className="relative flex items-center">
               <input
@@ -305,8 +305,8 @@ function DispensersTable({ dispensers, isLoading, assetSearch, onAssetSearch, on
               )}
             </span>
           </th>
-          <SortHeader label="Price" sortKey="price" currentSort={sort} onSort={onSort} className="text-right" />
-          <th className="px-3 py-1.5 w-0" />
+          <th className="text-right font-normal px-3 py-1.5">Per Dispense</th>
+          <th className="text-right font-normal px-3 py-1.5 max-sm:hidden">Remaining</th>
           <th className="text-right font-normal px-3 py-1.5 max-sm:hidden">Total</th>
           <th className="text-left font-normal px-3 py-1.5 max-sm:hidden">Address</th>
           <th className="text-left font-normal px-3 py-1.5 max-sm:hidden">Status</th>
@@ -315,28 +315,16 @@ function DispensersTable({ dispensers, isLoading, assetSearch, onAssetSearch, on
       </thead>
       <tbody>
         {isLoading || dispensers.length === 0 ? (
-          <EmptyRows loading={isLoading} label="dispensers" cols={9} />
+          <EmptyRows loading={isLoading} label="dispensers" cols={10} />
         ) : (
           dispensers.map((d) => {
             const isOpen = d.status < 10
-            const displayAmount = isOpen ? d.give_remaining : d.give_quantity
-            const total = d.price * displayAmount
+            const remaining = isOpen ? d.give_remaining : d.give_quantity
+            const total = d.price * remaining
             const status = statusLabel(d.status)
 
             return (
               <tr key={d.tx_hash} className="hover:bg-zinc-800/50 transition-colors border-b border-zinc-800/30 last:border-0">
-                <td className="text-zinc-500 font-mono px-3 py-1.5">
-                  {d.block_time ? compactTime(d.block_time) : '—'}
-                </td>
-                <td className="text-right text-zinc-400 font-mono px-3 py-1.5">
-                  {formatPrice(displayAmount)}
-                </td>
-                <td className="px-3 py-1.5">
-                  <Link href={`/dispense/${encodeURIComponent(d.asset)}`} className="flex items-center gap-1.5 hover:underline">
-                    <Image src={`${XCP_IMG_BASE}/icon/${d.asset}`} alt="" width={14} height={14} className="rounded-sm" unoptimized />
-                    <span className="text-zinc-200 truncate">{d.asset}</span>
-                  </Link>
-                </td>
                 <td className="text-right text-zinc-400 font-mono px-3 py-1.5">
                   {formatPrice(d.price, satsMode)}
                 </td>
@@ -345,6 +333,18 @@ function DispensersTable({ dispensers, isLoading, assetSearch, onAssetSearch, on
                     <Image src={`${XCP_IMG_BASE}/icon/BTC`} alt="" width={14} height={14} className="rounded-sm" unoptimized />
                     <span className="text-zinc-400 truncate">{satsMode ? 'sats' : 'BTC'}</span>
                   </Link>
+                </td>
+                <td className="px-3 py-1.5">
+                  <Link href={`/dispense/${encodeURIComponent(d.asset)}`} className="flex items-center gap-1.5 hover:underline">
+                    <Image src={`${XCP_IMG_BASE}/icon/${d.asset}`} alt="" width={14} height={14} className="rounded-sm" unoptimized />
+                    <span className="text-zinc-200 truncate">{d.asset}</span>
+                  </Link>
+                </td>
+                <td className="text-right text-zinc-400 font-mono px-3 py-1.5">
+                  {formatPrice(d.give_quantity)}
+                </td>
+                <td className="text-right text-zinc-500 font-mono px-3 py-1.5 max-sm:hidden">
+                  {formatPrice(remaining)}
                 </td>
                 <td className="text-right text-zinc-500 font-mono px-3 py-1.5 max-sm:hidden">
                   {formatPrice(total, satsMode)}
