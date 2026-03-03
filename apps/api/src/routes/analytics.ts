@@ -138,7 +138,7 @@ export async function handleAnalytics(
          FROM dispenser_stats ds
          WHERE ds.${dispVolCol} > 0${dispHidden}
          ORDER BY ds.${dispVolCol} DESC
-         LIMIT 10`
+         LIMIT 25`
       ),
       db.prepare(
         `SELECT quote_asset, MAX(quote_asset_longname) AS quote_asset_longname,
@@ -147,7 +147,8 @@ export async function handleAnalytics(
          FROM pair_stats
          WHERE ${tradeCountCol} > 0 AND quote_asset NOT IN ('XCP', 'BTC')${pairHidden}
          GROUP BY quote_asset
-         ORDER BY trade_count DESC`
+         ORDER BY trade_count DESC
+         LIMIT 25`
       ),
       db.prepare(
         `SELECT t.slug, t.name,
