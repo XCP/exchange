@@ -307,7 +307,6 @@ function DispensersTable({ dispensers, isLoading, assetSearch, onAssetSearch, on
           </th>
           <th className="text-right font-normal px-3 py-1.5">Per Dispense</th>
           <th className="text-right font-normal px-3 py-1.5 max-sm:hidden">Remaining</th>
-          <th className="text-right font-normal px-3 py-1.5 max-sm:hidden">Total</th>
           <th className="text-left font-normal px-3 py-1.5 max-sm:hidden">Address</th>
           <th className="text-left font-normal px-3 py-1.5 max-sm:hidden">Status</th>
           <SortHeader label="Dispensed" sortKey="dispenses" currentSort={sort} onSort={onSort} className="text-right max-sm:hidden" />
@@ -315,12 +314,11 @@ function DispensersTable({ dispensers, isLoading, assetSearch, onAssetSearch, on
       </thead>
       <tbody>
         {isLoading || dispensers.length === 0 ? (
-          <EmptyRows loading={isLoading} label="dispensers" cols={10} />
+          <EmptyRows loading={isLoading} label="dispensers" cols={9} />
         ) : (
           dispensers.map((d) => {
             const isOpen = d.status < 10
             const remaining = isOpen ? d.give_remaining : d.give_quantity
-            const total = d.price * remaining
             const status = statusLabel(d.status)
 
             return (
@@ -345,9 +343,6 @@ function DispensersTable({ dispensers, isLoading, assetSearch, onAssetSearch, on
                 </td>
                 <td className="text-right text-zinc-500 font-mono px-3 py-1.5 max-sm:hidden">
                   {formatPrice(remaining)}
-                </td>
-                <td className="text-right text-zinc-500 font-mono px-3 py-1.5 max-sm:hidden">
-                  {formatPrice(total, satsMode)}
                 </td>
                 <td className="text-left font-mono px-3 py-1.5 max-sm:hidden">
                   <span className="inline-flex items-center gap-1">
