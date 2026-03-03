@@ -384,6 +384,8 @@ function TradersSection({ topMakers, topTakers, topBtcBuyers, topBtcSellers, isL
 }) {
   const { satsMode } = useSatsMode()
   const btcLabel = satsMode ? 'sats' : 'BTC'
+  const toSats = (list: typeof topBtcBuyers) =>
+    satsMode ? list.map((t) => ({ ...t, volume: t.volume * 1e8 })) : list
   return (
     <>
       <h2 className="text-sm uppercase tracking-wider text-zinc-400 mb-2">Top Traders</h2>
@@ -405,8 +407,8 @@ function TradersSection({ topMakers, topTakers, topBtcBuyers, topBtcSellers, isL
               title={`Top Traders (${btcLabel})`}
               unit={btcLabel}
               tabLabels={['Makers', 'Takers']}
-              listA={topBtcSellers}
-              listB={topBtcBuyers}
+              listA={toSats(topBtcSellers)}
+              listB={toSats(topBtcBuyers)}
             />
           </div>
         </div>
