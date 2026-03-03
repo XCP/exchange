@@ -291,7 +291,7 @@ function DispensersTable({ dispensers, isLoading, assetSearch, onAssetSearch, on
         <tr className="text-zinc-500 border-b border-zinc-800">
           <th className="text-left font-normal px-3 py-1.5 w-8">Time</th>
           <SortHeader label="Price" sortKey="price" currentSort={sort} onSort={onSort} className="text-right" />
-          <th className="px-3 py-1.5 w-0" />
+          <th className="py-1.5" />
           <th className="text-left font-normal px-3 py-0.5">
             <span className="relative flex items-center">
               <input
@@ -330,10 +330,10 @@ function DispensersTable({ dispensers, isLoading, assetSearch, onAssetSearch, on
                 <td className="text-right text-zinc-400 font-mono px-3 py-1.5">
                   {formatPrice(d.price, satsMode)}
                 </td>
-                <td className="px-3 py-1.5">
+                <td className="pl-1 pr-3 py-1.5">
                   <Link href={`/dispense/${encodeURIComponent(d.asset)}`} className="flex items-center gap-1.5 hover:underline decoration-zinc-400">
-                    <Image src={`${XCP_IMG_BASE}/icon/BTC`} alt="" width={14} height={14} className="rounded-sm" unoptimized />
-                    <span className="text-zinc-400 truncate">{satsMode ? 'sats' : 'BTC'}</span>
+                    <Image src={`${XCP_IMG_BASE}/icon/BTC`} alt="" width={14} height={14} className="rounded-sm shrink-0" unoptimized />
+                    <span className="text-zinc-400">{satsMode ? 'sats' : 'BTC'}</span>
                   </Link>
                 </td>
                 <td className="px-3 py-1.5">
