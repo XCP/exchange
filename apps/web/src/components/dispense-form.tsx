@@ -57,7 +57,7 @@ export function DispenseForm({ asset, sortedDispensers, selectedIndex, onSelectI
   const handleBuy = () => {
     if (!selected || qty <= 0) return
     composeDispense({
-      dispenser: selected.tx_hash,
+      dispenser: selected.source,
       quantity: qty * selected.satoshi_price,
     })
   }

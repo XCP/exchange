@@ -312,6 +312,7 @@ function DispensersTable({ dispensers, isLoading, assetSearch, debouncedAsset, o
       <thead>
         <tr className="text-zinc-500 border-b border-zinc-800">
           <SortHeader label="Time" sortKey="time" currentSort={sort} onSort={onSort} disabled={!hasFilter} className="text-left w-8" />
+          <th className="py-1.5" />
           <SortHeader label="Effective Price" sortKey="price" currentSort={sort} onSort={onSort} disabled={!hasFilter} className="text-right" />
           <th className="py-1.5" />
           <th className="text-right font-normal px-3 py-1.5">Per Dispense</th>
@@ -367,7 +368,7 @@ function DispensersTable({ dispensers, isLoading, assetSearch, debouncedAsset, o
       </thead>
       <tbody>
         {isLoading || dispensers.length === 0 ? (
-          <EmptyRows loading={isLoading} label="dispensers" cols={10} />
+          <EmptyRows loading={isLoading} label="dispensers" cols={11} />
         ) : (
           dispensers.map((d) => {
             const isOpen = d.status < 10
@@ -378,6 +379,16 @@ function DispensersTable({ dispensers, isLoading, assetSearch, debouncedAsset, o
               <tr key={d.tx_hash} className="hover:bg-zinc-800/50 transition-colors border-b border-zinc-800/30 last:border-0">
                 <td className="text-zinc-500 font-mono px-3 py-1.5">
                   {d.block_time ? compactTime(d.block_time) : '—'}
+                </td>
+                <td className={`font-medium px-3 py-1.5 text-green-400`}>
+                  {isOpen ? (
+                    <Link
+                      href={`/dispense/${encodeURIComponent(d.asset)}?address=${d.source}`}
+                      className="bg-zinc-800/50 rounded-sm px-1.5 py-0.5 hover:bg-zinc-700/50 transition-colors"
+                    >
+                      Buy
+                    </Link>
+                  ) : null}
                 </td>
                 <td className="text-right text-zinc-400 font-mono px-3 py-1.5">
                   {formatPrice(d.price, satsMode)}
@@ -464,7 +475,6 @@ function DispensesTable({ dispenses, isLoading, satsMode, assetSearch, debounced
       <thead>
         <tr className="text-zinc-500 border-b border-zinc-800">
           <SortHeader label="Time" sortKey="time" currentSort={sort} onSort={onSort} disabled={!hasFilter} className="text-left w-8" />
-          <th className="py-1.5" />
           <SortHeader label="Effective Price" sortKey="price" currentSort={sort} onSort={onSort} disabled={!hasFilter} className="text-right" />
           <th className="py-1.5" />
           <th className="text-right font-normal px-3 py-1.5">Dispensed</th>
@@ -547,17 +557,12 @@ function DispensesTable({ dispenses, isLoading, satsMode, assetSearch, debounced
       </thead>
       <tbody>
         {isLoading || dispenses.length === 0 ? (
-          <EmptyRows loading={isLoading} label="dispenses" cols={9} />
+          <EmptyRows loading={isLoading} label="dispenses" cols={8} />
         ) : (
           dispenses.map((d) => (
             <tr key={`${d.tx_hash}-${d.dispense_index}`} className="hover:bg-zinc-800/50 transition-colors border-b border-zinc-800/30 last:border-0">
               <td className="text-zinc-500 font-mono px-3 py-1.5">
                 {d.block_time ? compactTime(d.block_time) : '—'}
-              </td>
-              <td className="px-1.5 py-1.5">
-                <Link href={`/dispense/${encodeURIComponent(d.asset)}?address=${d.source}`} className="text-[10px] text-green-500 hover:text-green-400 transition-colors">
-                  Buy
-                </Link>
               </td>
               <td className="text-right text-zinc-400 font-mono px-3 py-1.5">
                 {(() => {

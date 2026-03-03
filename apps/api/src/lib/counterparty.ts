@@ -141,12 +141,12 @@ export async function fetchDispenses(
 
 export async function fetchDispensers(
   apiBase: string,
-  status: number = 0,
+  status: number | null = 0,
   cursor?: string | null,
   limit: number = 200
 ): Promise<{ dispensers: CounterpartyDispenser[]; nextCursor: string | null }> {
   const url = new URL(`${apiBase}/dispensers`);
-  url.searchParams.set("status", String(status));
+  if (status != null) url.searchParams.set("status", String(status));
   url.searchParams.set("verbose", "true");
   url.searchParams.set("limit", String(limit));
   if (cursor) {

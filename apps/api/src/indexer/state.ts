@@ -2,6 +2,7 @@ export type IndexerMode =
   | "IDLE"
   | "BACKFILL_TRADES"
   | "BACKFILL_DISPENSES"
+  | "BACKFILL_DISPENSERS"
   | "SNAPSHOT_SYNC"
   | "BUILD_AGGREGATES"
   | "REFRESH_STATS"

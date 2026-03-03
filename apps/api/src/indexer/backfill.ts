@@ -1,5 +1,5 @@
-import { normalizeOrderMatch, NormalizedTrade, normalizeDispensePrice } from "./normalize";
-import { fetchOrderMatches, fetchDispenses } from "../lib/counterparty";
+import { normalizeOrderMatch, NormalizedTrade, normalizeDispensePrice, normalizeDispenser, buildDispenserUpsertStmt } from "./normalize";
+import { fetchOrderMatches, fetchDispenses, fetchDispensers } from "../lib/counterparty";
 import { API_TIMEOUT_MS } from "../lib/constants";
 import { batchExec } from "../lib/batch";
 import { getState, setState } from "./state";
@@ -8,7 +8,7 @@ const BATCH_SIZE = 200;
 const DEFAULT_MAX_PAGES = 20;
 
 interface BackfillResult {
-  type: "trades" | "dispenses";
+  type: "trades" | "dispenses" | "dispensers";
   inserted: number;
   pages: number;
   done: boolean;
@@ -214,7 +214,7 @@ export async function backfillDispenses(
       db.prepare(`DELETE FROM indexer_state WHERE key = 'dispense_backfill_cursor'`),
       db.prepare(`DELETE FROM indexer_state WHERE key = 'dispense_backfill_total'`),
       db.prepare(
-        `INSERT INTO indexer_state (key, value) VALUES ('indexer_mode', 'SNAPSHOT_SYNC')
+        `INSERT INTO indexer_state (key, value) VALUES ('indexer_mode', 'BACKFILL_DISPENSERS')
          ON CONFLICT (key) DO UPDATE SET value = excluded.value`
       ),
     ]);
@@ -230,6 +230,101 @@ export async function backfillDispenses(
 
   return {
     type: "dispenses",
+    inserted: totalInserted,
+    pages,
+    done,
+    total,
+    progress: progress.toFixed(1),
+  };
+}
+
+/**
+ * Backfill ALL dispensers (open, closed, closing) using cursor-based pagination.
+ * When complete, transitions mode to SNAPSHOT_SYNC.
+ */
+export async function backfillDispensers(
+  db: D1Database,
+  apiBase: string,
+  maxPages: number = DEFAULT_MAX_PAGES
+): Promise<BackfillResult> {
+  let cursor = await getState(db, "dispenser_backfill_cursor");
+  const totalStr = await getState(db, "dispenser_backfill_total");
+
+  let total: number;
+  if (totalStr != null) {
+    total = parseInt(totalStr, 10);
+  } else {
+    const probeUrl = new URL(`${apiBase}/dispensers`);
+    probeUrl.searchParams.set("limit", "1");
+    const probeRes = await fetch(probeUrl.toString(), { signal: AbortSignal.timeout(API_TIMEOUT_MS) });
+    if (!probeRes.ok) {
+      throw new Error(`Counterparty API probe error: ${probeRes.status} ${probeRes.statusText}`);
+    }
+    const probeData: { result_count: number } = await probeRes.json();
+    total = probeData.result_count;
+    await setState(db, "dispenser_backfill_total", String(total));
+  }
+
+  let totalInserted = 0;
+  let pages = 0;
+  const now = Math.floor(Date.now() / 1000);
+
+  while (pages < maxPages) {
+    const { dispensers, nextCursor } = await fetchDispensers(
+      apiBase,
+      null,
+      cursor,
+      BATCH_SIZE
+    );
+
+    if (dispensers.length === 0) break;
+
+    const stmts: D1PreparedStatement[] = [];
+    for (const raw of dispensers) {
+      const d = normalizeDispenser(raw);
+      if (!d) continue; // skip oracle dispensers
+      stmts.push(buildDispenserUpsertStmt(db, d, now));
+    }
+
+    if (stmts.length > 0) {
+      const results = await batchExec(db, stmts);
+      for (const r of results) {
+        if (r.meta.changes > 0) totalInserted++;
+      }
+    }
+
+    cursor = nextCursor;
+    pages++;
+
+    if (cursor) {
+      await setState(db, "dispenser_backfill_cursor", cursor);
+    } else {
+      break;
+    }
+  }
+
+  const done = !cursor;
+
+  if (done) {
+    await db.batch([
+      db.prepare(`DELETE FROM indexer_state WHERE key = 'dispenser_backfill_cursor'`),
+      db.prepare(`DELETE FROM indexer_state WHERE key = 'dispenser_backfill_total'`),
+      db.prepare(
+        `INSERT INTO indexer_state (key, value) VALUES ('indexer_mode', 'SNAPSHOT_SYNC')
+         ON CONFLICT (key) DO UPDATE SET value = excluded.value`
+      ),
+    ]);
+  }
+
+  const insertedSoFar = await db
+    .prepare(`SELECT COUNT(*) as cnt FROM dispensers`)
+    .first<{ cnt: number }>();
+  const progress = total > 0
+    ? ((insertedSoFar?.cnt ?? 0) / total) * 100
+    : 100;
+
+  return {
+    type: "dispensers",
     inserted: totalInserted,
     pages,
     done,

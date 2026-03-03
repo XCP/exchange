@@ -21,7 +21,7 @@ import { handleGetSwaps, handleGetSwap, handleCancelSwap, handlePrepareListingPs
 import { checkPendingFills } from "./lib/swap-monitor";
 import { syncBlocks } from "./indexer/sync-block";
 import { runCatchupAggregation, runCatchupStats, runCatchupDispenserStats, aggregateCandlesForPair } from "./indexer/aggregate";
-import { backfillTrades, backfillDispenses } from "./indexer/backfill";
+import { backfillTrades, backfillDispenses, backfillDispensers } from "./indexer/backfill";
 import { syncOrders, syncDispensers, runSnapshotStep, reindexOrders } from "./indexer/snapshot";
 import { getMode, setMode, deleteState } from "./indexer/state";
 import { updatePairStats, refreshStalePairStats } from "./indexer/stats";
@@ -275,6 +275,8 @@ export default {
           deleteState(env.DB, "trade_backfill_total"),
           deleteState(env.DB, "dispense_backfill_cursor"),
           deleteState(env.DB, "dispense_backfill_total"),
+          deleteState(env.DB, "dispenser_backfill_cursor"),
+          deleteState(env.DB, "dispenser_backfill_total"),
           deleteState(env.DB, "aggregation_cursor"),
           deleteState(env.DB, "sync_lock"),
         ]);
@@ -297,6 +299,10 @@ export default {
           }
           case "BACKFILL_DISPENSES": {
             const result = await backfillDispenses(env.DB, env.CP_API_BASE, pages);
+            return await withCors(Response.json(result));
+          }
+          case "BACKFILL_DISPENSERS": {
+            const result = await backfillDispensers(env.DB, env.CP_API_BASE, pages);
             return await withCors(Response.json(result));
           }
           case "SNAPSHOT_SYNC": {
@@ -407,9 +413,23 @@ export default {
           deleteState(env.DB, "trade_backfill_total"),
           deleteState(env.DB, "dispense_backfill_cursor"),
           deleteState(env.DB, "dispense_backfill_total"),
+          deleteState(env.DB, "dispenser_backfill_cursor"),
+          deleteState(env.DB, "dispenser_backfill_total"),
           deleteState(env.DB, "aggregation_cursor"),
         ]);
         return await withCors(Response.json({ ok: true, mode: "IDLE" }));
+      }
+
+      // POST /indexer/backfill-missing — re-run dispenses + dispensers backfill then return to FOLLOWING
+      if (path === "/indexer/backfill-missing" && request.method === "POST") {
+        await Promise.all([
+          deleteState(env.DB, "dispense_backfill_cursor"),
+          deleteState(env.DB, "dispense_backfill_total"),
+          deleteState(env.DB, "dispenser_backfill_cursor"),
+          deleteState(env.DB, "dispenser_backfill_total"),
+        ]);
+        await setMode(env.DB, "BACKFILL_DISPENSES");
+        return await withCors(Response.json({ ok: true, mode: "BACKFILL_DISPENSES" }));
       }
 
       // POST /indexer/sync-tags?type=collection — manual tag sync
@@ -533,6 +553,12 @@ export default {
             case "BACKFILL_DISPENSES": {
               const r = await backfillDispenses(env.DB, env.CP_API_BASE, 20);
               console.log(`Cron: backfill dispenses — ${r.inserted} inserted, ${r.progress}% done`);
+              break;
+            }
+
+            case "BACKFILL_DISPENSERS": {
+              const r = await backfillDispensers(env.DB, env.CP_API_BASE, 20);
+              console.log(`Cron: backfill dispensers — ${r.inserted} inserted, ${r.progress}% done`);
               break;
             }
 
