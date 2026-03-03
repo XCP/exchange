@@ -252,7 +252,7 @@ function DispensePageInner() {
           {isDispensesTab ? (
             <DispensesTable dispenses={dispenses} isLoading={dispensesLoading} />
           ) : (
-            <DispensersTable dispensers={dispensers} isLoading={dispensersLoading} assetSearch={assetSearch} onAssetSearch={setAssetSearch} onFilterAddress={(addr) => { setSourceFilter(addr); handleTagChange(null) }} sort={sort} onSort={setSort} satsMode={satsMode} />
+            <DispensersTable dispensers={dispensers} isLoading={dispensersLoading} assetSearch={assetSearch} debouncedAsset={debouncedAsset} onAssetSearch={setAssetSearch} onFilterAddress={(addr) => { setSourceFilter(addr); handleTagChange(null) }} sort={sort} onSort={setSort} satsMode={satsMode} />
           )}
           <Pagination total={activeTotal} offset={offset} limit={250} onOffsetChange={setOffset} />
         </div>
@@ -281,16 +281,18 @@ function SortHeader({ label, sortKey, currentSort, onSort, className }: {
   )
 }
 
-function DispensersTable({ dispensers, isLoading, assetSearch, onAssetSearch, onFilterAddress, sort, onSort, satsMode }: {
+function DispensersTable({ dispensers, isLoading, assetSearch, debouncedAsset, onAssetSearch, onFilterAddress, sort, onSort, satsMode }: {
   dispensers: LatestDispenser[]
   isLoading: boolean
   assetSearch: string
+  debouncedAsset: string
   onAssetSearch: (v: string) => void
   onFilterAddress: (addr: string) => void
   sort: string | null
   onSort: (s: string | null) => void
   satsMode: boolean
 }) {
+  const isExactMatch = debouncedAsset && dispensers.length > 0 && dispensers.every(d => d.asset === debouncedAsset.toUpperCase())
   return (
     <table className="w-full text-xs whitespace-nowrap">
       <thead>
@@ -299,7 +301,7 @@ function DispensersTable({ dispensers, isLoading, assetSearch, onAssetSearch, on
           <SortHeader label="Effective Price" sortKey="price" currentSort={sort} onSort={onSort} className="text-right" />
           <th className="py-1.5" />
           <th className="text-right font-normal px-3 py-1.5">Per Dispense</th>
-          <th className="text-left font-normal px-3 py-0.5">
+          <th className="text-left font-normal px-3 py-0.5 min-w-0">
             <span className="relative flex items-center">
               <input
                 type="text"
@@ -313,6 +315,7 @@ function DispensersTable({ dispensers, isLoading, assetSearch, onAssetSearch, on
               )}
             </span>
           </th>
+          <th className="text-right font-normal px-3 py-1.5 max-sm:hidden">Dispense Cost</th>
           <th className="text-right font-normal px-3 py-1.5 max-sm:hidden">Remaining</th>
           <th className="text-left font-normal px-3 py-1.5 max-sm:hidden">Address</th>
           <th className="text-left font-normal px-3 py-1.5 max-sm:hidden">Status</th>
@@ -346,15 +349,20 @@ function DispensersTable({ dispensers, isLoading, assetSearch, onAssetSearch, on
                   {formatPrice(d.give_quantity)}
                 </td>
                 <td className="px-3 py-1.5">
-                  <Link href={`/dispense/${encodeURIComponent(d.asset)}`} className="flex items-center gap-1.5 hover:underline">
-                    <Image src={`${XCP_IMG_BASE}/icon/${d.asset}`} alt="" width={14} height={14} className="rounded-sm" unoptimized />
-                    <span className="text-zinc-200 truncate">{d.asset}</span>
-                    {d.give_quantity > 1 && (
-                      <span className="text-zinc-600 text-[10px] font-mono ml-0.5">
-                        {formatPrice(d.price / d.give_quantity, satsMode)}/ea
-                      </span>
-                    )}
-                  </Link>
+                  {isExactMatch ? (
+                    <Link href={`/dispense/${encodeURIComponent(d.asset)}`} className="flex items-center gap-1.5 hover:underline">
+                      <Image src={`${XCP_IMG_BASE}/icon/${d.asset}`} alt="" width={14} height={14} className="rounded-sm" unoptimized />
+                      <span className="text-zinc-200 truncate">{d.asset}</span>
+                    </Link>
+                  ) : (
+                    <button onClick={() => onAssetSearch(d.asset)} className="flex items-center gap-1.5 hover:underline text-left">
+                      <Image src={`${XCP_IMG_BASE}/icon/${d.asset}`} alt="" width={14} height={14} className="rounded-sm" unoptimized />
+                      <span className="text-zinc-200 truncate">{d.asset}</span>
+                    </button>
+                  )}
+                </td>
+                <td className="text-right text-zinc-500 font-mono px-3 py-1.5 max-sm:hidden">
+                  {d.give_quantity > 1 ? formatPrice(d.satoshi_price / 1e8, satsMode) : ''}
                 </td>
                 <td className="text-right text-zinc-500 font-mono px-3 py-1.5 max-sm:hidden">
                   {formatPrice(remaining)}
