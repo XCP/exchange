@@ -200,6 +200,7 @@ function SummarySection({ timeframe, includeHidden, isLoading, mobileMode, trade
       { value: formatBig(p.volume) },
       { value: formatPct(p.price_change), className: pctColor(p.price_change) },
     ],
+    sortValues: [p.trade_count, p.volume],
   }))
 
   const tradedCollRows: LeaderboardRow[] = topTradedCollections.map((c) => ({
@@ -212,6 +213,7 @@ function SummarySection({ timeframe, includeHidden, isLoading, mobileMode, trade
       { value: formatBig(c.volume) },
       { value: formatPct(c.price_change), className: pctColor(c.price_change) },
     ],
+    sortValues: [c.trade_count, c.volume],
   }))
 
   const dispensedAssetRows: LeaderboardRow[] = topDispensers.map((d) => ({
@@ -224,6 +226,7 @@ function SummarySection({ timeframe, includeHidden, isLoading, mobileMode, trade
       { value: formatPrice(d.volume, satsMode) },
       { value: formatPct(d.price_change), className: pctColor(d.price_change) },
     ],
+    sortValues: [d.dispense_count, d.volume],
   }))
 
   const dispensedCollRows: LeaderboardRow[] = topDispensedCollections.map((c) => ({
@@ -236,6 +239,7 @@ function SummarySection({ timeframe, includeHidden, isLoading, mobileMode, trade
       { value: formatPrice(c.volume, satsMode) },
       { value: formatPct(c.price_change), className: pctColor(c.price_change) },
     ],
+    sortValues: [c.dispense_count, c.volume],
   }))
 
   return (
@@ -318,19 +322,19 @@ function SummarySection({ timeframe, includeHidden, isLoading, mobileMode, trade
         <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-8">
           <div className={mobileMode === 'btc' ? 'hidden md:block' : ''}>
             <LeaderboardTable
-              title="Most Traded (By Count)"
+              title="Most Traded"
               tabs={[
-                { label: 'Assets', headers: ['Pair', 'Trades', 'Volume', 'Chg'], rows: tradedAssetRows.slice(0, 10) },
-                { label: 'Collections', headers: ['Collection', 'Trades', 'Volume (XCP)', 'Chg'], rows: tradedCollRows.slice(0, 10) },
+                { label: 'Assets', headers: ['Pair', 'Trades', 'Volume (XCP)', 'Chg'], rows: tradedAssetRows, sortable: [true, true, false] },
+                { label: 'Collections', headers: ['Collection', 'Trades', 'Volume (XCP)', 'Chg'], rows: tradedCollRows, sortable: [true, true, false] },
               ]}
             />
           </div>
           <div className={mobileMode === 'xcp' ? 'hidden md:block' : ''}>
             <LeaderboardTable
-              title="Most Dispensed (By Volume)"
+              title="Most Dispensed"
               tabs={[
-                { label: 'Assets', headers: ['Asset', 'Dispenses', `Volume (${btcLabel})`, 'Chg'], rows: dispensedAssetRows.slice(0, 10) },
-                { label: 'Collections', headers: ['Collection', 'Dispenses', `Volume (${btcLabel})`, 'Chg'], rows: dispensedCollRows.slice(0, 10) },
+                { label: 'Assets', headers: ['Asset', 'Dispenses', `Volume (${btcLabel})`, 'Chg'], rows: dispensedAssetRows, sortable: [true, true, false] },
+                { label: 'Collections', headers: ['Collection', 'Dispenses', `Volume (${btcLabel})`, 'Chg'], rows: dispensedCollRows, sortable: [true, true, false] },
               ]}
             />
           </div>

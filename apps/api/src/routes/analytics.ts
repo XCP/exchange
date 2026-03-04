@@ -126,7 +126,7 @@ export async function handleAnalytics(
                 ${volCol} AS volume,
                 ${pctCol} AS price_change
          FROM pair_stats
-         WHERE ${tradeCountCol} > 0${pairHidden}
+         WHERE ${tradeCountCol} > 0 AND quote_asset = 'XCP'${pairHidden}
          ORDER BY ${tradeCountCol} DESC
          LIMIT 10`
       ),

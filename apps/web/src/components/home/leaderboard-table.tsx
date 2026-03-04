@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 import { TogglePills } from './toggle-pills'
@@ -12,12 +12,14 @@ export interface LeaderboardRow {
   icon?: string
   label: string
   cells: Array<{ value: string; className?: string }>
+  sortValues: number[]
 }
 
 export interface LeaderboardTab {
   label: string
   headers: string[]
   rows: LeaderboardRow[]
+  sortable?: boolean[]
 }
 
 export function LeaderboardTable({
@@ -28,7 +30,22 @@ export function LeaderboardTable({
   tabs: [LeaderboardTab, LeaderboardTab]
 }) {
   const [tabIndex, setTabIndex] = useState<0 | 1>(0)
+  const [sortIndices, setSortIndices] = useState<[number, number]>([0, 0])
   const active = tabs[tabIndex]
+  const sortIndex = sortIndices[tabIndex]
+
+  const sorted = useMemo(() => {
+    const idx = sortIndex
+    return [...active.rows].sort((a, b) => (b.sortValues[idx] ?? 0) - (a.sortValues[idx] ?? 0)).slice(0, 10)
+  }, [active.rows, sortIndex])
+
+  const handleSort = (cellIdx: number) => {
+    setSortIndices((prev) => {
+      const next: [number, number] = [...prev]
+      next[tabIndex] = cellIdx
+      return next
+    })
+  }
 
   return (
     <div className="bg-zinc-900/50 border border-zinc-800 rounded-sm">
@@ -49,13 +66,23 @@ export function LeaderboardTable({
             <tr className="text-zinc-500 border-b border-zinc-800">
               <th className="text-left font-normal px-3 py-1.5 w-6">#</th>
               <th className="text-left font-normal px-3 py-1.5">{active.headers[0]}</th>
-              {active.headers.slice(1).map((h) => (
-                <th key={h} className="text-right font-normal px-3 py-1.5">{h}</th>
-              ))}
+              {active.headers.slice(1).map((h, i) => {
+                const isSortable = active.sortable ? active.sortable[i] : true
+                const isActive = sortIndex === i
+                return (
+                  <th
+                    key={h}
+                    className={`text-right font-normal px-3 py-1.5${isSortable ? ' cursor-pointer select-none hover:text-zinc-400' : ''}${isActive ? ' text-zinc-300' : ''}`}
+                    onClick={isSortable ? () => handleSort(i) : undefined}
+                  >
+                    {h} {isActive ? '\u25BC' : ''}
+                  </th>
+                )
+              })}
             </tr>
           </thead>
           <tbody>
-            {active.rows.map((row, i) => (
+            {sorted.map((row, i) => (
               <tr key={row.key} className="hover:bg-zinc-800/50 transition-colors border-b border-zinc-800/30 last:border-0">
                 <td className="px-3 py-1.5 text-zinc-500">{i + 1}</td>
                 <td className="px-3 py-1.5">
@@ -80,7 +107,7 @@ export function LeaderboardTable({
                 ))}
               </tr>
             ))}
-            {active.rows.length === 0 && (
+            {sorted.length === 0 && (
               <tr>
                 <td colSpan={active.headers.length + 1} className="text-center py-6 text-zinc-500">
                   No data
