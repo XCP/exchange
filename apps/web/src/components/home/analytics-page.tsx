@@ -89,6 +89,8 @@ const COLLECTION_ICONS: Record<string, string> = {
   'xcpinata': 'CUPCAKE',
   'jpja': 'OLGA',
   'weird-n-wild': 'WOLVERINE',
+  'the-counterpart': 'POKEMON',
+  'pokemon-cards': 'PIKACHU',
 }
 
 const TF_OPTIONS = ['24h', '7d', '30d', 'all'] as const
