@@ -376,6 +376,7 @@ function DispensersTable({ dispensers, isLoading, assetSearch, debouncedAsset, o
             const isOpen = d.status < 10
             const remaining = isOpen ? d.give_remaining : d.give_quantity
             const status = statusLabel(d.status)
+            const displayName = d.asset_longname ?? d.asset
 
             return (
               <tr key={d.tx_hash} className="hover:bg-zinc-800/50 transition-colors border-b border-zinc-800/30 last:border-0">
@@ -408,12 +409,12 @@ function DispensersTable({ dispensers, isLoading, assetSearch, debouncedAsset, o
                   {isExactMatch ? (
                     <Link href={`/dispense/${encodeURIComponent(d.asset)}`} className="flex items-center gap-1.5 hover:underline">
                       <Image src={`${XCP_IMG_BASE}/icon/${d.asset}`} alt="" width={14} height={14} className="rounded-sm" unoptimized />
-                      <span className="text-zinc-200 truncate">{d.asset}</span>
+                      <span className="text-zinc-200 truncate">{displayName}</span>
                     </Link>
                   ) : (
                     <button onClick={() => onAssetSearch(d.asset)} className="flex items-center gap-1.5 hover:underline text-left">
                       <Image src={`${XCP_IMG_BASE}/icon/${d.asset}`} alt="" width={14} height={14} className="rounded-sm" unoptimized />
-                      <span className="text-zinc-200 truncate">{d.asset}</span>
+                      <span className="text-zinc-200 truncate">{displayName}</span>
                     </button>
                   )}
                 </td>
@@ -561,7 +562,9 @@ function DispensesTable({ dispenses, isLoading, satsMode, assetSearch, debounced
         {isLoading || dispenses.length === 0 ? (
           <EmptyRows loading={isLoading} label="dispenses" cols={8} />
         ) : (
-          dispenses.map((d) => (
+          dispenses.map((d) => {
+            const displayName = d.asset_longname ?? d.asset
+            return (
             <tr key={`${d.tx_hash}-${d.dispense_index}`} className="hover:bg-zinc-800/50 transition-colors border-b border-zinc-800/30 last:border-0">
               <td className="text-zinc-500 font-mono px-3 py-1.5">
                 {d.block_time ? compactTime(d.block_time) : '—'}
@@ -585,12 +588,12 @@ function DispensesTable({ dispenses, isLoading, satsMode, assetSearch, debounced
                 {isExactMatch ? (
                   <Link href={`/dispense/${encodeURIComponent(d.asset)}`} className="flex items-center gap-1.5 hover:underline">
                     <Image src={`${XCP_IMG_BASE}/icon/${d.asset}`} alt="" width={14} height={14} className="rounded-sm" unoptimized />
-                    <span className="text-zinc-200 truncate">{d.asset}</span>
+                    <span className="text-zinc-200 truncate">{displayName}</span>
                   </Link>
                 ) : (
                   <button onClick={() => onAssetSearch(d.asset)} className="flex items-center gap-1.5 hover:underline text-left">
                     <Image src={`${XCP_IMG_BASE}/icon/${d.asset}`} alt="" width={14} height={14} className="rounded-sm" unoptimized />
-                    <span className="text-zinc-200 truncate">{d.asset}</span>
+                    <span className="text-zinc-200 truncate">{displayName}</span>
                   </button>
                 )}
               </td>
@@ -614,7 +617,7 @@ function DispensesTable({ dispenses, isLoading, satsMode, assetSearch, debounced
                 </span>
               </td>
             </tr>
-          ))
+          )})
         )}
       </tbody>
     </table>

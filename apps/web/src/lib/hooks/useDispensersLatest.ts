@@ -4,6 +4,7 @@ import { useDexSWR } from '@/lib/api/use-dex-swr'
 export interface LatestDispenser {
   tx_hash: string
   asset: string
+  asset_longname: string | null
   source: string
   give_quantity: number
   escrow_quantity: number
@@ -23,6 +24,7 @@ export interface LatestDispense {
   source: string
   destination: string
   asset: string
+  asset_longname: string | null
   dispense_quantity: number
   btc_amount: number
   price: number

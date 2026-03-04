@@ -76,10 +76,11 @@ export async function handleDispensersLatest(
     }
   }
 
-  const columns = `d.tx_hash, d.asset, d.source, d.give_quantity, d.escrow_quantity,
+  const columns = `d.tx_hash, d.asset, ds_ln.asset_longname, d.source, d.give_quantity, d.escrow_quantity,
                       d.give_remaining, d.satoshi_price, d.price, d.dispense_count,
                       d.status, d.block_index, d.block_time`;
   const whereClause = conditions.length > 0 ? ` WHERE ${conditions.join(" AND ")}` : "";
+  const joinClause = ` LEFT JOIN dispenser_stats ds_ln ON d.asset = ds_ln.asset`;
 
   const sort = url.searchParams.get("sort");
   let orderClause = "ORDER BY d.block_index DESC";
@@ -89,7 +90,7 @@ export async function handleDispensersLatest(
   else if (sort === "time") orderClause = "ORDER BY d.block_index ASC";
   else if (sort === "time_desc") orderClause = "ORDER BY d.block_index DESC";
 
-  const dataQuery = `SELECT ${columns} FROM dispensers d${whereClause} ${orderClause} LIMIT ? OFFSET ?`;
+  const dataQuery = `SELECT ${columns} FROM dispensers d${joinClause}${whereClause} ${orderClause} LIMIT ? OFFSET ?`;
   const countQuery = `SELECT COUNT(*) as total FROM dispensers d${whereClause}`;
 
   const dataStmt = db.prepare(dataQuery).bind(...binds, limit, offset);
@@ -167,10 +168,11 @@ export async function handleDispensesLatest(
   }
 
   const columns = `e.tx_hash, e.dispense_index, e.dispenser_tx_hash,
-                      e.source, e.destination, e.asset,
+                      e.source, e.destination, e.asset, ds_ln.asset_longname,
                       e.dispense_quantity, e.btc_amount, e.price,
                       e.block_index, e.block_time`;
   const whereClause = conditions.length > 0 ? ` WHERE ${conditions.join(" AND ")}` : "";
+  const joinClause = ` LEFT JOIN dispenser_stats ds_ln ON e.asset = ds_ln.asset`;
 
   const sort = url.searchParams.get("sort");
   let orderClause = "ORDER BY e.block_index DESC";
@@ -179,7 +181,7 @@ export async function handleDispensesLatest(
   else if (sort === "time") orderClause = "ORDER BY e.block_index ASC";
   else if (sort === "time_desc") orderClause = "ORDER BY e.block_index DESC";
 
-  const dataQuery = `SELECT ${columns} FROM dispenses e${whereClause} ${orderClause} LIMIT ? OFFSET ?`;
+  const dataQuery = `SELECT ${columns} FROM dispenses e${joinClause}${whereClause} ${orderClause} LIMIT ? OFFSET ?`;
   const countQuery = `SELECT COUNT(*) as total FROM dispenses e${whereClause}`;
 
   const dataStmt = db.prepare(dataQuery).bind(...binds, limit, offset);
