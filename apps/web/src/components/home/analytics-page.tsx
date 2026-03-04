@@ -51,7 +51,7 @@ const COLLECTION_ICONS: Record<string, string> = {
   'fake-commons': 'NOTAFAKERARE',
   'fake-munchkin': 'PEPEAQUA',
   'fake-rare': 'FAKEASF',
-  'faux-bitcorn': 'KERNELISLAND',
+  'faux-bitcorn': 'BITCORNHOLIO',
   'faux-sogs': 'STSHRDX',
   'footballcoin': 'XFCPDANALVES',
   'force-of-will': 'FWCFCINVITAC',
