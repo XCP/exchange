@@ -87,6 +87,8 @@ const COLLECTION_ICONS: Record<string, string> = {
   'the-wojak-way': 'RAREWOJAK',
   'wojak-npc': 'A4003111400514243181',
   'xcpinata': 'CUPCAKE',
+  'jpja': 'OLGA',
+  'weird-n-wild': 'WOLVERINE',
 }
 
 const TF_OPTIONS = ['24h', '7d', '30d', 'all'] as const
