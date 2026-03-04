@@ -1,13 +1,15 @@
 'use client'
 
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
+import { detectProvider, XcpWallet, friendlyError } from './sdk'
 
-type WalletStatus = 'not_detected' | 'disconnected' | 'connected'
+type XcpWalletStatus = 'not_detected' | 'disconnected' | 'connected'
 
 interface WalletContextValue {
-  status: WalletStatus
+  status: XcpWalletStatus
   address: string | null
   connecting: boolean
+  connectError: string | null
   connect: () => Promise<void>
   disconnect: () => Promise<void>
   signMessage: (message: string) => Promise<string>
@@ -17,17 +19,6 @@ interface WalletContextValue {
 }
 
 const WalletContext = createContext<WalletContextValue | null>(null)
-
-// Augment window with xcpwallet provider
-declare global {
-  interface Window {
-    xcpwallet?: {
-      request: (args: { method: string; params?: unknown[] }) => Promise<any>
-      on: (event: string, handler: (...args: any[]) => void) => void
-      removeListener: (event: string, handler: (...args: any[]) => void) => void
-    }
-  }
-}
 
 const STORAGE_KEY = 'xcpdex-wallet'
 
@@ -42,94 +33,96 @@ function storageRemove(key: string) {
 }
 
 export function WalletProvider({ children }: { children: ReactNode }) {
-  const [status, setStatus] = useState<WalletStatus>('not_detected')
+  const [status, setStatus] = useState<XcpWalletStatus>('not_detected')
   const [address, setAddress] = useState<string | null>(null)
   const [connecting, setConnecting] = useState(false)
+  const [connectError, setConnectError] = useState<string | null>(null)
   const connectingRef = useRef(false)
+  const disconnectingRef = useRef(false)
+  const walletRef = useRef<XcpWallet | null>(null)
 
-  // Detect wallet and auto-reconnect
+  // Detect wallet, subscribe to events, and auto-reconnect
   useEffect(() => {
-    function onDetected() {
-      setStatus((s) => (s === 'not_detected' ? 'disconnected' : s))
-      // Auto-reconnect if previously connected
-      if (storageGet(STORAGE_KEY)) {
-        window.xcpwallet!
-          .request({ method: 'xcp_accounts' })
-          .then((accounts: string[]) => {
-            if (accounts.length > 0) {
-              setAddress(accounts[0])
-              setStatus('connected')
-            } else {
-              // Wallet may be locked — keep storage key so user can reconnect
-              setAddress(null)
-              setStatus('disconnected')
-            }
-          })
-          .catch(() => {
-            // Transient error — keep storage key for retry on next load
-            setAddress(null)
-            setStatus('disconnected')
-          })
-      }
-    }
-
-    if (window.xcpwallet) {
-      onDetected()
-    } else {
-      // Listen for extension injection — no timeout so late injection is caught
-      const handler = () => onDetected()
-      window.addEventListener('xcp-wallet#initialized', handler)
-      return () => {
-        window.removeEventListener('xcp-wallet#initialized', handler)
-      }
-    }
-  }, [])
-
-  // Listen for account changes / disconnects
-  useEffect(() => {
-    if (!window.xcpwallet) return
+    let cancelled = false
 
     const onAccountsChanged = (accounts: string[]) => {
+      if (cancelled) return
       if (accounts.length === 0) {
-        // Fired on lock OR disconnect — don't clear storage key here
-        // (the disconnect event handler below clears it for real disconnects)
-        setAddress(null)
+        setAddress((prev) => prev === null ? prev : null)
         setStatus('disconnected')
       } else {
-        setAddress(accounts[0])
+        setAddress((prev) => prev === accounts[0] ? prev : accounts[0])
         setStatus('connected')
+        setConnectError(null)
         storageSet(STORAGE_KEY, '1')
       }
     }
 
     const onDisconnect = () => {
-      // Explicit disconnect from extension — clear storage key
+      if (cancelled) return
       setAddress(null)
       setStatus('disconnected')
       storageRemove(STORAGE_KEY)
     }
 
-    window.xcpwallet.on('accountsChanged', onAccountsChanged)
-    window.xcpwallet.on('disconnect', onDisconnect)
+    detectProvider()
+      .then(async (provider) => {
+        if (cancelled) return
+        const wallet = new XcpWallet(provider)
+        walletRef.current = wallet
+
+        wallet.on('accountsChanged', onAccountsChanged)
+        wallet.on('disconnect', onDisconnect)
+
+        setStatus('disconnected')
+
+        // Auto-reconnect if previously connected
+        if (storageGet(STORAGE_KEY)) {
+          try {
+            const accounts = await wallet.getAccounts()
+            if (cancelled) return
+            if (accounts.length > 0) {
+              setAddress(accounts[0])
+              setStatus('connected')
+            }
+          } catch (e) {
+            console.warn('[wallet] auto-reconnect failed:', e)
+          }
+        }
+      })
+      .catch(() => {
+        // Wallet not detected — status stays 'not_detected'
+      })
+
     return () => {
-      window.xcpwallet?.removeListener('accountsChanged', onAccountsChanged)
-      window.xcpwallet?.removeListener('disconnect', onDisconnect)
+      cancelled = true
+      walletRef.current?.off('accountsChanged', onAccountsChanged)
+      walletRef.current?.off('disconnect', onDisconnect)
     }
   }, [])
 
   const connect = async () => {
-    if (!window.xcpwallet || connectingRef.current) return
+    if (connectingRef.current) return
+    const wallet = walletRef.current
+    if (!wallet) {
+      setConnectError('No XCP wallet extension detected — please install one')
+      return
+    }
     connectingRef.current = true
+    disconnectingRef.current = false
     setConnecting(true)
+    setConnectError(null)
     try {
-      const accounts: string[] = await window.xcpwallet.request({
-        method: 'xcp_requestAccounts',
-      })
+      const accounts = await wallet.connect()
+      // Abort if disconnect was called while we were waiting
+      if (disconnectingRef.current) return
       if (accounts.length > 0) {
         setAddress(accounts[0])
         setStatus('connected')
         storageSet(STORAGE_KEY, '1')
       }
+    } catch (e) {
+      setConnectError(friendlyError(e))
     } finally {
       connectingRef.current = false
       setConnecting(false)
@@ -137,63 +130,43 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   }
 
   const disconnect = async () => {
-    if (window.xcpwallet) {
+    disconnectingRef.current = true
+    const wallet = walletRef.current
+    if (wallet) {
       try {
-        await window.xcpwallet.request({ method: 'xcp_disconnect' })
-      } catch {}
+        await wallet.disconnect()
+      } catch (e) {
+        console.warn('[wallet] disconnect failed:', e)
+      }
     }
     setAddress(null)
     setStatus('disconnected')
+    setConnectError(null)
     storageRemove(STORAGE_KEY)
   }
 
-  const signMessage = async (message: string): Promise<string> => {
-    if (!window.xcpwallet) throw new Error('Wallet not available')
-    const result = await window.xcpwallet.request({
-      method: 'xcp_signMessage',
-      params: [message],
-    })
-    const signature = result && typeof result === 'object' && 'signature' in result
-      ? (result as { signature: string }).signature
-      : typeof result === 'string' ? result : undefined
-    if (!signature) throw new Error('Wallet returned invalid sign message response')
-    return signature
+  const signMessage = (message: string): Promise<string> => {
+    if (!walletRef.current) throw new Error('Wallet not available')
+    return walletRef.current.signMessage(message)
   }
 
-  const signTransaction = async (hex: string): Promise<string> => {
-    if (!window.xcpwallet) throw new Error('Wallet not available')
-    const result = await window.xcpwallet.request({
-      method: 'xcp_signTransaction',
-      params: [hex],
-    })
-    const signed = result && typeof result === 'object' && 'hex' in result ? (result as { hex: string }).hex : undefined
-    if (!signed) throw new Error('Wallet returned invalid sign response')
-    return signed
+  const signTransaction = (hex: string): Promise<string> => {
+    if (!walletRef.current) throw new Error('Wallet not available')
+    return walletRef.current.signTransaction(hex)
   }
 
-  const signPsbt = async (psbtHex: string, signInputs?: Record<string, number[]>, sighashTypes?: number[]): Promise<string> => {
-    if (!window.xcpwallet) throw new Error('Wallet not available')
-    const params: { hex: string; signInputs?: Record<string, number[]>; sighashTypes?: number[] } = { hex: psbtHex }
-    if (signInputs) params.signInputs = signInputs
-    if (sighashTypes) params.sighashTypes = sighashTypes
-    const result = await window.xcpwallet.request({
-      method: 'xcp_signPsbt',
-      params: [params],
-    })
-    const signed = result && typeof result === 'object' && 'hex' in result ? (result as { hex: string }).hex : undefined
-    if (!signed) throw new Error('Wallet returned invalid PSBT response')
-    return signed
+  const signPsbt = (
+    hex: string,
+    signInputs?: Record<string, number[]>,
+    sighashTypes?: number[],
+  ): Promise<string> => {
+    if (!walletRef.current) throw new Error('Wallet not available')
+    return walletRef.current.signPsbt(hex, signInputs, sighashTypes)
   }
 
-  const broadcastTransaction = async (hex: string): Promise<string> => {
-    if (!window.xcpwallet) throw new Error('Wallet not available')
-    const result = await window.xcpwallet.request({
-      method: 'xcp_broadcastTransaction',
-      params: [hex],
-    })
-    const txid = result && typeof result === 'object' && 'txid' in result ? (result as { txid: string }).txid : undefined
-    if (!txid) throw new Error('Wallet returned invalid broadcast response')
-    return txid
+  const broadcastTransaction = (hex: string): Promise<string> => {
+    if (!walletRef.current) throw new Error('Wallet not available')
+    return walletRef.current.broadcastTransaction(hex)
   }
 
   return (
@@ -201,6 +174,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       status,
       address,
       connecting,
+      connectError,
       connect,
       disconnect,
       signMessage,

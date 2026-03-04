@@ -5,6 +5,7 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { useSwapListing } from '@/lib/hooks/useSwapListing'
 import { useWallet } from '@/lib/wallet/wallet-context'
+import { friendlyError } from '@/lib/wallet/sdk'
 import { useSatsMode } from '@/lib/sats-context'
 import { formatAddress } from '@/utils/format-address'
 import { formatAmount } from '@/utils/format-amount'
@@ -70,12 +71,7 @@ export default function BuyPage({ params }: { params: Promise<{ id: string }> })
       setTxId(fillData.tx_id)
       setStatus('success')
     } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Unknown error'
-      if (msg.includes('User cancelled') || msg.includes('User denied') || msg.includes('User rejected')) {
-        setError('Transaction cancelled')
-      } else {
-        setError(msg)
-      }
+      setError(friendlyError(e))
       setStatus('error')
       setTimeout(() => setStatus('idle'), 3000)
     }

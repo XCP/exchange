@@ -4,6 +4,7 @@ import { Suspense, useState } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { useWallet } from '@/lib/wallet/wallet-context'
+import { friendlyError } from '@/lib/wallet/sdk'
 import { DEX_API_BASE } from '@/utils/constants'
 
 type SellStatus = 'idle' | 'preparing' | 'signing' | 'submitting' | 'success' | 'error'
@@ -116,12 +117,7 @@ function SellPageInner() {
 
       setStatus('success')
     } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Unknown error'
-      if (msg.includes('User cancelled') || msg.includes('User denied') || msg.includes('User rejected')) {
-        setError('Transaction cancelled')
-      } else {
-        setError(msg)
-      }
+      setError(friendlyError(e))
       setStatus('error')
       setTimeout(() => setStatus('idle'), 3000)
     }
