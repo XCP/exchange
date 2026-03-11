@@ -78,6 +78,18 @@ function DealRow({ deal }: { deal: DealEntry }) {
               <span className="text-[10px] text-zinc-500 bg-zinc-800/50 px-1 rounded-sm flex-shrink-0">
                 {deal.listing_type}
               </span>
+              {deal.supply != null && (
+                <span className="text-[10px] text-zinc-500 bg-zinc-800/50 px-1 rounded-sm flex-shrink-0">
+                  {deal.supply < 1000 ? deal.supply : `${(deal.supply / 1000).toFixed(1)}k`} supply
+                </span>
+              )}
+              {deal.locked != null && (
+                <span className={`text-[10px] px-1 rounded-sm flex-shrink-0 ${
+                  deal.locked ? 'bg-green-900/30 text-green-500' : 'bg-red-900/30 text-red-400'
+                }`}>
+                  {deal.locked ? 'locked' : 'unlocked'}
+                </span>
+              )}
             </div>
             {deal.collections.length > 0 && (
               <div className="flex gap-1 mt-0.5 flex-wrap">

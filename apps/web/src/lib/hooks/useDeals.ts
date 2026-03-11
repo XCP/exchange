@@ -45,6 +45,8 @@ export interface DealEntry {
   warning_flags: string[]
   median3: number | null
   total_trade_volume: number | null
+  supply: number | null
+  locked: boolean | null
 }
 
 interface DealsResponse {

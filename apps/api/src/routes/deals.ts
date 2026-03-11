@@ -34,6 +34,8 @@ interface DealRow {
   warning_flags_json: string | null;
   median3: number | null;
   total_trade_volume: number | null;
+  supply: number | null;
+  locked: number | null;
   updated_at: number | null;
 }
 
@@ -61,9 +63,11 @@ export async function handleDeals(
 
   const result = await db
     .prepare(
-      `SELECT * FROM deal_scores
-       WHERE fair_value IS NOT NULL AND fair_value > 0
-       ${quoteClause}
+      `SELECT ds.*, a.supply_normalized as supply, a.locked as locked
+       FROM deal_scores ds
+       LEFT JOIN assets a ON a.asset = ds.asset
+       WHERE ds.fair_value IS NOT NULL AND ds.fair_value > 0
+       ${quoteClause ? quoteClause.replace('quote', 'ds.quote') : ''}
        ORDER BY ${orderBy}
        LIMIT ?`,
     )
@@ -104,6 +108,8 @@ export async function handleDeals(
     warning_flags: r.warning_flags_json ? JSON.parse(r.warning_flags_json) : [],
     median3: r.median3,
     total_trade_volume: r.total_trade_volume,
+    supply: r.supply,
+    locked: r.locked != null ? r.locked === 1 : null,
   }));
 
   return Response.json(

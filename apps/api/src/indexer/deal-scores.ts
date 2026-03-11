@@ -15,7 +15,7 @@ const EXCLUDED_ASSETS_SQL = "'XCP','PEPECASH','BITCORN','BTC'";
 const SUPPORTED_QUOTES = new Set(["XCP", "PEPECASH", "BITCORN", "BTC"]);
 const BATCH_SIZE = 50;
 const MIN_TRADES_FOR_DEAL = 3;
-const MAX_SUPPLY = 10000;         // Only score collectibles (supply < 10k)
+const MAX_SUPPLY = 2000;          // Only score collectibles (supply < 2k)
 
 type ScoreConfidence = "HIGH" | "MEDIUM" | "LOW";
 
