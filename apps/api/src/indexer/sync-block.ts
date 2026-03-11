@@ -5,6 +5,7 @@ import { normalizeOrderMatch, normalizeOrder, normalizeDispenser, normalizeDispe
 import { aggregateCandlesForPair, bucketTimestamp } from "./aggregate";
 import { updatePairStats, updateOrderBookStats } from "./stats";
 import { updateDispenserStats } from "./dispenser-stats";
+import { scoreNewOrders, scoreNewDispensers, pruneClosedDeals } from "./deal-scores";
 import { getMode } from "./state";
 
 // Event types we care about for DEX indexing
@@ -759,6 +760,27 @@ export async function syncBlocks(
   // Update order book stats for pairs with changed orders
   if (result.orders_upserted > 0 || result.orders_closed > 0) {
     await updateOrderBookStats(db, now);
+  }
+
+  // Incremental deal scoring for affected orders/dispensers
+  if (affectedPairs.size > 0 || affectedDispenseAssets.size > 0) {
+    try {
+      const orderPairs = [...affectedPairs.keys()];
+      const dispAssets = [...affectedDispenseAssets.keys()];
+      const [orderDeals, dispDeals] = await Promise.all([
+        orderPairs.length > 0 ? scoreNewOrders(db, orderPairs) : 0,
+        dispAssets.length > 0 ? scoreNewDispensers(db, dispAssets) : 0,
+      ]);
+      // Prune closed listings
+      if (result.orders_closed > 0 || result.dispensers_updated > 0) {
+        await pruneClosedDeals(db);
+      }
+      if (orderDeals > 0 || dispDeals > 0) {
+        console.log(`[deal-scores] Scored ${orderDeals} orders + ${dispDeals} dispensers`);
+      }
+    } catch (e) {
+      console.error("[deal-scores] Incremental scoring failed:", e);
+    }
   }
 
   // Save run time

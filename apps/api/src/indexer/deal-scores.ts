@@ -10,8 +10,11 @@
  * Processes in batches of 50 to stay within D1 query budgets.
  */
 
+const EXCLUDED_ASSETS = new Set(["XCP", "PEPECASH", "BITCORN", "BTC"]);
 const EXCLUDED_ASSETS_SQL = "'XCP','PEPECASH','BITCORN','BTC'";
+const SUPPORTED_QUOTES = new Set(["XCP", "PEPECASH", "BITCORN", "BTC"]);
 const BATCH_SIZE = 50;
+const MIN_TRADES_FOR_DEAL = 3;
 
 interface OrderListingRow {
   tx_hash: string;
@@ -88,6 +91,368 @@ function median(arr: number[]): number | null {
     : (sorted[mid - 1] + sorted[mid]) / 2;
 }
 
+function computeScore(
+  avgDaysBetweenTrades: number,
+  lastTradeDaysAgo: number,
+  discountPct: number | null,
+  exitLiquidity: number, // bid_count * 5 + unique_buyers * 0.5
+): number {
+  let score = 0;
+  score += Math.min(30, (1 / Math.max(avgDaysBetweenTrades, 0.1)) * 10);
+  score += Math.max(0, 20 - lastTradeDaysAgo * 0.5);
+  if (discountPct !== null && discountPct > 0) {
+    score += Math.min(30, discountPct * 0.6);
+  }
+  score += Math.min(20, exitLiquidity);
+  return Math.round(score);
+}
+
+// ===== INCREMENTAL SCORING (called per-block during sync) =====
+
+/**
+ * Score new/changed orders from a single block.
+ * Called from syncBlocks() post-processing — only scores affected pairs.
+ */
+export async function scoreNewOrders(
+  db: D1Database,
+  affectedPairs: string[],
+): Promise<number> {
+  if (affectedPairs.length === 0) return 0;
+  const now = Math.floor(Date.now() / 1000);
+  let scored = 0;
+
+  for (const pair of affectedPairs) {
+    // Get pair stats
+    const ps = await db
+      .prepare(
+        `SELECT pair, base_asset, quote_asset, base_asset_longname,
+                last_price, last_trade_time, total_trade_count,
+                all_time_high, all_time_low, first_trade_time,
+                unique_traders, bid_count, hidden
+         FROM pair_stats WHERE pair = ?`,
+      )
+      .bind(pair)
+      .first<PairStatsRow & { hidden: number }>();
+
+    if (!ps || ps.hidden || ps.total_trade_count < MIN_TRADES_FOR_DEAL) continue;
+    if (EXCLUDED_ASSETS.has(ps.base_asset)) continue;
+    if (!SUPPORTED_QUOTES.has(ps.quote_asset)) continue;
+
+    // Only score assets in a collection
+    const inCollection = await db
+      .prepare(
+        `SELECT 1 FROM tag_assets ta
+         JOIN tags t ON t.id = ta.tag_id
+         WHERE ta.asset = ? AND t.tag_type = 'collection' LIMIT 1`,
+      )
+      .bind(ps.base_asset)
+      .first();
+    if (!inCollection) continue;
+
+    // Get recent trades for fair value
+    const trades = await db
+      .prepare(
+        `SELECT price, amount, block_time, side
+         FROM (
+           SELECT price, amount, block_time, side,
+                  ROW_NUMBER() OVER (ORDER BY block_time DESC) as rn
+           FROM trades WHERE pair = ?
+         ) WHERE rn <= 10`,
+      )
+      .bind(pair)
+      .all<{ price: number; amount: number; block_time: number; side: string }>();
+
+    const prices = trades.results.map((t) => t.price);
+    const medianPrice = median(prices);
+    if (!medianPrice || medianPrice <= 0) continue;
+
+    // Get ALL open sell orders for this pair
+    const orders = await db
+      .prepare(
+        `SELECT tx_hash, price, give_remaining, source
+         FROM orders
+         WHERE pair = ? AND status = 'open' AND side = 'ask' AND give_remaining > 0
+         ORDER BY price ASC`,
+      )
+      .bind(pair)
+      .all<{ tx_hash: string; price: number; give_remaining: number; source: string }>();
+
+    // Remove stale deal_scores for this pair's orders
+    await db
+      .prepare(
+        `DELETE FROM deal_scores
+         WHERE asset = ? AND quote = ? AND listing_type = 'order'`,
+      )
+      .bind(ps.base_asset, ps.quote_asset)
+      .run();
+
+    const avgPrice = prices.reduce((s, p) => s + p, 0) / prices.length;
+    const lastPrice = ps.last_price ?? trades.results[0]?.price ?? medianPrice;
+    const recentSales = trades.results.slice(0, 5).map((t) => ({
+      price: t.price, amount: t.amount, date: t.block_time, side: t.side,
+    }));
+
+    const firstTradeTs = ps.first_trade_time ?? now;
+    const daysSinceFirst = Math.max((now - firstTradeTs) / 86400, 1);
+    const avgDays = ps.total_trade_count > 1 ? daysSinceFirst / ps.total_trade_count : daysSinceFirst;
+    const lastDaysAgo = ps.last_trade_time ? (now - ps.last_trade_time) / 86400 : daysSinceFirst;
+    const requiredEdgePct = Math.min(10 + avgDays * 1, 50);
+
+    // Dispenser context
+    const dStats = await db
+      .prepare(
+        `SELECT active_dispensers, unique_buyers,
+                (SELECT MIN(d.price) FROM dispensers d
+                 WHERE d.asset = ? AND d.status < 10 AND d.price > 0 AND d.give_remaining > 0) AS cheapest_price
+         FROM dispenser_stats WHERE asset = ?`,
+      )
+      .bind(ps.base_asset, ps.base_asset)
+      .first<{ active_dispensers: number; unique_buyers: number; cheapest_price: number | null }>();
+
+    // Tags
+    const tags = await db
+      .prepare(
+        `SELECT t.slug, t.name FROM tag_assets ta
+         JOIN tags t ON t.id = ta.tag_id
+         WHERE ta.asset = ? AND t.tag_type = 'collection'`,
+      )
+      .bind(ps.base_asset)
+      .all<{ slug: string; name: string }>();
+    const collections = JSON.stringify(tags.results);
+
+    const upserts: D1PreparedStatement[] = [];
+
+    for (const order of orders.results) {
+      if (order.price >= medianPrice) continue;
+      const discountPct = Math.round(((medianPrice - order.price) / medianPrice) * 100);
+      if (discountPct <= 0) continue;
+
+      const score = computeScore(
+        avgDays, lastDaysAgo, discountPct,
+        ps.bid_count * 5 + (dStats?.unique_buyers ?? 0) * 0.5,
+      );
+
+      upserts.push(
+        db
+          .prepare(
+            `INSERT OR REPLACE INTO deal_scores (
+               listing_id, listing_type, asset, quote, asset_longname,
+               listing_price, listing_qty, listing_source,
+               fair_value, fair_value_method, discount_pct,
+               last_price, highest_price, lowest_price, average_price, median_price,
+               recent_sales_json,
+               total_trades, avg_days_between_trades, last_trade_days_ago,
+               unique_traders, active_buy_orders,
+               dispenser_cheapest_btc, dispenser_active, dispenser_unique_buyers,
+               score, required_edge_pct, collections_json, updated_at
+             ) VALUES (?,?,?,?,?, ?,?,?, ?,?,?, ?,?,?,?,?, ?, ?,?,?, ?,?, ?,?,?, ?,?,?,?)`,
+          )
+          .bind(
+            order.tx_hash, "order", ps.base_asset, ps.quote_asset, ps.base_asset_longname,
+            order.price, order.give_remaining, order.source,
+            medianPrice, `median_${prices.length}`, discountPct,
+            lastPrice, ps.all_time_high, ps.all_time_low,
+            Math.round(avgPrice * 1e8) / 1e8, medianPrice,
+            JSON.stringify(recentSales),
+            ps.total_trade_count, Math.round(avgDays * 10) / 10,
+            Math.round(lastDaysAgo * 10) / 10,
+            ps.unique_traders, ps.bid_count,
+            dStats?.cheapest_price ?? null, dStats?.active_dispensers ?? 0, dStats?.unique_buyers ?? 0,
+            score, Math.round(requiredEdgePct), collections, now,
+          ),
+      );
+      scored++;
+    }
+
+    if (upserts.length > 0) {
+      await db.batch(upserts);
+    }
+  }
+
+  return scored;
+}
+
+/**
+ * Score new/changed dispensers from a single block.
+ * Called from syncBlocks() post-processing — only scores affected assets.
+ */
+export async function scoreNewDispensers(
+  db: D1Database,
+  affectedAssets: string[],
+): Promise<number> {
+  if (affectedAssets.length === 0) return 0;
+  const now = Math.floor(Date.now() / 1000);
+  let scored = 0;
+
+  for (const asset of affectedAssets) {
+    if (EXCLUDED_ASSETS.has(asset)) continue;
+
+    // Only score assets in a collection
+    const inCollection = await db
+      .prepare(
+        `SELECT 1 FROM tag_assets ta
+         JOIN tags t ON t.id = ta.tag_id
+         WHERE ta.asset = ? AND t.tag_type = 'collection' LIMIT 1`,
+      )
+      .bind(asset)
+      .first();
+    if (!inCollection) continue;
+
+    // Get dispenser stats
+    const stats = await db
+      .prepare(
+        `SELECT asset, asset_longname, active_dispensers, unique_buyers,
+                total_dispense_count, first_dispense_time, last_dispense_time, hidden
+         FROM dispenser_stats WHERE asset = ?`,
+      )
+      .bind(asset)
+      .first<DispStatsRow & { hidden: number }>();
+
+    if (!stats || stats.hidden || stats.total_dispense_count < MIN_TRADES_FOR_DEAL) continue;
+
+    // Get recent dispenses for fair value
+    const dispenses = await db
+      .prepare(
+        `SELECT price, dispense_quantity, block_time
+         FROM (
+           SELECT price, dispense_quantity, block_time,
+                  ROW_NUMBER() OVER (ORDER BY block_time DESC) as rn
+           FROM dispenses WHERE asset = ?
+         ) WHERE rn <= 10`,
+      )
+      .bind(asset)
+      .all<{ price: number; dispense_quantity: number; block_time: number }>();
+
+    const prices = dispenses.results.map((d) => d.price);
+    const medianPrice = median(prices);
+    if (!medianPrice || medianPrice <= 0) continue;
+
+    // Get ALL active dispensers for this asset
+    const activeDisps = await db
+      .prepare(
+        `SELECT tx_hash, price, give_remaining, source
+         FROM dispensers
+         WHERE asset = ? AND status < 10 AND price > 0 AND give_remaining > 0
+           AND oracle_address IS NULL
+         ORDER BY price ASC`,
+      )
+      .bind(asset)
+      .all<{ tx_hash: string; price: number; give_remaining: number; source: string }>();
+
+    // Remove stale deal_scores for this asset's dispensers
+    await db
+      .prepare(
+        `DELETE FROM deal_scores
+         WHERE asset = ? AND quote = 'BTC' AND listing_type = 'dispenser'`,
+      )
+      .bind(asset)
+      .run();
+
+    const avgPrice = prices.reduce((s, p) => s + p, 0) / prices.length;
+    const lastPrice = dispenses.results[0]?.price ?? medianPrice;
+    const recentSales = dispenses.results.slice(0, 5).map((d) => ({
+      price: d.price, amount: d.dispense_quantity, date: d.block_time, side: "dispense",
+    }));
+
+    const firstDispTs = stats.first_dispense_time ?? now;
+    const daysSinceFirst = Math.max((now - firstDispTs) / 86400, 1);
+    const avgDays = stats.total_dispense_count > 1
+      ? daysSinceFirst / stats.total_dispense_count
+      : daysSinceFirst;
+    const lastDaysAgo = stats.last_dispense_time
+      ? (now - stats.last_dispense_time) / 86400
+      : daysSinceFirst;
+    const requiredEdgePct = Math.min(10 + avgDays * 1, 50);
+
+    // Tags
+    const tags = await db
+      .prepare(
+        `SELECT t.slug, t.name FROM tag_assets ta
+         JOIN tags t ON t.id = ta.tag_id
+         WHERE ta.asset = ? AND t.tag_type = 'collection'`,
+      )
+      .bind(asset)
+      .all<{ slug: string; name: string }>();
+    const collections = JSON.stringify(tags.results);
+
+    const upserts: D1PreparedStatement[] = [];
+
+    for (const disp of activeDisps.results) {
+      if (disp.price >= medianPrice) continue;
+      const discountPct = Math.round(((medianPrice - disp.price) / medianPrice) * 100);
+      if (discountPct <= 0) continue;
+
+      const score = computeScore(avgDays, lastDaysAgo, discountPct, stats.unique_buyers * 0.5);
+
+      upserts.push(
+        db
+          .prepare(
+            `INSERT OR REPLACE INTO deal_scores (
+               listing_id, listing_type, asset, quote, asset_longname,
+               listing_price, listing_qty, listing_source,
+               fair_value, fair_value_method, discount_pct,
+               last_price, highest_price, lowest_price, average_price, median_price,
+               recent_sales_json,
+               total_trades, avg_days_between_trades, last_trade_days_ago,
+               unique_traders, active_buy_orders,
+               dispenser_cheapest_btc, dispenser_active, dispenser_unique_buyers,
+               score, required_edge_pct, collections_json, updated_at
+             ) VALUES (?,?,?,?,?, ?,?,?, ?,?,?, ?,?,?,?,?, ?, ?,?,?, ?,?, ?,?,?, ?,?,?,?)`,
+          )
+          .bind(
+            disp.tx_hash, "dispenser", asset, "BTC", stats.asset_longname,
+            disp.price, disp.give_remaining, disp.source,
+            medianPrice, `median_disp_${prices.length}`, discountPct,
+            lastPrice, null, null,
+            Math.round(avgPrice * 1e8) / 1e8, medianPrice,
+            JSON.stringify(recentSales),
+            stats.total_dispense_count, Math.round(avgDays * 10) / 10,
+            Math.round(lastDaysAgo * 10) / 10,
+            stats.unique_buyers, 0,
+            disp.price, stats.active_dispensers, stats.unique_buyers,
+            score, Math.round(requiredEdgePct), collections, now,
+          ),
+      );
+      scored++;
+    }
+
+    if (upserts.length > 0) {
+      await db.batch(upserts);
+    }
+  }
+
+  return scored;
+}
+
+/**
+ * Remove deal_scores for orders that were closed/cancelled/expired.
+ */
+export async function pruneClosedDeals(
+  db: D1Database,
+): Promise<void> {
+  // Remove order deals where the order is no longer open
+  await db
+    .prepare(
+      `DELETE FROM deal_scores
+       WHERE listing_type = 'order'
+         AND listing_id NOT IN (
+           SELECT tx_hash FROM orders WHERE status = 'open' AND give_remaining > 0
+         )`,
+    )
+    .run();
+
+  // Remove dispenser deals where the dispenser is no longer active
+  await db
+    .prepare(
+      `DELETE FROM deal_scores
+       WHERE listing_type = 'dispenser'
+         AND listing_id NOT IN (
+           SELECT tx_hash FROM dispensers WHERE status < 10 AND give_remaining > 0
+         )`,
+    )
+    .run();
+}
+
 export async function refreshDealScores(db: D1Database): Promise<{ processed: number }> {
   const now = Math.floor(Date.now() / 1000);
 
@@ -137,9 +502,10 @@ async function processOrderDeals(
          AND o.side = 'ask'
          AND o.give_remaining > 0
          AND o.base_asset NOT IN (${EXCLUDED_ASSETS_SQL})
-         AND o.quote_asset IN ('XCP', 'PEPECASH', 'BITCORN')
+         AND o.quote_asset IN ('XCP', 'PEPECASH', 'BITCORN', 'BTC')
          AND ps.hidden = 0
-         AND ps.total_trade_count >= 3
+         AND ps.total_trade_count >= ${MIN_TRADES_FOR_DEAL}
+         AND o.base_asset IN (SELECT ta.asset FROM tag_assets ta JOIN tags t ON t.id = ta.tag_id WHERE t.tag_type = 'collection')
        ORDER BY o.price ASC
        LIMIT 1000`,
     )
@@ -335,7 +701,8 @@ async function processDispenserDeals(
          AND d.oracle_address IS NULL
          AND d.asset NOT IN (${EXCLUDED_ASSETS_SQL})
          AND ds.hidden = 0
-         AND ds.total_dispense_count >= 3
+         AND ds.total_dispense_count >= ${MIN_TRADES_FOR_DEAL}
+         AND d.asset IN (SELECT ta.asset FROM tag_assets ta JOIN tags t ON t.id = ta.tag_id WHERE t.tag_type = 'collection')
        ORDER BY d.price ASC
        LIMIT 2000`,
     )
