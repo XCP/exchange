@@ -1,13 +1,11 @@
 /**
  * Populates the deal_scores table with pre-computed flip opportunity scores.
- * Called periodically (every 6 hours alongside pair_stats refresh).
+ * Each deal IS a buyable listing (open sell order or active dispenser).
+ * Multiple deals per asset possible — one per listing.
  *
- * Strategy:
- * 1. Read all candidate pairs from pair_stats (XCP/PEPECASH quoted, 5+ trades, not hidden)
- * 2. For each candidate, compute fair value from last 10 trades (median)
- * 3. Find cheapest open listing (order or dispenser)
- * 4. Score based on trade frequency, recency, discount, exit liquidity
- * 5. UPSERT into deal_scores table
+ * Two passes:
+ * A) Open sell orders quoted in XCP/PEPECASH/BITCORN with 3+ trades on the pair
+ * B) Active dispensers (BTC-priced) with 3+ dispenses on the asset
  *
  * Processes in batches of 50 to stay within D1 query budgets.
  */
@@ -15,7 +13,17 @@
 const EXCLUDED_ASSETS_SQL = "'XCP','PEPECASH','BITCORN','BTC'";
 const BATCH_SIZE = 50;
 
-interface CandidateRow {
+interface OrderListingRow {
+  tx_hash: string;
+  base_asset: string;
+  quote_asset: string;
+  source: string;
+  price: number;
+  give_remaining: number;
+  pair: string;
+}
+
+interface PairStatsRow {
   pair: string;
   base_asset: string;
   quote_asset: string;
@@ -39,17 +47,12 @@ interface TradeRow {
   side: string;
 }
 
-interface OrderRow {
-  base_asset: string;
-  quote_asset: string;
+interface DispenserListingRow {
+  tx_hash: string;
+  asset: string;
+  source: string;
   price: number;
   give_remaining: number;
-}
-
-interface TagRow {
-  asset: string;
-  slug: string;
-  name: string;
 }
 
 interface DispStatsRow {
@@ -57,7 +60,23 @@ interface DispStatsRow {
   last_dispense_price: number | null;
   active_dispensers: number;
   unique_buyers: number;
-  cheapest_price: number | null;
+  total_dispense_count: number;
+  first_dispense_time: number | null;
+  last_dispense_time: number | null;
+  asset_longname: string | null;
+}
+
+interface DispenseRow {
+  asset: string;
+  price: number;
+  dispense_quantity: number;
+  block_time: number;
+}
+
+interface TagRow {
+  asset: string;
+  slug: string;
+  name: string;
 }
 
 function median(arr: number[]): number | null {
@@ -72,25 +91,8 @@ function median(arr: number[]): number | null {
 export async function refreshDealScores(db: D1Database): Promise<{ processed: number }> {
   const now = Math.floor(Date.now() / 1000);
 
-  // Step 1: Get all candidate pairs
-  const allCandidates = await db
-    .prepare(
-      `SELECT pair, base_asset, quote_asset, base_asset_longname,
-              last_price, last_trade_time, total_trade_count,
-              all_time_high, all_time_low, first_trade_time,
-              unique_traders, bid_count
-       FROM pair_stats
-       WHERE hidden = 0
-         AND total_trade_count >= 5
-         AND base_asset NOT IN (${EXCLUDED_ASSETS_SQL})
-         AND quote_asset IN ('XCP', 'PEPECASH')
-       ORDER BY total_trade_count DESC
-       LIMIT 500`,
-    )
-    .all<CandidateRow>();
-
-  const candidates = allCandidates.results;
-  if (candidates.length === 0) return { processed: 0 };
+  // Clear old data (full replace each refresh)
+  await db.prepare(`DELETE FROM deal_scores`).run();
 
   // Get all tags once (small table)
   const allTags = await db
@@ -109,32 +111,72 @@ export async function refreshDealScores(db: D1Database): Promise<{ processed: nu
     tagsByAsset.set(t.asset, arr);
   }
 
-  // Get dispenser stats once (small table)
-  const allDispStats = await db
-    .prepare(
-      `SELECT ds.asset, ds.last_dispense_price, ds.active_dispensers, ds.unique_buyers,
-              (SELECT MIN(d.price) FROM dispensers d
-               WHERE d.asset = ds.asset AND d.status < 10 AND d.price > 0 AND d.give_remaining > 0) AS cheapest_price
-       FROM dispenser_stats ds`,
-    )
-    .all<DispStatsRow>();
-
-  const dispByAsset = new Map<string, DispStatsRow>();
-  for (const d of allDispStats.results) {
-    dispByAsset.set(d.asset, d);
-  }
-
-  // Process in batches
   let totalProcessed = 0;
 
-  for (let offset = 0; offset < candidates.length; offset += BATCH_SIZE) {
-    const batch = candidates.slice(offset, offset + BATCH_SIZE);
-    const pairs = batch.map((c) => c.pair);
-    const n = pairs.length;
-    const ph = pairs.map((_, i) => `?${i + 1}`).join(",");
+  // ===== Pass A: Open sell orders (XCP/PEPECASH/BITCORN quoted) =====
+  totalProcessed += await processOrderDeals(db, now, tagsByAsset);
 
-    // Get recent trades for this batch (last 10 per pair)
-    const tradesResult = await db
+  // ===== Pass B: Active dispensers (BTC quoted) =====
+  totalProcessed += await processDispenserDeals(db, now, tagsByAsset);
+
+  return { processed: totalProcessed };
+}
+
+async function processOrderDeals(
+  db: D1Database,
+  now: number,
+  tagsByAsset: Map<string, { slug: string; name: string }[]>,
+): Promise<number> {
+  // Get all open sell orders for non-excluded assets in supported quotes
+  const allOrders = await db
+    .prepare(
+      `SELECT o.tx_hash, o.base_asset, o.quote_asset, o.source, o.price, o.give_remaining, o.pair
+       FROM orders o
+       JOIN pair_stats ps ON ps.pair = o.pair
+       WHERE o.status = 'open'
+         AND o.side = 'ask'
+         AND o.give_remaining > 0
+         AND o.base_asset NOT IN (${EXCLUDED_ASSETS_SQL})
+         AND o.quote_asset IN ('XCP', 'PEPECASH', 'BITCORN')
+         AND ps.hidden = 0
+         AND ps.total_trade_count >= 3
+       ORDER BY o.price ASC
+       LIMIT 1000`,
+    )
+    .all<OrderListingRow>();
+
+  const orders = allOrders.results;
+  if (orders.length === 0) return 0;
+
+  // Get pair stats for all relevant pairs
+  const uniquePairs = [...new Set(orders.map((o) => o.pair))];
+  const pairStatsMap = new Map<string, PairStatsRow>();
+
+  for (let i = 0; i < uniquePairs.length; i += BATCH_SIZE) {
+    const batch = uniquePairs.slice(i, i + BATCH_SIZE);
+    const ph = batch.map((_, j) => `?${j + 1}`).join(",");
+    const result = await db
+      .prepare(
+        `SELECT pair, base_asset, quote_asset, base_asset_longname,
+                last_price, last_trade_time, total_trade_count,
+                all_time_high, all_time_low, first_trade_time,
+                unique_traders, bid_count
+         FROM pair_stats
+         WHERE pair IN (${ph})`,
+      )
+      .bind(...batch)
+      .all<PairStatsRow>();
+    for (const ps of result.results) {
+      pairStatsMap.set(ps.pair, ps);
+    }
+  }
+
+  // Get recent trades for all relevant pairs (last 10 per pair)
+  const tradesByPair = new Map<string, TradeRow[]>();
+  for (let i = 0; i < uniquePairs.length; i += BATCH_SIZE) {
+    const batch = uniquePairs.slice(i, i + BATCH_SIZE);
+    const ph = batch.map((_, j) => `?${j + 1}`).join(",");
+    const result = await db
       .prepare(
         `SELECT base_asset, quote_asset, price, amount, block_time, side
          FROM (
@@ -145,167 +187,303 @@ export async function refreshDealScores(db: D1Database): Promise<{ processed: nu
          )
          WHERE rn <= 10`,
       )
-      .bind(...pairs)
+      .bind(...batch)
       .all<TradeRow>();
-
-    // Get cheapest open sell orders for this batch
-    const ordersResult = await db
-      .prepare(
-        `SELECT base_asset, quote_asset, price, give_remaining
-         FROM (
-           SELECT base_asset, quote_asset, price, give_remaining,
-                  ROW_NUMBER() OVER (PARTITION BY pair ORDER BY price ASC) as rn
-           FROM orders
-           WHERE pair IN (${ph})
-             AND status = 'open'
-             AND side = 'ask'
-             AND give_remaining > 0
-         )
-         WHERE rn = 1`,
-      )
-      .bind(...pairs)
-      .all<OrderRow>();
-
-    // Group trades by pair
-    const tradesByPair = new Map<string, TradeRow[]>();
-    for (const t of tradesResult.results) {
+    for (const t of result.results) {
       const key = `${t.base_asset}_${t.quote_asset}`;
       const arr = tradesByPair.get(key) ?? [];
       arr.push(t);
       tradesByPair.set(key, arr);
     }
+  }
 
-    // Cheapest order by pair
-    const cheapOrderByPair = new Map<string, OrderRow>();
-    for (const o of ordersResult.results) {
-      const key = `${o.base_asset}_${o.quote_asset}`;
-      if (!cheapOrderByPair.has(key)) cheapOrderByPair.set(key, o);
-    }
-
-    // Compute scores and build upsert statements
-    const upserts: D1PreparedStatement[] = [];
-
-    for (const c of batch) {
-      const pairKey = `${c.base_asset}_${c.quote_asset}`;
-      const trades = tradesByPair.get(pairKey) ?? [];
-      if (trades.length === 0) continue;
-
-      const prices = trades.map((t) => t.price);
-      const medianPrice = median(prices);
-      if (medianPrice === null || medianPrice <= 0) continue;
-
-      const avgPrice = prices.reduce((s, p) => s + p, 0) / prices.length;
-      const lastPrice = c.last_price ?? trades[0].price;
-
-      const recentSales = trades.slice(0, 5).map((t) => ({
-        price: t.price,
-        amount: t.amount,
-        date: t.block_time,
-        side: t.side,
-      }));
-
-      const firstTradeTs = c.first_trade_time ?? now;
-      const daysSinceFirst = Math.max((now - firstTradeTs) / 86400, 1);
-      const avgDaysBetweenTrades =
-        c.total_trade_count > 1 ? daysSinceFirst / c.total_trade_count : daysSinceFirst;
-      const lastTradeDaysAgo = c.last_trade_time
-        ? (now - c.last_trade_time) / 86400
-        : daysSinceFirst;
-
-      const requiredEdgePct = Math.min(10 + avgDaysBetweenTrades * 1, 50);
-
-      const cheapOrder = cheapOrderByPair.get(pairKey);
-      let cheapestPrice: number | null = null;
-      let cheapestType: string | null = null;
-      let cheapestQty: number | null = null;
-      if (cheapOrder) {
-        cheapestPrice = cheapOrder.price;
-        cheapestType = "order";
-        cheapestQty = cheapOrder.give_remaining;
-      }
-
-      let discountPct: number | null = null;
-      if (cheapestPrice !== null && medianPrice > 0) {
-        discountPct = Math.round(((medianPrice - cheapestPrice) / medianPrice) * 100);
-      }
-
-      const dStats = dispByAsset.get(c.base_asset);
-
-      // Score
-      let score = 0;
-      score += Math.min(30, (1 / Math.max(avgDaysBetweenTrades, 0.1)) * 10);
-      score += Math.max(0, 20 - lastTradeDaysAgo * 0.5);
-      if (discountPct !== null && discountPct > 0) {
-        score += Math.min(30, discountPct * 0.6);
-      }
-      score += Math.min(20, c.bid_count * 5 + (dStats?.unique_buyers ?? 0) * 0.5);
-      score = Math.round(score);
-
-      const collections = tagsByAsset.get(c.base_asset) ?? [];
-
-      upserts.push(
-        db
-          .prepare(
-            `INSERT INTO deal_scores (
-               asset, quote, asset_longname,
-               fair_value, fair_value_method, last_price, highest_price, lowest_price,
-               average_price, median_price, recent_sales_json,
-               cheapest_listing_price, cheapest_listing_type, cheapest_listing_qty, discount_pct,
-               dispenser_cheapest_btc, dispenser_last_price_btc, dispenser_active, dispenser_unique_buyers,
-               total_trades, avg_days_between_trades, last_trade_days_ago,
-               active_buy_orders, unique_traders,
-               score, required_edge_pct, collections_json, updated_at
-             ) VALUES (?,?,?, ?,?,?,?,?, ?,?,?, ?,?,?,?, ?,?,?,?, ?,?,?, ?,?, ?,?,?,?)
-             ON CONFLICT (asset, quote) DO UPDATE SET
-               asset_longname = excluded.asset_longname,
-               fair_value = excluded.fair_value,
-               fair_value_method = excluded.fair_value_method,
-               last_price = excluded.last_price,
-               highest_price = excluded.highest_price,
-               lowest_price = excluded.lowest_price,
-               average_price = excluded.average_price,
-               median_price = excluded.median_price,
-               recent_sales_json = excluded.recent_sales_json,
-               cheapest_listing_price = excluded.cheapest_listing_price,
-               cheapest_listing_type = excluded.cheapest_listing_type,
-               cheapest_listing_qty = excluded.cheapest_listing_qty,
-               discount_pct = excluded.discount_pct,
-               dispenser_cheapest_btc = excluded.dispenser_cheapest_btc,
-               dispenser_last_price_btc = excluded.dispenser_last_price_btc,
-               dispenser_active = excluded.dispenser_active,
-               dispenser_unique_buyers = excluded.dispenser_unique_buyers,
-               total_trades = excluded.total_trades,
-               avg_days_between_trades = excluded.avg_days_between_trades,
-               last_trade_days_ago = excluded.last_trade_days_ago,
-               active_buy_orders = excluded.active_buy_orders,
-               unique_traders = excluded.unique_traders,
-               score = excluded.score,
-               required_edge_pct = excluded.required_edge_pct,
-               collections_json = excluded.collections_json,
-               updated_at = excluded.updated_at`,
-          )
-          .bind(
-            c.base_asset, c.quote_asset, c.base_asset_longname,
-            medianPrice, `median_${prices.length}`, lastPrice, c.all_time_high, c.all_time_low,
-            Math.round(avgPrice * 1e8) / 1e8, medianPrice, JSON.stringify(recentSales),
-            cheapestPrice, cheapestType, cheapestQty, discountPct,
-            dStats?.cheapest_price ?? null, dStats?.last_dispense_price ?? null,
-            dStats?.active_dispensers ?? 0, dStats?.unique_buyers ?? 0,
-            c.total_trade_count, Math.round(avgDaysBetweenTrades * 10) / 10,
-            Math.round(lastTradeDaysAgo * 10) / 10,
-            c.bid_count, c.unique_traders,
-            score, Math.round(requiredEdgePct), JSON.stringify(collections), now,
-          ),
-      );
-
-      totalProcessed++;
-    }
-
-    // Execute upserts in batch
-    if (upserts.length > 0) {
-      await db.batch(upserts);
+  // Get dispenser stats for context
+  const uniqueAssets = [...new Set(orders.map((o) => o.base_asset))];
+  const dispByAsset = new Map<string, { cheapest_price: number | null; active_dispensers: number; unique_buyers: number }>();
+  for (let i = 0; i < uniqueAssets.length; i += BATCH_SIZE) {
+    const batch = uniqueAssets.slice(i, i + BATCH_SIZE);
+    const ph = batch.map((_, j) => `?${j + 1}`).join(",");
+    const result = await db
+      .prepare(
+        `SELECT ds.asset, ds.active_dispensers, ds.unique_buyers,
+                (SELECT MIN(d.price) FROM dispensers d
+                 WHERE d.asset = ds.asset AND d.status < 10 AND d.price > 0 AND d.give_remaining > 0) AS cheapest_price
+         FROM dispenser_stats ds
+         WHERE ds.asset IN (${ph})`,
+      )
+      .bind(...batch)
+      .all<{ asset: string; active_dispensers: number; unique_buyers: number; cheapest_price: number | null }>();
+    for (const d of result.results) {
+      dispByAsset.set(d.asset, d);
     }
   }
 
-  return { processed: totalProcessed };
+  // Score each order listing
+  let processed = 0;
+  const upserts: D1PreparedStatement[] = [];
+
+  for (const order of orders) {
+    const ps = pairStatsMap.get(order.pair);
+    if (!ps) continue;
+
+    const pairKey = `${order.base_asset}_${order.quote_asset}`;
+    const trades = tradesByPair.get(pairKey) ?? [];
+    if (trades.length === 0) continue;
+
+    const prices = trades.map((t) => t.price);
+    const medianPrice = median(prices);
+    if (medianPrice === null || medianPrice <= 0) continue;
+
+    // Only care about listings below fair value
+    if (order.price >= medianPrice) continue;
+
+    const discountPct = Math.round(((medianPrice - order.price) / medianPrice) * 100);
+    if (discountPct <= 0) continue;
+
+    const avgPrice = prices.reduce((s, p) => s + p, 0) / prices.length;
+    const lastPrice = ps.last_price ?? trades[0].price;
+
+    const recentSales = trades.slice(0, 5).map((t) => ({
+      price: t.price,
+      amount: t.amount,
+      date: t.block_time,
+      side: t.side,
+    }));
+
+    const firstTradeTs = ps.first_trade_time ?? now;
+    const daysSinceFirst = Math.max((now - firstTradeTs) / 86400, 1);
+    const avgDaysBetweenTrades =
+      ps.total_trade_count > 1 ? daysSinceFirst / ps.total_trade_count : daysSinceFirst;
+    const lastTradeDaysAgo = ps.last_trade_time
+      ? (now - ps.last_trade_time) / 86400
+      : daysSinceFirst;
+
+    const requiredEdgePct = Math.min(10 + avgDaysBetweenTrades * 1, 50);
+
+    const dStats = dispByAsset.get(order.base_asset);
+
+    // Score
+    let score = 0;
+    score += Math.min(30, (1 / Math.max(avgDaysBetweenTrades, 0.1)) * 10);
+    score += Math.max(0, 20 - lastTradeDaysAgo * 0.5);
+    score += Math.min(30, discountPct * 0.6);
+    score += Math.min(20, ps.bid_count * 5 + (dStats?.unique_buyers ?? 0) * 0.5);
+    score = Math.round(score);
+
+    const collections = tagsByAsset.get(order.base_asset) ?? [];
+
+    upserts.push(
+      db
+        .prepare(
+          `INSERT INTO deal_scores (
+             listing_id, listing_type, asset, quote, asset_longname,
+             listing_price, listing_qty, listing_source,
+             fair_value, fair_value_method, discount_pct,
+             last_price, highest_price, lowest_price, average_price, median_price,
+             recent_sales_json,
+             total_trades, avg_days_between_trades, last_trade_days_ago,
+             unique_traders, active_buy_orders,
+             dispenser_cheapest_btc, dispenser_active, dispenser_unique_buyers,
+             score, required_edge_pct, collections_json, updated_at
+           ) VALUES (?,?,?,?,?, ?,?,?, ?,?,?, ?,?,?,?,?, ?, ?,?,?, ?,?, ?,?,?, ?,?,?,?)`,
+        )
+        .bind(
+          order.tx_hash, "order", order.base_asset, order.quote_asset, ps.base_asset_longname,
+          order.price, order.give_remaining, order.source,
+          medianPrice, `median_${prices.length}`, discountPct,
+          lastPrice, ps.all_time_high, ps.all_time_low,
+          Math.round(avgPrice * 1e8) / 1e8, medianPrice,
+          JSON.stringify(recentSales),
+          ps.total_trade_count, Math.round(avgDaysBetweenTrades * 10) / 10,
+          Math.round(lastTradeDaysAgo * 10) / 10,
+          ps.unique_traders, ps.bid_count,
+          dStats?.cheapest_price ?? null, dStats?.active_dispensers ?? 0, dStats?.unique_buyers ?? 0,
+          score, Math.round(requiredEdgePct), JSON.stringify(collections), now,
+        ),
+    );
+
+    processed++;
+
+    // Flush batch
+    if (upserts.length >= BATCH_SIZE) {
+      await db.batch(upserts);
+      upserts.length = 0;
+    }
+  }
+
+  if (upserts.length > 0) {
+    await db.batch(upserts);
+  }
+
+  return processed;
+}
+
+async function processDispenserDeals(
+  db: D1Database,
+  now: number,
+  tagsByAsset: Map<string, { slug: string; name: string }[]>,
+): Promise<number> {
+  // Get all active dispensers with dispense history (non-oracle, with remaining qty)
+  const allDispensers = await db
+    .prepare(
+      `SELECT d.tx_hash, d.asset, d.source, d.price, d.give_remaining
+       FROM dispensers d
+       JOIN dispenser_stats ds ON ds.asset = d.asset
+       WHERE d.status < 10
+         AND d.price > 0
+         AND d.give_remaining > 0
+         AND d.oracle_address IS NULL
+         AND d.asset NOT IN (${EXCLUDED_ASSETS_SQL})
+         AND ds.hidden = 0
+         AND ds.total_dispense_count >= 3
+       ORDER BY d.price ASC
+       LIMIT 2000`,
+    )
+    .all<DispenserListingRow>();
+
+  const dispensers = allDispensers.results;
+  if (dispensers.length === 0) return 0;
+
+  // Get dispenser stats for all relevant assets
+  const uniqueAssets = [...new Set(dispensers.map((d) => d.asset))];
+  const statsMap = new Map<string, DispStatsRow>();
+
+  for (let i = 0; i < uniqueAssets.length; i += BATCH_SIZE) {
+    const batch = uniqueAssets.slice(i, i + BATCH_SIZE);
+    const ph = batch.map((_, j) => `?${j + 1}`).join(",");
+    const result = await db
+      .prepare(
+        `SELECT asset, last_dispense_price, active_dispensers, unique_buyers,
+                total_dispense_count, first_dispense_time, last_dispense_time, asset_longname
+         FROM dispenser_stats
+         WHERE asset IN (${ph})`,
+      )
+      .bind(...batch)
+      .all<DispStatsRow>();
+    for (const s of result.results) {
+      statsMap.set(s.asset, s);
+    }
+  }
+
+  // Get recent dispenses for all relevant assets (last 10 per asset)
+  const dispensesByAsset = new Map<string, DispenseRow[]>();
+  for (let i = 0; i < uniqueAssets.length; i += BATCH_SIZE) {
+    const batch = uniqueAssets.slice(i, i + BATCH_SIZE);
+    const ph = batch.map((_, j) => `?${j + 1}`).join(",");
+    const result = await db
+      .prepare(
+        `SELECT asset, price, dispense_quantity, block_time
+         FROM (
+           SELECT asset, price, dispense_quantity, block_time,
+                  ROW_NUMBER() OVER (PARTITION BY asset ORDER BY block_time DESC) as rn
+           FROM dispenses
+           WHERE asset IN (${ph})
+         )
+         WHERE rn <= 10`,
+      )
+      .bind(...batch)
+      .all<DispenseRow>();
+    for (const d of result.results) {
+      const arr = dispensesByAsset.get(d.asset) ?? [];
+      arr.push(d);
+      dispensesByAsset.set(d.asset, arr);
+    }
+  }
+
+  // Score each dispenser listing
+  let processed = 0;
+  const upserts: D1PreparedStatement[] = [];
+
+  for (const disp of dispensers) {
+    const stats = statsMap.get(disp.asset);
+    if (!stats) continue;
+
+    const dispenses = dispensesByAsset.get(disp.asset) ?? [];
+    if (dispenses.length === 0) continue;
+
+    const prices = dispenses.map((d) => d.price);
+    const medianPrice = median(prices);
+    if (medianPrice === null || medianPrice <= 0) continue;
+
+    // Only care about dispensers priced below fair value
+    if (disp.price >= medianPrice) continue;
+
+    const discountPct = Math.round(((medianPrice - disp.price) / medianPrice) * 100);
+    if (discountPct <= 0) continue;
+
+    const avgPrice = prices.reduce((s, p) => s + p, 0) / prices.length;
+    const lastPrice = dispenses[0].price;
+
+    const recentSales = dispenses.slice(0, 5).map((d) => ({
+      price: d.price,
+      amount: d.dispense_quantity,
+      date: d.block_time,
+      side: "dispense",
+    }));
+
+    const firstDispenseTs = stats.first_dispense_time ?? now;
+    const daysSinceFirst = Math.max((now - firstDispenseTs) / 86400, 1);
+    const avgDaysBetweenTrades =
+      stats.total_dispense_count > 1
+        ? daysSinceFirst / stats.total_dispense_count
+        : daysSinceFirst;
+    const lastTradeDaysAgo = stats.last_dispense_time
+      ? (now - stats.last_dispense_time) / 86400
+      : daysSinceFirst;
+
+    const requiredEdgePct = Math.min(10 + avgDaysBetweenTrades * 1, 50);
+
+    // Score (same formula)
+    let score = 0;
+    score += Math.min(30, (1 / Math.max(avgDaysBetweenTrades, 0.1)) * 10);
+    score += Math.max(0, 20 - lastTradeDaysAgo * 0.5);
+    score += Math.min(30, discountPct * 0.6);
+    score += Math.min(20, stats.unique_buyers * 0.5);
+    score = Math.round(score);
+
+    const collections = tagsByAsset.get(disp.asset) ?? [];
+
+    upserts.push(
+      db
+        .prepare(
+          `INSERT INTO deal_scores (
+             listing_id, listing_type, asset, quote, asset_longname,
+             listing_price, listing_qty, listing_source,
+             fair_value, fair_value_method, discount_pct,
+             last_price, highest_price, lowest_price, average_price, median_price,
+             recent_sales_json,
+             total_trades, avg_days_between_trades, last_trade_days_ago,
+             unique_traders, active_buy_orders,
+             dispenser_cheapest_btc, dispenser_active, dispenser_unique_buyers,
+             score, required_edge_pct, collections_json, updated_at
+           ) VALUES (?,?,?,?,?, ?,?,?, ?,?,?, ?,?,?,?,?, ?, ?,?,?, ?,?, ?,?,?, ?,?,?,?)`,
+        )
+        .bind(
+          disp.tx_hash, "dispenser", disp.asset, "BTC", stats.asset_longname,
+          disp.price, disp.give_remaining, disp.source,
+          medianPrice, `median_disp_${prices.length}`, discountPct,
+          lastPrice, null, null,
+          Math.round(avgPrice * 1e8) / 1e8, medianPrice,
+          JSON.stringify(recentSales),
+          stats.total_dispense_count, Math.round(avgDaysBetweenTrades * 10) / 10,
+          Math.round(lastTradeDaysAgo * 10) / 10,
+          stats.unique_buyers, 0,
+          disp.price, stats.active_dispensers, stats.unique_buyers,
+          score, Math.round(requiredEdgePct), JSON.stringify(collections), now,
+        ),
+    );
+
+    processed++;
+
+    if (upserts.length >= BATCH_SIZE) {
+      await db.batch(upserts);
+      upserts.length = 0;
+    }
+  }
+
+  if (upserts.length > 0) {
+    await db.batch(upserts);
+  }
+
+  return processed;
 }

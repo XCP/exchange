@@ -1,30 +1,31 @@
 import { cacheControl } from "../utils/cache";
 
 interface DealRow {
+  listing_id: string;
+  listing_type: string;
   asset: string;
   quote: string;
   asset_longname: string | null;
+  listing_price: number;
+  listing_qty: number | null;
+  listing_source: string | null;
   fair_value: number | null;
   fair_value_method: string | null;
+  discount_pct: number | null;
   last_price: number | null;
   highest_price: number | null;
   lowest_price: number | null;
   average_price: number | null;
   median_price: number | null;
   recent_sales_json: string | null;
-  cheapest_listing_price: number | null;
-  cheapest_listing_type: string | null;
-  cheapest_listing_qty: number | null;
-  discount_pct: number | null;
-  dispenser_cheapest_btc: number | null;
-  dispenser_last_price_btc: number | null;
-  dispenser_active: number;
-  dispenser_unique_buyers: number;
   total_trades: number;
   avg_days_between_trades: number | null;
   last_trade_days_ago: number | null;
-  active_buy_orders: number;
   unique_traders: number;
+  active_buy_orders: number;
+  dispenser_cheapest_btc: number | null;
+  dispenser_active: number;
+  dispenser_unique_buyers: number;
   score: number;
   required_edge_pct: number;
   collections_json: string | null;
@@ -39,7 +40,7 @@ export async function handleDeals(
   const quoteFilter = url.searchParams.get("quote");
   const limit = Math.min(
     parseInt(url.searchParams.get("limit") ?? "100", 10),
-    200,
+    500,
   );
   const sortCol = url.searchParams.get("sort") ?? "score";
   const allowedSorts: Record<string, string> = {
@@ -47,12 +48,11 @@ export async function handleDeals(
     discount_pct: "discount_pct DESC",
     avg_days_between_trades: "avg_days_between_trades ASC",
     total_trade_count: "total_trades DESC",
+    listing_price: "listing_price ASC",
   };
   const orderBy = allowedSorts[sortCol] ?? "score DESC";
 
   const quoteClause = quoteFilter ? "AND quote = ?" : "";
-  const binds: unknown[] = [limit];
-  if (quoteFilter) binds.push(quoteFilter);
 
   const result = await db
     .prepare(
@@ -66,24 +66,25 @@ export async function handleDeals(
     .all<DealRow>();
 
   const deals = result.results.map((r) => ({
+    listing_id: r.listing_id,
+    listing_type: r.listing_type,
     asset: r.asset,
     asset_longname: r.asset_longname,
     collections: r.collections_json ? JSON.parse(r.collections_json) : [],
     quote: r.quote,
+    listing_price: r.listing_price,
+    listing_qty: r.listing_qty,
+    listing_source: r.listing_source,
     fair_value: r.fair_value,
     fair_value_method: r.fair_value_method,
+    discount_pct: r.discount_pct,
     last_price: r.last_price,
     highest_price: r.highest_price,
     lowest_price: r.lowest_price,
     average_price: r.average_price,
     median_price: r.median_price,
     recent_sales: r.recent_sales_json ? JSON.parse(r.recent_sales_json) : [],
-    cheapest_listing_price: r.cheapest_listing_price,
-    cheapest_listing_type: r.cheapest_listing_type,
-    cheapest_listing_qty: r.cheapest_listing_qty,
-    discount_pct: r.discount_pct,
     dispenser_cheapest_btc: r.dispenser_cheapest_btc,
-    dispenser_last_price_btc: r.dispenser_last_price_btc,
     dispenser_active: r.dispenser_active,
     dispenser_unique_buyers: r.dispenser_unique_buyers,
     total_trades: r.total_trades,

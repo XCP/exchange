@@ -2,14 +2,22 @@ import { dexUrl } from '@/lib/api/client'
 import { useDexSWR } from '@/lib/api/use-dex-swr'
 
 export interface DealEntry {
+  listing_id: string
+  listing_type: 'order' | 'dispenser'
   asset: string
   asset_longname: string | null
   collections: { slug: string; name: string }[]
   quote: string
 
+  // This listing
+  listing_price: number
+  listing_qty: number | null
+  listing_source: string | null
+
   // Price context
   fair_value: number
   fair_value_method: string
+  discount_pct: number | null
   last_price: number
   highest_price: number | null
   lowest_price: number | null
@@ -17,15 +25,8 @@ export interface DealEntry {
   median_price: number
   recent_sales: { price: number; amount: number; date: number; side: string }[]
 
-  // Current opportunity
-  cheapest_listing_price: number | null
-  cheapest_listing_type: 'order' | 'dispenser' | null
-  cheapest_listing_qty: number | null
-  discount_pct: number | null
-
   // Dispenser context
   dispenser_cheapest_btc: number | null
-  dispenser_last_price_btc: number | null
   dispenser_active: number
   dispenser_unique_buyers: number
 
@@ -58,14 +59,12 @@ const DEALS_SWR_OPTS = {
 export function useDeals(
   sort: string = 'score',
   quote?: string,
-  minTrades: number = 5,
   page: number = 1,
 ) {
   const offset = (page - 1) * PAGE_SIZE
   const params = new URLSearchParams({
     sort,
-    limit: String(PAGE_SIZE),
-    min_trades: String(minTrades),
+    limit: '500',
   })
   if (quote) params.set('quote', quote)
 
@@ -75,7 +74,6 @@ export function useDeals(
   )
 
   const all = data?.deals ?? []
-  // Client-side pagination (API returns up to 200, we page through 50 at a time)
   const paged = all.slice(offset, offset + PAGE_SIZE)
   const total = all.length
 
