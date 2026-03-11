@@ -21,7 +21,7 @@ const MAX_SUPPLY = 2000;          // Only score collectibles (supply < 2k)
 const ALLOWED_COLLECTION_SLUGS = [
   'rare-pepe', 'spells-of-genesis', 'memorychain', 'force-of-will',
   'bitcorn-crops', 'dank-directory', 'oasis-mining', 'age-of-rust',
-  'stamps', 'fake-rare', 'sarutobi-island',
+  'fake-rare', 'sarutobi-island',
 ];
 const ALLOWED_SLUGS_SQL = ALLOWED_COLLECTION_SLUGS.map(s => `'${s}'`).join(',');
 
