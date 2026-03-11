@@ -16,7 +16,6 @@ const SUPPORTED_QUOTES = new Set(["XCP", "PEPECASH", "BITCORN", "BTC"]);
 const BATCH_SIZE = 50;
 const MIN_TRADES_FOR_DEAL = 3;
 const MAX_LISTING_QTY = 10;       // Skip fungible tokens (large qty = not a collectible)
-const MIN_BTC_PRICE = 0.000001;   // Skip dust dispensers below 100 sats
 
 interface OrderListingRow {
   tx_hash: string;
@@ -700,7 +699,7 @@ async function processDispenserDeals(
        FROM dispensers d
        JOIN dispenser_stats ds ON ds.asset = d.asset
        WHERE d.status < 10
-         AND d.price >= ${MIN_BTC_PRICE}
+         AND d.price > 0
          AND d.give_remaining > 0
          AND d.give_remaining < ${MAX_LISTING_QTY}
          AND d.oracle_address IS NULL
