@@ -83,7 +83,9 @@ async function getCursor(db: D1Database): Promise<string | null> {
   const row = await db
     .prepare(`SELECT value FROM indexer_state WHERE key = 'asset_sync_cursor'`)
     .first<{ value: string }>();
-  return row?.value ?? null;
+  if (!row?.value) return null;
+  // Ensure integer string (CP API rejects floats like "227643.0")
+  return String(Math.floor(Number(row.value)));
 }
 
 async function saveCursor(db: D1Database, cursor: string | null): Promise<void> {
@@ -144,7 +146,8 @@ export async function indexAllAssets(
       return { indexed: totalIndexed, pages, done: true, cursor: null };
     }
 
-    cursor = data.next_cursor;
+    // CP API returns cursor as float sometimes — ensure integer string
+    cursor = String(Math.floor(Number(data.next_cursor)));
     await saveCursor(db, cursor);
   }
 
