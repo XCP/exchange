@@ -17,6 +17,7 @@ import { handleBlock } from "./routes/block";
 import { handleTags } from "./routes/tags";
 import { handleDeals } from "./routes/deals";
 import { refreshDealScores } from "./indexer/deal-scores";
+import { indexAllAssets, syncNewAssets } from "./indexer/assets";
 import { handleDispensersLatest, handleDispensesLatest } from "./routes/dispensers-latest";
 import { syncTags, syncTokenscanCollections, syncPepeWtfCollections, syncStampchainCollection, syncScannableNfts, syncKaleidoscope } from "./indexer/tags";
 import { handleGetSwaps, handleGetSwap, handleCancelSwap, handlePrepareListingPsbt, handleCompleteListingPsbt, handlePrepareFill, handleCompleteFill, handlePrepareCancelSwap } from "./routes/swaps";
@@ -234,6 +235,16 @@ export default {
       if (path === "/indexer/refresh-deals" && request.method === "POST") {
         const result = await refreshDealScores(env.DB);
         return await withCors(Response.json({ ok: true, ...result }));
+      }
+
+      // Route: POST /indexer/sync-assets — index asset metadata from CP API
+      if (path === "/indexer/sync-assets" && request.method === "POST") {
+        const mode = url.searchParams.get("mode") ?? "incremental";
+        const maxPages = parseInt(url.searchParams.get("pages") ?? (mode === "full" ? "500" : "10"), 10);
+        const result = mode === "full"
+          ? await indexAllAssets(env.DB, maxPages)
+          : await syncNewAssets(env.DB, maxPages);
+        return await withCors(Response.json({ ok: true, mode, ...result }));
       }
 
       // Route: GET /status — mode, progress, table counts
@@ -741,6 +752,26 @@ export default {
                   } catch (e) {
                     console.error(`${src.label} sync error:`, e);
                   }
+                }
+              }
+
+              // Periodic asset metadata sync: every 24 hours
+              const ASSET_SYNC_INTERVAL = 24 * 3600;
+              const lastAssetSyncRow = await env.DB
+                .prepare(`SELECT value FROM indexer_state WHERE key = 'last_asset_sync'`)
+                .first<{ value: string }>();
+              const lastAssetSync = lastAssetSyncRow ? parseInt(lastAssetSyncRow.value, 10) : 0;
+
+              if (now - lastAssetSync >= ASSET_SYNC_INTERVAL) {
+                try {
+                  const result = await syncNewAssets(env.DB, 10);
+                  console.log(`Asset sync: ${result.indexed} assets in ${result.pages} pages`);
+                  await env.DB
+                    .prepare(`INSERT OR REPLACE INTO indexer_state (key, value) VALUES ('last_asset_sync', ?)`)
+                    .bind(String(now))
+                    .run();
+                } catch (e) {
+                  console.error("Asset sync error:", e);
                 }
               }
 

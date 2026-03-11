@@ -30,6 +30,10 @@ interface DealRow {
   score: number;
   required_edge_pct: number;
   collections_json: string | null;
+  score_confidence: string | null;
+  warning_flags_json: string | null;
+  median3: number | null;
+  total_trade_volume: number | null;
   updated_at: number | null;
 }
 
@@ -96,6 +100,10 @@ export async function handleDeals(
     unique_traders: r.unique_traders,
     score: r.score,
     required_edge_pct: r.required_edge_pct,
+    score_confidence: r.score_confidence ?? "LOW",
+    warning_flags: r.warning_flags_json ? JSON.parse(r.warning_flags_json) : [],
+    median3: r.median3,
+    total_trade_volume: r.total_trade_volume,
   }));
 
   return Response.json(

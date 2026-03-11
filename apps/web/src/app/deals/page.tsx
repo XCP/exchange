@@ -90,7 +90,16 @@ function DealRow({ deal }: { deal: DealEntry }) {
             )}
           </div>
           <div className="text-right flex-shrink-0">
-            <div className="text-[10px] text-zinc-500">Score</div>
+            <div className="flex items-center gap-1 justify-end">
+              <span className="text-[10px] text-zinc-500">Score</span>
+              <span className={`text-[9px] font-bold px-1 rounded-sm ${
+                deal.score_confidence === 'HIGH' ? 'bg-green-900/50 text-green-400' :
+                deal.score_confidence === 'MEDIUM' ? 'bg-yellow-900/50 text-yellow-400' :
+                'bg-zinc-800/50 text-zinc-500'
+              }`}>
+                {deal.score_confidence}
+              </span>
+            </div>
             <div className="font-mono text-sm font-bold text-zinc-300">{deal.score}</div>
           </div>
         </div>
@@ -153,6 +162,16 @@ function DealRow({ deal }: { deal: DealEntry }) {
             <span>{deal.dispenser_active} dispensers</span>
           )}
         </div>
+        {/* Warning flags */}
+        {deal.warning_flags.length > 0 && (
+          <div className="flex gap-1 mt-1 flex-wrap">
+            {deal.warning_flags.map(flag => (
+              <span key={flag} className="text-[9px] px-1 rounded-sm bg-red-900/30 text-red-400/80">
+                {flag.replace(/_/g, ' ')}
+              </span>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   )

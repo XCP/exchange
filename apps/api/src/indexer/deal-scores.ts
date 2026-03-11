@@ -17,6 +17,41 @@ const BATCH_SIZE = 50;
 const MIN_TRADES_FOR_DEAL = 3;
 const MAX_LISTING_QTY = 10;       // Skip fungible tokens (large qty = not a collectible)
 
+type ScoreConfidence = "HIGH" | "MEDIUM" | "LOW";
+
+function computeConfidence(
+  totalTrades: number,
+  lastTradeDaysAgo: number,
+): ScoreConfidence {
+  // HIGH: 10+ trades AND last trade within 30 days
+  if (totalTrades >= 10 && lastTradeDaysAgo <= 30) return "HIGH";
+  // MEDIUM: 5+ trades AND last trade within 90 days
+  if (totalTrades >= 5 && lastTradeDaysAgo <= 90) return "MEDIUM";
+  return "LOW";
+}
+
+function computeWarningFlags(
+  discountPct: number | null,
+  median3: number | null,
+  median10: number | null,
+  lastTradeDaysAgo: number,
+  listingAgeDays: number | null,
+  totalTrades: number,
+): string[] {
+  const flags: string[] = [];
+  if (discountPct !== null && discountPct >= 80) flags.push("extreme_discount");
+  if (median3 !== null && median10 !== null && median10 > 0) {
+    const divergence = Math.abs(median3 - median10) / median10;
+    if (divergence > 0.3) flags.push("fair_value_shifting");
+    if (median3 < median10 * 0.7) flags.push("declining_fair_value");
+  }
+  if (lastTradeDaysAgo > 180) flags.push("dormant_market");
+  if (lastTradeDaysAgo > 60) flags.push("stale_market");
+  if (listingAgeDays !== null && listingAgeDays > 90) flags.push("stale_listing");
+  if (totalTrades < 5) flags.push("thin_history");
+  return flags;
+}
+
 interface OrderListingRow {
   tx_hash: string;
   base_asset: string;
@@ -99,9 +134,13 @@ function computeScore(
   lastTradeDaysAgo: number,
   discountPct: number | null,
   exitLiquidity: number, // bid_count * 5 + unique_buyers * 0.5
+  avgTradeVolume: number = 1, // average units per trade
 ): number {
   let score = 0;
-  score += Math.min(30, (1 / Math.max(avgDaysBetweenTrades, 0.1)) * 10);
+  // Frequency: base 30 pts, boosted by volume (cap multiplier at 3x for avg vol >= 3)
+  const freqBase = Math.min(30, (1 / Math.max(avgDaysBetweenTrades, 0.1)) * 10);
+  const volMultiplier = Math.min(3, Math.max(1, avgTradeVolume));
+  score += Math.min(30, freqBase * (volMultiplier ** 0.3)); // diminishing returns
   score += Math.max(0, 20 - lastTradeDaysAgo * 0.5);
   if (discountPct !== null && discountPct > 0) {
     score += Math.min(30, discountPct * 0.6);
@@ -191,6 +230,9 @@ export async function scoreNewOrders(
       .run();
 
     const avgPrice = prices.reduce((s, p) => s + p, 0) / prices.length;
+    const median3Price = median(prices.slice(0, 3));
+    const totalTradeVolume = trades.results.reduce((s, t) => s + t.amount, 0);
+    const avgTradeVolume = trades.results.length > 0 ? totalTradeVolume / trades.results.length : 1;
     const lastPrice = ps.last_price ?? trades.results[0]?.price ?? medianPrice;
     const recentSales = trades.results.slice(0, 5).map((t) => ({
       price: t.price, amount: t.amount, date: t.block_time, side: t.side,
@@ -229,9 +271,13 @@ export async function scoreNewOrders(
       const discountPct = Math.round(((medianPrice - order.price) / medianPrice) * 100);
       if (discountPct <= 0) continue;
 
+      const listingAgeDays = order.block_time ? (now - order.block_time) / 86400 : null;
+      const confidence = computeConfidence(ps.total_trade_count, lastDaysAgo);
+      const warnings = computeWarningFlags(discountPct, median3Price, medianPrice, lastDaysAgo, listingAgeDays, ps.total_trade_count);
       const score = computeScore(
         avgDays, lastDaysAgo, discountPct,
         ps.bid_count * 5 + (dStats?.unique_buyers ?? 0) * 0.5,
+        avgTradeVolume,
       );
 
       upserts.push(
@@ -246,8 +292,9 @@ export async function scoreNewOrders(
                total_trades, avg_days_between_trades, last_trade_days_ago,
                unique_traders, active_buy_orders,
                dispenser_cheapest_btc, dispenser_active, dispenser_unique_buyers,
-               score, required_edge_pct, collections_json, updated_at
-             ) VALUES (?,?,?,?,?, ?,?,?,?, ?,?,?, ?,?,?,?,?, ?, ?,?,?, ?,?, ?,?,?, ?,?,?,?)`,
+               score, required_edge_pct, collections_json, updated_at,
+               score_confidence, warning_flags_json, median3, total_trade_volume
+             ) VALUES (?,?,?,?,?, ?,?,?,?, ?,?,?, ?,?,?,?,?, ?, ?,?,?, ?,?, ?,?,?, ?,?,?,?, ?,?,?,?)`,
           )
           .bind(
             order.tx_hash, "order", ps.base_asset, ps.quote_asset, ps.base_asset_longname,
@@ -261,6 +308,8 @@ export async function scoreNewOrders(
             ps.unique_traders, ps.bid_count,
             dStats?.cheapest_price ?? null, dStats?.active_dispensers ?? 0, dStats?.unique_buyers ?? 0,
             score, Math.round(requiredEdgePct), collections, now,
+            confidence, warnings.length > 0 ? JSON.stringify(warnings) : null,
+            median3Price, Math.round(totalTradeVolume * 1e4) / 1e4,
           ),
       );
       scored++;
@@ -328,13 +377,16 @@ export async function scoreNewDispensers(
     const prices = dispenses.results.map((d) => d.price);
     const medianPrice = median(prices);
     if (!medianPrice || medianPrice <= 0) continue;
+    const median3Price = median(prices.slice(0, 3));
+    const totalDispVolume = dispenses.results.reduce((s, d) => s + d.dispense_quantity, 0);
+    const avgDispVolume = dispenses.results.length > 0 ? totalDispVolume / dispenses.results.length : 1;
 
     // Get ALL active dispensers for this asset
     const activeDisps = await db
       .prepare(
         `SELECT tx_hash, price, give_remaining, source, block_time
          FROM dispensers
-         WHERE asset = ? AND status < 10 AND price >= ${MIN_BTC_PRICE}
+         WHERE asset = ? AND status < 10 AND price > 0
            AND give_remaining > 0 AND give_remaining < ${MAX_LISTING_QTY}
            AND oracle_address IS NULL
          ORDER BY price ASC`,
@@ -385,7 +437,10 @@ export async function scoreNewDispensers(
       const discountPct = Math.round(((medianPrice - disp.price) / medianPrice) * 100);
       if (discountPct <= 0) continue;
 
-      const score = computeScore(avgDays, lastDaysAgo, discountPct, stats.unique_buyers * 0.5);
+      const listingAgeDays = disp.block_time ? (now - disp.block_time) / 86400 : null;
+      const confidence = computeConfidence(stats.total_dispense_count, lastDaysAgo);
+      const warnings = computeWarningFlags(discountPct, median3Price, medianPrice, lastDaysAgo, listingAgeDays, stats.total_dispense_count);
+      const score = computeScore(avgDays, lastDaysAgo, discountPct, stats.unique_buyers * 0.5, avgDispVolume);
 
       upserts.push(
         db
@@ -399,8 +454,9 @@ export async function scoreNewDispensers(
                total_trades, avg_days_between_trades, last_trade_days_ago,
                unique_traders, active_buy_orders,
                dispenser_cheapest_btc, dispenser_active, dispenser_unique_buyers,
-               score, required_edge_pct, collections_json, updated_at
-             ) VALUES (?,?,?,?,?, ?,?,?,?, ?,?,?, ?,?,?,?,?, ?, ?,?,?, ?,?, ?,?,?, ?,?,?,?)`,
+               score, required_edge_pct, collections_json, updated_at,
+               score_confidence, warning_flags_json, median3, total_trade_volume
+             ) VALUES (?,?,?,?,?, ?,?,?,?, ?,?,?, ?,?,?,?,?, ?, ?,?,?, ?,?, ?,?,?, ?,?,?,?, ?,?,?,?)`,
           )
           .bind(
             disp.tx_hash, "dispenser", asset, "BTC", stats.asset_longname,
@@ -414,6 +470,8 @@ export async function scoreNewDispensers(
             stats.unique_buyers, 0,
             disp.price, stats.active_dispensers, stats.unique_buyers,
             score, Math.round(requiredEdgePct), collections, now,
+            confidence, warnings.length > 0 ? JSON.stringify(warnings) : null,
+            median3Price, Math.round(totalDispVolume * 1e4) / 1e4,
           ),
       );
       scored++;
@@ -613,6 +671,9 @@ async function processOrderDeals(
     if (discountPct <= 0) continue;
 
     const avgPrice = prices.reduce((s, p) => s + p, 0) / prices.length;
+    const median3Price = median(prices.slice(0, 3));
+    const totalTradeVolume = trades.reduce((s, t) => s + t.amount, 0);
+    const avgTradeVolume = trades.length > 0 ? totalTradeVolume / trades.length : 1;
     const lastPrice = ps.last_price ?? trades[0].price;
 
     const recentSales = trades.slice(0, 5).map((t) => ({
@@ -634,9 +695,13 @@ async function processOrderDeals(
 
     const dStats = dispByAsset.get(order.base_asset);
 
+    const listingAgeDays = order.block_time ? (now - order.block_time) / 86400 : null;
+    const confidence = computeConfidence(ps.total_trade_count, lastTradeDaysAgo);
+    const warnings = computeWarningFlags(discountPct, median3Price, medianPrice, lastTradeDaysAgo, listingAgeDays, ps.total_trade_count);
     const score = computeScore(
       avgDaysBetweenTrades, lastTradeDaysAgo, discountPct,
       ps.bid_count * 5 + (dStats?.unique_buyers ?? 0) * 0.5,
+      avgTradeVolume,
     );
 
     const collections = tagsByAsset.get(order.base_asset) ?? [];
@@ -653,8 +718,9 @@ async function processOrderDeals(
              total_trades, avg_days_between_trades, last_trade_days_ago,
              unique_traders, active_buy_orders,
              dispenser_cheapest_btc, dispenser_active, dispenser_unique_buyers,
-             score, required_edge_pct, collections_json, updated_at
-           ) VALUES (?,?,?,?,?, ?,?,?,?, ?,?,?, ?,?,?,?,?, ?, ?,?,?, ?,?, ?,?,?, ?,?,?,?)`,
+             score, required_edge_pct, collections_json, updated_at,
+             score_confidence, warning_flags_json, median3, total_trade_volume
+           ) VALUES (?,?,?,?,?, ?,?,?,?, ?,?,?, ?,?,?,?,?, ?, ?,?,?, ?,?, ?,?,?, ?,?,?,?, ?,?,?,?)`,
         )
         .bind(
           order.tx_hash, "order", order.base_asset, order.quote_asset, ps.base_asset_longname,
@@ -668,6 +734,8 @@ async function processOrderDeals(
           ps.unique_traders, ps.bid_count,
           dStats?.cheapest_price ?? null, dStats?.active_dispensers ?? 0, dStats?.unique_buyers ?? 0,
           score, Math.round(requiredEdgePct), JSON.stringify(collections), now,
+          confidence, warnings.length > 0 ? JSON.stringify(warnings) : null,
+          median3Price, Math.round(totalTradeVolume * 1e4) / 1e4,
         ),
     );
 
@@ -783,6 +851,9 @@ async function processDispenserDeals(
     if (discountPct <= 0) continue;
 
     const avgPrice = prices.reduce((s, p) => s + p, 0) / prices.length;
+    const median3Price = median(prices.slice(0, 3));
+    const totalDispVolume = dispenses.reduce((s, d) => s + d.dispense_quantity, 0);
+    const avgDispVolume = dispenses.length > 0 ? totalDispVolume / dispenses.length : 1;
     const lastPrice = dispenses[0].price;
 
     const recentSales = dispenses.slice(0, 5).map((d) => ({
@@ -804,7 +875,10 @@ async function processDispenserDeals(
 
     const requiredEdgePct = Math.min(15 + avgDaysBetweenTrades * 1, 50);
 
-    const score = computeScore(avgDaysBetweenTrades, lastTradeDaysAgo, discountPct, stats.unique_buyers * 0.5);
+    const listingAgeDays = disp.block_time ? (now - disp.block_time) / 86400 : null;
+    const confidence = computeConfidence(stats.total_dispense_count, lastTradeDaysAgo);
+    const warnings = computeWarningFlags(discountPct, median3Price, medianPrice, lastTradeDaysAgo, listingAgeDays, stats.total_dispense_count);
+    const score = computeScore(avgDaysBetweenTrades, lastTradeDaysAgo, discountPct, stats.unique_buyers * 0.5, avgDispVolume);
 
     const collections = tagsByAsset.get(disp.asset) ?? [];
 
@@ -820,8 +894,9 @@ async function processDispenserDeals(
              total_trades, avg_days_between_trades, last_trade_days_ago,
              unique_traders, active_buy_orders,
              dispenser_cheapest_btc, dispenser_active, dispenser_unique_buyers,
-             score, required_edge_pct, collections_json, updated_at
-           ) VALUES (?,?,?,?,?, ?,?,?,?, ?,?,?, ?,?,?,?,?, ?, ?,?,?, ?,?, ?,?,?, ?,?,?,?)`,
+             score, required_edge_pct, collections_json, updated_at,
+             score_confidence, warning_flags_json, median3, total_trade_volume
+           ) VALUES (?,?,?,?,?, ?,?,?,?, ?,?,?, ?,?,?,?,?, ?, ?,?,?, ?,?, ?,?,?, ?,?,?,?, ?,?,?,?)`,
         )
         .bind(
           disp.tx_hash, "dispenser", disp.asset, "BTC", stats.asset_longname,
@@ -835,6 +910,8 @@ async function processDispenserDeals(
           stats.unique_buyers, 0,
           disp.price, stats.active_dispensers, stats.unique_buyers,
           score, Math.round(requiredEdgePct), JSON.stringify(collections), now,
+          confidence, warnings.length > 0 ? JSON.stringify(warnings) : null,
+          median3Price, Math.round(totalDispVolume * 1e4) / 1e4,
         ),
     );
 

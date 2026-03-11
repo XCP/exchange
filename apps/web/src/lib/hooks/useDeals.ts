@@ -41,6 +41,10 @@ export interface DealEntry {
   // Scoring
   score: number
   required_edge_pct: number
+  score_confidence: 'HIGH' | 'MEDIUM' | 'LOW'
+  warning_flags: string[]
+  median3: number | null
+  total_trade_volume: number | null
 }
 
 interface DealsResponse {
