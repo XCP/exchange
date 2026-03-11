@@ -16,6 +16,7 @@ import { handleSearch } from "./routes/search";
 import { handleBlock } from "./routes/block";
 import { handleTags } from "./routes/tags";
 import { handleDeals } from "./routes/deals";
+import { refreshDealScores } from "./indexer/deal-scores";
 import { handleDispensersLatest, handleDispensesLatest } from "./routes/dispensers-latest";
 import { syncTags, syncTokenscanCollections, syncPepeWtfCollections, syncStampchainCollection, syncScannableNfts, syncKaleidoscope } from "./indexer/tags";
 import { handleGetSwaps, handleGetSwap, handleCancelSwap, handlePrepareListingPsbt, handleCompleteListingPsbt, handlePrepareFill, handleCompleteFill, handlePrepareCancelSwap } from "./routes/swaps";
@@ -224,9 +225,15 @@ export default {
         return await withCors(await handleTags(request, env.DB));
       }
 
-      // Route: GET /deals — flip opportunity scoring
+      // Route: GET /deals — flip opportunity scoring (reads from pre-computed deal_scores table)
       if (path === "/deals") {
         return await withCors(await handleDeals(request, env.DB));
+      }
+
+      // Route: POST /indexer/refresh-deals — manual deal score refresh
+      if (path === "/indexer/refresh-deals" && request.method === "POST") {
+        const result = await refreshDealScores(env.DB);
+        return await withCors(Response.json({ ok: true, ...result }));
       }
 
       // Route: GET /status — mode, progress, table counts
@@ -680,6 +687,16 @@ export default {
                   .run();
                 if (stalePairs > 0 || staleDispensers > 0) {
                   console.log(`Stats refresh: ${stalePairs} pairs, ${staleDispensers} dispenser assets`);
+                }
+
+                // Refresh deal scores after stats (depends on fresh pair_stats)
+                try {
+                  const dealResult = await refreshDealScores(env.DB);
+                  if (dealResult.processed > 0) {
+                    console.log(`Deal scores: ${dealResult.processed} assets scored`);
+                  }
+                } catch (e) {
+                  console.error("Deal scores refresh error:", e);
                 }
               }
 
