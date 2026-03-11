@@ -146,6 +146,9 @@ function DealRow({ deal }: { deal: DealEntry }) {
           {deal.active_buy_orders > 0 && (
             <span className="text-blue-400">{deal.active_buy_orders} bids</span>
           )}
+          {deal.listing_block_time && (
+            <span>listed {compactTime(deal.listing_block_time)} ago</span>
+          )}
           {deal.dispenser_active > 0 && deal.listing_type !== 'dispenser' && (
             <span>{deal.dispenser_active} dispensers</span>
           )}

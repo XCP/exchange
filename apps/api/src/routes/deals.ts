@@ -9,6 +9,7 @@ interface DealRow {
   listing_price: number;
   listing_qty: number | null;
   listing_source: string | null;
+  listing_block_time: number | null;
   fair_value: number | null;
   fair_value_method: string | null;
   discount_pct: number | null;
@@ -75,6 +76,7 @@ export async function handleDeals(
     listing_price: r.listing_price,
     listing_qty: r.listing_qty,
     listing_source: r.listing_source,
+    listing_block_time: r.listing_block_time,
     fair_value: r.fair_value,
     fair_value_method: r.fair_value_method,
     discount_pct: r.discount_pct,

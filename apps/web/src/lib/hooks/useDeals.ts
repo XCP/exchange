@@ -13,6 +13,7 @@ export interface DealEntry {
   listing_price: number
   listing_qty: number | null
   listing_source: string | null
+  listing_block_time: number | null
 
   // Price context
   fair_value: number
