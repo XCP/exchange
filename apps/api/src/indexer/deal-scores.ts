@@ -185,7 +185,7 @@ export async function scoreNewOrders(
       .prepare(
         `SELECT 1 FROM tag_assets ta
          JOIN tags t ON t.id = ta.tag_id
-         JOIN assets a ON a.asset = ta.asset AND a.supply_normalized < ${MAX_SUPPLY}
+         JOIN assets a ON a.asset = ta.asset AND a.supply_normalized < ${MAX_SUPPLY} AND a.locked = 1
          WHERE ta.asset = ? AND t.tag_type = 'collection' LIMIT 1`,
       )
       .bind(ps.base_asset)
@@ -344,7 +344,7 @@ export async function scoreNewDispensers(
       .prepare(
         `SELECT 1 FROM tag_assets ta
          JOIN tags t ON t.id = ta.tag_id
-         JOIN assets a ON a.asset = ta.asset AND a.supply_normalized < ${MAX_SUPPLY}
+         JOIN assets a ON a.asset = ta.asset AND a.supply_normalized < ${MAX_SUPPLY} AND a.locked = 1
          WHERE ta.asset = ? AND t.tag_type = 'collection' LIMIT 1`,
       )
       .bind(asset)
@@ -565,7 +565,7 @@ async function processOrderDeals(
       `SELECT o.tx_hash, o.base_asset, o.quote_asset, o.source, o.price, o.give_remaining, o.pair, o.block_time
        FROM orders o
        JOIN pair_stats ps ON ps.pair = o.pair
-       JOIN assets a ON a.asset = o.base_asset AND a.supply_normalized < ${MAX_SUPPLY}
+       JOIN assets a ON a.asset = o.base_asset AND a.supply_normalized < ${MAX_SUPPLY} AND a.locked = 1
        WHERE o.status = 'open'
          AND o.side = 'ask'
          AND o.give_remaining > 0
@@ -768,7 +768,7 @@ async function processDispenserDeals(
       `SELECT d.tx_hash, d.asset, d.source, d.price, d.give_remaining, d.block_time
        FROM dispensers d
        JOIN dispenser_stats ds ON ds.asset = d.asset
-       JOIN assets a ON a.asset = d.asset AND a.supply_normalized < ${MAX_SUPPLY}
+       JOIN assets a ON a.asset = d.asset AND a.supply_normalized < ${MAX_SUPPLY} AND a.locked = 1
        WHERE d.status < 10
          AND d.price > 0
          AND d.give_remaining > 0
