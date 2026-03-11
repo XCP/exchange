@@ -15,6 +15,7 @@ import { handleOrdersLatest } from "./routes/orders-latest";
 import { handleSearch } from "./routes/search";
 import { handleBlock } from "./routes/block";
 import { handleTags } from "./routes/tags";
+import { handleDeals } from "./routes/deals";
 import { handleDispensersLatest, handleDispensesLatest } from "./routes/dispensers-latest";
 import { syncTags, syncTokenscanCollections, syncPepeWtfCollections, syncStampchainCollection, syncScannableNfts, syncKaleidoscope } from "./indexer/tags";
 import { handleGetSwaps, handleGetSwap, handleCancelSwap, handlePrepareListingPsbt, handleCompleteListingPsbt, handlePrepareFill, handleCompleteFill, handlePrepareCancelSwap } from "./routes/swaps";
@@ -221,6 +222,11 @@ export default {
       // Route: GET /tags?type=collection
       if (path === "/tags") {
         return await withCors(await handleTags(request, env.DB));
+      }
+
+      // Route: GET /deals — flip opportunity scoring
+      if (path === "/deals") {
+        return await withCors(await handleDeals(request, env.DB));
       }
 
       // Route: GET /status — mode, progress, table counts
