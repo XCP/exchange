@@ -143,6 +143,9 @@ function computeScore(
   discountPct: number | null,
   exitLiquidity: number, // bid_count * 5 + unique_buyers * 0.5
   avgTradeVolume: number = 1, // average units per trade
+  marketTotalQty: number = 0, // total units for sale across all listings
+  marketListingCount: number = 0, // number of active listings
+  supply: number = 0, // total asset supply
 ): number {
   let score = 0;
   // Frequency: base 30 pts, boosted by volume (cap multiplier at 3x for avg vol >= 3)
@@ -154,7 +157,36 @@ function computeScore(
     score += Math.min(30, discountPct * 0.6);
   }
   score += Math.min(20, exitLiquidity);
-  return Math.round(score);
+
+  // Market scarcity bonus/penalty (up to ±15 pts)
+  // Low supply + few listings = scarce = bonus. High supply + many listings = flooded = penalty.
+  if (supply > 0 && marketTotalQty > 0) {
+    const pctForSale = marketTotalQty / supply;
+    // pctForSale < 5% → bonus up to +15, > 20% → penalty up to -15
+    score += Math.round(Math.max(-15, Math.min(15, (0.10 - pctForSale) * 150)));
+  }
+  // Supply scarcity bonus: supply < 100 gets up to +10 extra
+  if (supply > 0 && supply < 100) {
+    score += Math.round(10 * (1 - supply / 100)); // supply=1 → +10, supply=50 → +5
+  }
+  // Listing count bonus/penalty
+  if (marketListingCount === 1) {
+    score += 10; // only 1 listing = great, easy to clear
+  } else if (marketListingCount === 2) {
+    score += 5;
+  } else if (marketListingCount > 5) {
+    score -= Math.min(10, marketListingCount - 5); // 6+ listings, penalty grows
+  }
+  // Total qty for sale bonus: only 1 unit for sale = huge bonus
+  if (marketTotalQty === 1) {
+    score += 10;
+  } else if (marketTotalQty <= 3) {
+    score += 5;
+  } else if (marketTotalQty > 20) {
+    score -= Math.min(10, Math.round((marketTotalQty - 20) / 5));
+  }
+
+  return Math.round(Math.max(0, score));
 }
 
 // ===== INCREMENTAL SCORING (called per-block during sync) =====
@@ -191,14 +223,15 @@ export async function scoreNewOrders(
     // Only score collectible assets (in an allowed collection, supply < 2k, locked, indivisible)
     const eligible = await db
       .prepare(
-        `SELECT 1 FROM tag_assets ta
+        `SELECT a.supply_normalized as supply FROM tag_assets ta
          JOIN tags t ON t.id = ta.tag_id AND t.slug IN (${ALLOWED_SLUGS_SQL})
          JOIN assets a ON a.asset = ta.asset AND a.supply_normalized < ${MAX_SUPPLY} AND a.locked = 1 AND a.divisible = 0
          WHERE ta.asset = ? AND t.tag_type = 'collection' LIMIT 1`,
       )
       .bind(ps.base_asset)
-      .first();
+      .first<{ supply: number }>();
     if (!eligible) continue;
+    const assetSupply = eligible.supply;
 
     // Get recent trades for fair value
     const trades = await db
@@ -237,6 +270,24 @@ export async function scoreNewOrders(
       )
       .bind(ps.base_asset, ps.quote_asset)
       .run();
+
+    // Market supply for this asset (orders + dispensers)
+    const mktOrders = await db
+      .prepare(
+        `SELECT COALESCE(SUM(give_remaining), 0) as qty, COUNT(*) as cnt
+         FROM orders WHERE base_asset = ? AND status = 'open' AND side = 'ask' AND give_remaining > 0`,
+      )
+      .bind(ps.base_asset)
+      .first<{ qty: number; cnt: number }>();
+    const mktDisps = await db
+      .prepare(
+        `SELECT COALESCE(SUM(give_remaining), 0) as qty, COUNT(*) as cnt
+         FROM dispensers WHERE asset = ? AND status < 10 AND give_remaining > 0 AND price > 0 AND oracle_address IS NULL`,
+      )
+      .bind(ps.base_asset)
+      .first<{ qty: number; cnt: number }>();
+    const marketTotalQty = (mktOrders?.qty ?? 0) + (mktDisps?.qty ?? 0);
+    const marketListingCount = (mktOrders?.cnt ?? 0) + (mktDisps?.cnt ?? 0);
 
     const avgPrice = prices.reduce((s, p) => s + p, 0) / prices.length;
     const median3Price = median(prices.slice(0, 3));
@@ -287,6 +338,7 @@ export async function scoreNewOrders(
         avgDays, lastDaysAgo, discountPct,
         ps.bid_count * 5 + (dStats?.unique_buyers ?? 0) * 0.5,
         avgTradeVolume,
+        marketTotalQty, marketListingCount, assetSupply,
       );
 
       upserts.push(
@@ -302,8 +354,9 @@ export async function scoreNewOrders(
                unique_traders, active_buy_orders,
                dispenser_cheapest_btc, dispenser_active, dispenser_unique_buyers,
                score, required_edge_pct, collections_json, updated_at,
-               score_confidence, warning_flags_json, median3, total_trade_volume
-             ) VALUES (?,?,?,?,?, ?,?,?,?, ?,?,?, ?,?,?,?,?, ?, ?,?,?, ?,?, ?,?,?, ?,?,?,?, ?,?,?,?)`,
+               score_confidence, warning_flags_json, median3, total_trade_volume,
+               market_total_qty, market_listing_count
+             ) VALUES (?,?,?,?,?, ?,?,?,?, ?,?,?, ?,?,?,?,?, ?, ?,?,?, ?,?, ?,?,?, ?,?,?,?, ?,?,?,?, ?,?)`,
           )
           .bind(
             order.tx_hash, "order", ps.base_asset, ps.quote_asset, ps.base_asset_longname,
@@ -319,6 +372,7 @@ export async function scoreNewOrders(
             score, Math.round(requiredEdgePct), collections, now,
             confidence, warnings.length > 0 ? JSON.stringify(warnings) : null,
             median3Price, Math.round(totalTradeVolume * 1e4) / 1e4,
+            marketTotalQty, marketListingCount,
           ),
       );
       scored++;
@@ -350,14 +404,15 @@ export async function scoreNewDispensers(
     // Only score collectible assets (in an allowed collection, supply < 2k, locked, indivisible)
     const eligible = await db
       .prepare(
-        `SELECT 1 FROM tag_assets ta
+        `SELECT a.supply_normalized as supply FROM tag_assets ta
          JOIN tags t ON t.id = ta.tag_id AND t.slug IN (${ALLOWED_SLUGS_SQL})
          JOIN assets a ON a.asset = ta.asset AND a.supply_normalized < ${MAX_SUPPLY} AND a.locked = 1 AND a.divisible = 0
          WHERE ta.asset = ? AND t.tag_type = 'collection' LIMIT 1`,
       )
       .bind(asset)
-      .first();
+      .first<{ supply: number }>();
     if (!eligible) continue;
+    const assetSupply = eligible.supply;
 
     // Get dispenser stats
     const stats = await db
@@ -413,6 +468,24 @@ export async function scoreNewDispensers(
       .bind(asset)
       .run();
 
+    // Market supply for this asset (orders + dispensers)
+    const mktOrders = await db
+      .prepare(
+        `SELECT COALESCE(SUM(give_remaining), 0) as qty, COUNT(*) as cnt
+         FROM orders WHERE base_asset = ? AND status = 'open' AND side = 'ask' AND give_remaining > 0`,
+      )
+      .bind(asset)
+      .first<{ qty: number; cnt: number }>();
+    const mktDisps = await db
+      .prepare(
+        `SELECT COALESCE(SUM(give_remaining), 0) as qty, COUNT(*) as cnt
+         FROM dispensers WHERE asset = ? AND status < 10 AND give_remaining > 0 AND price > 0 AND oracle_address IS NULL`,
+      )
+      .bind(asset)
+      .first<{ qty: number; cnt: number }>();
+    const marketTotalQty = (mktOrders?.qty ?? 0) + (mktDisps?.qty ?? 0);
+    const marketListingCount = (mktOrders?.cnt ?? 0) + (mktDisps?.cnt ?? 0);
+
     const avgPrice = prices.reduce((s, p) => s + p, 0) / prices.length;
     const lastPrice = dispenses.results[0]?.price ?? medianPrice;
     const recentSales = dispenses.results.slice(0, 5).map((d) => ({
@@ -450,7 +523,7 @@ export async function scoreNewDispensers(
       const listingAgeDays = disp.block_time ? (now - disp.block_time) / 86400 : null;
       const confidence = computeConfidence(stats.total_dispense_count, lastDaysAgo);
       const warnings = computeWarningFlags(discountPct, median3Price, medianPrice, lastDaysAgo, listingAgeDays, stats.total_dispense_count);
-      const score = computeScore(avgDays, lastDaysAgo, discountPct, stats.unique_buyers * 0.5, avgDispVolume);
+      const score = computeScore(avgDays, lastDaysAgo, discountPct, stats.unique_buyers * 0.5, avgDispVolume, marketTotalQty, marketListingCount, assetSupply);
 
       upserts.push(
         db
@@ -465,8 +538,9 @@ export async function scoreNewDispensers(
                unique_traders, active_buy_orders,
                dispenser_cheapest_btc, dispenser_active, dispenser_unique_buyers,
                score, required_edge_pct, collections_json, updated_at,
-               score_confidence, warning_flags_json, median3, total_trade_volume
-             ) VALUES (?,?,?,?,?, ?,?,?,?, ?,?,?, ?,?,?,?,?, ?, ?,?,?, ?,?, ?,?,?, ?,?,?,?, ?,?,?,?)`,
+               score_confidence, warning_flags_json, median3, total_trade_volume,
+               market_total_qty, market_listing_count
+             ) VALUES (?,?,?,?,?, ?,?,?,?, ?,?,?, ?,?,?,?,?, ?, ?,?,?, ?,?, ?,?,?, ?,?,?,?, ?,?,?,?, ?,?)`,
           )
           .bind(
             disp.tx_hash, "dispenser", asset, "BTC", stats.asset_longname,
@@ -482,6 +556,7 @@ export async function scoreNewDispensers(
             score, Math.round(requiredEdgePct), collections, now,
             confidence, warnings.length > 0 ? JSON.stringify(warnings) : null,
             median3Price, Math.round(totalDispVolume * 1e4) / 1e4,
+            marketTotalQty, marketListingCount,
           ),
       );
       scored++;
@@ -553,11 +628,46 @@ export async function refreshDealScores(db: D1Database): Promise<{ processed: nu
 
   let totalProcessed = 0;
 
+  // Pre-compute market supply per asset (orders + dispensers combined)
+  const marketSupply = new Map<string, { totalQty: number; listingCount: number }>();
+
+  const orderSupply = await db
+    .prepare(
+      `SELECT base_asset as asset, SUM(give_remaining) as total_qty, COUNT(*) as cnt
+       FROM orders
+       WHERE status = 'open' AND side = 'ask' AND give_remaining > 0
+         AND base_asset NOT IN (${EXCLUDED_ASSETS_SQL})
+       GROUP BY base_asset`,
+    )
+    .all<{ asset: string; total_qty: number; cnt: number }>();
+  for (const r of orderSupply.results) {
+    marketSupply.set(r.asset, { totalQty: r.total_qty, listingCount: r.cnt });
+  }
+
+  const dispSupply = await db
+    .prepare(
+      `SELECT asset, SUM(give_remaining) as total_qty, COUNT(*) as cnt
+       FROM dispensers
+       WHERE status < 10 AND give_remaining > 0 AND price > 0 AND oracle_address IS NULL
+         AND asset NOT IN (${EXCLUDED_ASSETS_SQL})
+       GROUP BY asset`,
+    )
+    .all<{ asset: string; total_qty: number; cnt: number }>();
+  for (const r of dispSupply.results) {
+    const existing = marketSupply.get(r.asset);
+    if (existing) {
+      existing.totalQty += r.total_qty;
+      existing.listingCount += r.cnt;
+    } else {
+      marketSupply.set(r.asset, { totalQty: r.total_qty, listingCount: r.cnt });
+    }
+  }
+
   // ===== Pass A: Open sell orders (XCP/PEPECASH/BITCORN quoted) =====
-  totalProcessed += await processOrderDeals(db, now, tagsByAsset);
+  totalProcessed += await processOrderDeals(db, now, tagsByAsset, marketSupply);
 
   // ===== Pass B: Active dispensers (BTC quoted) =====
-  totalProcessed += await processDispenserDeals(db, now, tagsByAsset);
+  totalProcessed += await processDispenserDeals(db, now, tagsByAsset, marketSupply);
 
   return { processed: totalProcessed };
 }
@@ -566,6 +676,7 @@ async function processOrderDeals(
   db: D1Database,
   now: number,
   tagsByAsset: Map<string, { slug: string; name: string }[]>,
+  marketSupply: Map<string, { totalQty: number; listingCount: number }>,
 ): Promise<number> {
   // Get all open sell orders for non-excluded assets in supported quotes
   const allOrders = await db
@@ -658,6 +769,20 @@ async function processOrderDeals(
     }
   }
 
+  // Get asset supply for scarcity scoring
+  const supplyByAsset = new Map<string, number>();
+  for (let i = 0; i < uniqueAssets.length; i += BATCH_SIZE) {
+    const batch = uniqueAssets.slice(i, i + BATCH_SIZE);
+    const ph = batch.map((_, j) => `?${j + 1}`).join(",");
+    const result = await db
+      .prepare(`SELECT asset, supply_normalized FROM assets WHERE asset IN (${ph})`)
+      .bind(...batch)
+      .all<{ asset: string; supply_normalized: number }>();
+    for (const a of result.results) {
+      supplyByAsset.set(a.asset, a.supply_normalized);
+    }
+  }
+
   // Score each order listing
   let processed = 0;
   const upserts: D1PreparedStatement[] = [];
@@ -708,10 +833,13 @@ async function processOrderDeals(
     const listingAgeDays = order.block_time ? (now - order.block_time) / 86400 : null;
     const confidence = computeConfidence(ps.total_trade_count, lastTradeDaysAgo);
     const warnings = computeWarningFlags(discountPct, median3Price, medianPrice, lastTradeDaysAgo, listingAgeDays, ps.total_trade_count);
+    const mkt = marketSupply.get(order.base_asset);
+    const assetSupply = supplyByAsset.get(order.base_asset) ?? 0;
     const score = computeScore(
       avgDaysBetweenTrades, lastTradeDaysAgo, discountPct,
       ps.bid_count * 5 + (dStats?.unique_buyers ?? 0) * 0.5,
       avgTradeVolume,
+      mkt?.totalQty ?? 0, mkt?.listingCount ?? 0, assetSupply,
     );
 
     const collections = tagsByAsset.get(order.base_asset) ?? [];
@@ -729,8 +857,9 @@ async function processOrderDeals(
              unique_traders, active_buy_orders,
              dispenser_cheapest_btc, dispenser_active, dispenser_unique_buyers,
              score, required_edge_pct, collections_json, updated_at,
-             score_confidence, warning_flags_json, median3, total_trade_volume
-           ) VALUES (?,?,?,?,?, ?,?,?,?, ?,?,?, ?,?,?,?,?, ?, ?,?,?, ?,?, ?,?,?, ?,?,?,?, ?,?,?,?)`,
+             score_confidence, warning_flags_json, median3, total_trade_volume,
+             market_total_qty, market_listing_count
+           ) VALUES (?,?,?,?,?, ?,?,?,?, ?,?,?, ?,?,?,?,?, ?, ?,?,?, ?,?, ?,?,?, ?,?,?,?, ?,?,?,?, ?,?)`,
         )
         .bind(
           order.tx_hash, "order", order.base_asset, order.quote_asset, ps.base_asset_longname,
@@ -746,6 +875,7 @@ async function processOrderDeals(
           score, Math.round(requiredEdgePct), JSON.stringify(collections), now,
           confidence, warnings.length > 0 ? JSON.stringify(warnings) : null,
           median3Price, Math.round(totalTradeVolume * 1e4) / 1e4,
+          mkt?.totalQty ?? null, mkt?.listingCount ?? null,
         ),
     );
 
@@ -769,6 +899,7 @@ async function processDispenserDeals(
   db: D1Database,
   now: number,
   tagsByAsset: Map<string, { slug: string; name: string }[]>,
+  marketSupply: Map<string, { totalQty: number; listingCount: number }>,
 ): Promise<number> {
   // Get all active dispensers with dispense history (non-oracle, with remaining qty)
   const allDispensers = await db
@@ -839,6 +970,20 @@ async function processDispenserDeals(
     }
   }
 
+  // Get asset supply for scarcity scoring
+  const supplyByAsset = new Map<string, number>();
+  for (let i = 0; i < uniqueAssets.length; i += BATCH_SIZE) {
+    const batch = uniqueAssets.slice(i, i + BATCH_SIZE);
+    const ph = batch.map((_, j) => `?${j + 1}`).join(",");
+    const result = await db
+      .prepare(`SELECT asset, supply_normalized FROM assets WHERE asset IN (${ph})`)
+      .bind(...batch)
+      .all<{ asset: string; supply_normalized: number }>();
+    for (const a of result.results) {
+      supplyByAsset.set(a.asset, a.supply_normalized);
+    }
+  }
+
   // Score each dispenser listing
   let processed = 0;
   const upserts: D1PreparedStatement[] = [];
@@ -888,7 +1033,9 @@ async function processDispenserDeals(
     const listingAgeDays = disp.block_time ? (now - disp.block_time) / 86400 : null;
     const confidence = computeConfidence(stats.total_dispense_count, lastTradeDaysAgo);
     const warnings = computeWarningFlags(discountPct, median3Price, medianPrice, lastTradeDaysAgo, listingAgeDays, stats.total_dispense_count);
-    const score = computeScore(avgDaysBetweenTrades, lastTradeDaysAgo, discountPct, stats.unique_buyers * 0.5, avgDispVolume);
+    const mkt = marketSupply.get(disp.asset);
+    const assetSupply = supplyByAsset.get(disp.asset) ?? 0;
+    const score = computeScore(avgDaysBetweenTrades, lastTradeDaysAgo, discountPct, stats.unique_buyers * 0.5, avgDispVolume, mkt?.totalQty ?? 0, mkt?.listingCount ?? 0, assetSupply);
 
     const collections = tagsByAsset.get(disp.asset) ?? [];
 
@@ -905,8 +1052,9 @@ async function processDispenserDeals(
              unique_traders, active_buy_orders,
              dispenser_cheapest_btc, dispenser_active, dispenser_unique_buyers,
              score, required_edge_pct, collections_json, updated_at,
-             score_confidence, warning_flags_json, median3, total_trade_volume
-           ) VALUES (?,?,?,?,?, ?,?,?,?, ?,?,?, ?,?,?,?,?, ?, ?,?,?, ?,?, ?,?,?, ?,?,?,?, ?,?,?,?)`,
+             score_confidence, warning_flags_json, median3, total_trade_volume,
+             market_total_qty, market_listing_count
+           ) VALUES (?,?,?,?,?, ?,?,?,?, ?,?,?, ?,?,?,?,?, ?, ?,?,?, ?,?, ?,?,?, ?,?,?,?, ?,?,?,?, ?,?)`,
         )
         .bind(
           disp.tx_hash, "dispenser", disp.asset, "BTC", stats.asset_longname,
@@ -922,6 +1070,7 @@ async function processDispenserDeals(
           score, Math.round(requiredEdgePct), JSON.stringify(collections), now,
           confidence, warnings.length > 0 ? JSON.stringify(warnings) : null,
           median3Price, Math.round(totalDispVolume * 1e4) / 1e4,
+          mkt?.totalQty ?? null, mkt?.listingCount ?? null,
         ),
     );
 

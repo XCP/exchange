@@ -34,6 +34,8 @@ interface DealRow {
   warning_flags_json: string | null;
   median3: number | null;
   total_trade_volume: number | null;
+  market_total_qty: number | null;
+  market_listing_count: number | null;
   supply: number | null;
   locked: number | null;
   updated_at: number | null;
@@ -108,6 +110,8 @@ export async function handleDeals(
     warning_flags: r.warning_flags_json ? JSON.parse(r.warning_flags_json) : [],
     median3: r.median3,
     total_trade_volume: r.total_trade_volume,
+    market_total_qty: r.market_total_qty,
+    market_listing_count: r.market_listing_count,
     supply: r.supply,
     locked: r.locked != null ? r.locked === 1 : null,
   }));
