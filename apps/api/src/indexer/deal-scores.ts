@@ -15,7 +15,7 @@ const EXCLUDED_ASSETS_SQL = "'XCP','PEPECASH','BITCORN','BTC'";
 const SUPPORTED_QUOTES = new Set(["XCP", "PEPECASH", "BITCORN", "BTC"]);
 const BATCH_SIZE = 50;
 const MIN_TRADES_FOR_DEAL = 3;
-const MAX_LISTING_QTY = 10;       // Skip fungible tokens (large qty = not a collectible)
+const MAX_SUPPLY = 10000;         // Only score collectibles (supply < 10k)
 
 type ScoreConfidence = "HIGH" | "MEDIUM" | "LOW";
 
@@ -180,16 +180,17 @@ export async function scoreNewOrders(
     if (EXCLUDED_ASSETS.has(ps.base_asset)) continue;
     if (!SUPPORTED_QUOTES.has(ps.quote_asset)) continue;
 
-    // Only score assets in a collection
-    const inCollection = await db
+    // Only score collectible assets (in a collection + supply < 10k)
+    const eligible = await db
       .prepare(
         `SELECT 1 FROM tag_assets ta
          JOIN tags t ON t.id = ta.tag_id
+         JOIN assets a ON a.asset = ta.asset AND a.supply_normalized < ${MAX_SUPPLY}
          WHERE ta.asset = ? AND t.tag_type = 'collection' LIMIT 1`,
       )
       .bind(ps.base_asset)
       .first();
-    if (!inCollection) continue;
+    if (!eligible) continue;
 
     // Get recent trades for fair value
     const trades = await db
@@ -214,7 +215,7 @@ export async function scoreNewOrders(
         `SELECT tx_hash, price, give_remaining, source, block_time
          FROM orders
          WHERE pair = ? AND status = 'open' AND side = 'ask'
-           AND give_remaining > 0 AND give_remaining < ${MAX_LISTING_QTY}
+           AND give_remaining > 0
          ORDER BY price ASC`,
       )
       .bind(pair)
@@ -338,16 +339,17 @@ export async function scoreNewDispensers(
   for (const asset of affectedAssets) {
     if (EXCLUDED_ASSETS.has(asset)) continue;
 
-    // Only score assets in a collection
-    const inCollection = await db
+    // Only score collectible assets (in a collection + supply < 10k)
+    const eligible = await db
       .prepare(
         `SELECT 1 FROM tag_assets ta
          JOIN tags t ON t.id = ta.tag_id
+         JOIN assets a ON a.asset = ta.asset AND a.supply_normalized < ${MAX_SUPPLY}
          WHERE ta.asset = ? AND t.tag_type = 'collection' LIMIT 1`,
       )
       .bind(asset)
       .first();
-    if (!inCollection) continue;
+    if (!eligible) continue;
 
     // Get dispenser stats
     const stats = await db
@@ -387,7 +389,7 @@ export async function scoreNewDispensers(
         `SELECT tx_hash, price, give_remaining, source, block_time
          FROM dispensers
          WHERE asset = ? AND status < 10 AND price > 0
-           AND give_remaining > 0 AND give_remaining < ${MAX_LISTING_QTY}
+           AND give_remaining > 0
            AND oracle_address IS NULL
          ORDER BY price ASC`,
       )
@@ -563,10 +565,10 @@ async function processOrderDeals(
       `SELECT o.tx_hash, o.base_asset, o.quote_asset, o.source, o.price, o.give_remaining, o.pair, o.block_time
        FROM orders o
        JOIN pair_stats ps ON ps.pair = o.pair
+       JOIN assets a ON a.asset = o.base_asset AND a.supply_normalized < ${MAX_SUPPLY}
        WHERE o.status = 'open'
          AND o.side = 'ask'
          AND o.give_remaining > 0
-         AND o.give_remaining < ${MAX_LISTING_QTY}
          AND o.base_asset NOT IN (${EXCLUDED_ASSETS_SQL})
          AND o.quote_asset IN ('XCP', 'PEPECASH', 'BITCORN', 'BTC')
          AND ps.hidden = 0
@@ -766,10 +768,10 @@ async function processDispenserDeals(
       `SELECT d.tx_hash, d.asset, d.source, d.price, d.give_remaining, d.block_time
        FROM dispensers d
        JOIN dispenser_stats ds ON ds.asset = d.asset
+       JOIN assets a ON a.asset = d.asset AND a.supply_normalized < ${MAX_SUPPLY}
        WHERE d.status < 10
          AND d.price > 0
          AND d.give_remaining > 0
-         AND d.give_remaining < ${MAX_LISTING_QTY}
          AND d.oracle_address IS NULL
          AND d.asset NOT IN (${EXCLUDED_ASSETS_SQL})
          AND ds.hidden = 0
