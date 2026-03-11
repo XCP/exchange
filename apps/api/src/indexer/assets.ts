@@ -3,11 +3,15 @@
  * Full paginated index on first run, incremental polling after.
  *
  * Source: https://api.counterparty.io:4000/v2/assets?verbose=true
+ *
+ * Resumable: persists cursor in indexer_state so each invocation picks up
+ * where it left off. Safe to call repeatedly until done=true.
  */
 
 const CP_API_BASE = "https://api.counterparty.io:4000";
 const PAGE_LIMIT = 1000;
 const STOP_AFTER_KNOWN = 10; // Stop incremental after seeing this many known assets
+const DELAY_MS = 200; // Delay between pages to avoid rate limits
 
 interface CpAssetRow {
   asset: string;
@@ -25,6 +29,10 @@ interface CpAssetsResponse {
   result: CpAssetRow[];
   next_cursor: string | null;
   result_count: number;
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 async function fetchAssetsPage(cursor?: string): Promise<CpAssetsResponse> {
@@ -71,25 +79,59 @@ function upsertBatch(
   );
 }
 
+async function getCursor(db: D1Database): Promise<string | null> {
+  const row = await db
+    .prepare(`SELECT value FROM indexer_state WHERE key = 'asset_sync_cursor'`)
+    .first<{ value: string }>();
+  return row?.value ?? null;
+}
+
+async function saveCursor(db: D1Database, cursor: string | null): Promise<void> {
+  if (cursor) {
+    await db
+      .prepare(`INSERT OR REPLACE INTO indexer_state (key, value) VALUES ('asset_sync_cursor', ?)`)
+      .bind(cursor)
+      .run();
+  } else {
+    await db
+      .prepare(`DELETE FROM indexer_state WHERE key = 'asset_sync_cursor'`)
+      .run();
+  }
+}
+
 /**
- * Full paginated index of all assets. Use on first run.
- * Returns total assets indexed.
+ * Resumable full index. Persists cursor between calls so you can invoke
+ * repeatedly with small page counts to avoid timeouts and rate limits.
+ *
+ * Returns done=true when the full catalog has been indexed.
+ * Call with reset=true to start over from the beginning.
  */
 export async function indexAllAssets(
   db: D1Database,
-  maxPages: number = 500,
-): Promise<{ indexed: number; pages: number }> {
+  maxPages: number = 20,
+  reset: boolean = false,
+): Promise<{ indexed: number; pages: number; done: boolean; cursor: string | null }> {
   const now = Math.floor(Date.now() / 1000);
-  let cursor: string | undefined;
+
+  if (reset) {
+    await saveCursor(db, null);
+  }
+
+  let cursor = await getCursor(db);
   let totalIndexed = 0;
   let pages = 0;
 
   for (let page = 0; page < maxPages; page++) {
-    const data = await fetchAssetsPage(cursor);
-    if (data.result.length === 0) break;
+    if (page > 0) await delay(DELAY_MS);
+
+    const data = await fetchAssetsPage(cursor ?? undefined);
+    if (data.result.length === 0) {
+      // Done — clear cursor
+      await saveCursor(db, null);
+      return { indexed: totalIndexed, pages, done: true, cursor: null };
+    }
 
     const stmts = upsertBatch(db, data.result, now);
-    // D1 batch limit is ~100 statements, chunk if needed
     for (let i = 0; i < stmts.length; i += 50) {
       await db.batch(stmts.slice(i, i + 50));
     }
@@ -97,11 +139,17 @@ export async function indexAllAssets(
     totalIndexed += data.result.length;
     pages++;
 
-    if (!data.next_cursor) break;
+    if (!data.next_cursor) {
+      await saveCursor(db, null);
+      return { indexed: totalIndexed, pages, done: true, cursor: null };
+    }
+
     cursor = data.next_cursor;
+    await saveCursor(db, cursor);
   }
 
-  return { indexed: totalIndexed, pages };
+  // Ran out of pages budget — save cursor for next call
+  return { indexed: totalIndexed, pages, done: false, cursor };
 }
 
 /**
@@ -118,6 +166,8 @@ export async function syncNewAssets(
   let pages = 0;
 
   for (let page = 0; page < maxPages; page++) {
+    if (page > 0) await delay(DELAY_MS);
+
     const data = await fetchAssetsPage(cursor);
     if (data.result.length === 0) break;
 

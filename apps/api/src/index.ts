@@ -238,11 +238,16 @@ export default {
       }
 
       // Route: POST /indexer/sync-assets — index asset metadata from CP API
+      // ?mode=full — resumable full index (call repeatedly until done=true)
+      // ?mode=incremental — poll newest, stop after seeing known assets
+      // ?pages=20 — max pages per call (default 20 full, 10 incremental)
+      // ?reset=1 — restart full index from beginning
       if (path === "/indexer/sync-assets" && request.method === "POST") {
         const mode = url.searchParams.get("mode") ?? "incremental";
-        const maxPages = parseInt(url.searchParams.get("pages") ?? (mode === "full" ? "500" : "10"), 10);
+        const maxPages = parseInt(url.searchParams.get("pages") ?? (mode === "full" ? "20" : "10"), 10);
+        const reset = url.searchParams.get("reset") === "1";
         const result = mode === "full"
-          ? await indexAllAssets(env.DB, maxPages)
+          ? await indexAllAssets(env.DB, maxPages, reset)
           : await syncNewAssets(env.DB, maxPages);
         return await withCors(Response.json({ ok: true, mode, ...result }));
       }
