@@ -17,6 +17,14 @@ const BATCH_SIZE = 50;
 const MIN_TRADES_FOR_DEAL = 3;
 const MAX_SUPPLY = 2000;          // Only score collectibles (supply < 2k)
 
+// Only score deals from these vetted collections
+const ALLOWED_COLLECTION_SLUGS = [
+  'rare-pepe', 'spells-of-genesis', 'memorychain', 'force-of-will',
+  'bitcorn-crops', 'dank-directory', 'oasis-mining', 'age-of-rust',
+  'stamps', 'fake-rare', 'sarutobi-island',
+];
+const ALLOWED_SLUGS_SQL = ALLOWED_COLLECTION_SLUGS.map(s => `'${s}'`).join(',');
+
 type ScoreConfidence = "HIGH" | "MEDIUM" | "LOW";
 
 function computeConfidence(
@@ -180,12 +188,12 @@ export async function scoreNewOrders(
     if (EXCLUDED_ASSETS.has(ps.base_asset)) continue;
     if (!SUPPORTED_QUOTES.has(ps.quote_asset)) continue;
 
-    // Only score collectible assets (in a collection + supply < 10k)
+    // Only score collectible assets (in an allowed collection, supply < 2k, locked, indivisible)
     const eligible = await db
       .prepare(
         `SELECT 1 FROM tag_assets ta
-         JOIN tags t ON t.id = ta.tag_id
-         JOIN assets a ON a.asset = ta.asset AND a.supply_normalized < ${MAX_SUPPLY} AND a.locked = 1
+         JOIN tags t ON t.id = ta.tag_id AND t.slug IN (${ALLOWED_SLUGS_SQL})
+         JOIN assets a ON a.asset = ta.asset AND a.supply_normalized < ${MAX_SUPPLY} AND a.locked = 1 AND a.divisible = 0
          WHERE ta.asset = ? AND t.tag_type = 'collection' LIMIT 1`,
       )
       .bind(ps.base_asset)
@@ -339,12 +347,12 @@ export async function scoreNewDispensers(
   for (const asset of affectedAssets) {
     if (EXCLUDED_ASSETS.has(asset)) continue;
 
-    // Only score collectible assets (in a collection + supply < 10k)
+    // Only score collectible assets (in an allowed collection, supply < 2k, locked, indivisible)
     const eligible = await db
       .prepare(
         `SELECT 1 FROM tag_assets ta
-         JOIN tags t ON t.id = ta.tag_id
-         JOIN assets a ON a.asset = ta.asset AND a.supply_normalized < ${MAX_SUPPLY} AND a.locked = 1
+         JOIN tags t ON t.id = ta.tag_id AND t.slug IN (${ALLOWED_SLUGS_SQL})
+         JOIN assets a ON a.asset = ta.asset AND a.supply_normalized < ${MAX_SUPPLY} AND a.locked = 1 AND a.divisible = 0
          WHERE ta.asset = ? AND t.tag_type = 'collection' LIMIT 1`,
       )
       .bind(asset)
@@ -565,7 +573,7 @@ async function processOrderDeals(
       `SELECT o.tx_hash, o.base_asset, o.quote_asset, o.source, o.price, o.give_remaining, o.pair, o.block_time
        FROM orders o
        JOIN pair_stats ps ON ps.pair = o.pair
-       JOIN assets a ON a.asset = o.base_asset AND a.supply_normalized < ${MAX_SUPPLY} AND a.locked = 1
+       JOIN assets a ON a.asset = o.base_asset AND a.supply_normalized < ${MAX_SUPPLY} AND a.locked = 1 AND a.divisible = 0
        WHERE o.status = 'open'
          AND o.side = 'ask'
          AND o.give_remaining > 0
@@ -573,7 +581,7 @@ async function processOrderDeals(
          AND o.quote_asset IN ('XCP', 'PEPECASH', 'BITCORN', 'BTC')
          AND ps.hidden = 0
          AND ps.total_trade_count >= ${MIN_TRADES_FOR_DEAL}
-         AND o.base_asset IN (SELECT ta.asset FROM tag_assets ta JOIN tags t ON t.id = ta.tag_id WHERE t.tag_type = 'collection')
+         AND o.base_asset IN (SELECT ta.asset FROM tag_assets ta JOIN tags t ON t.id = ta.tag_id WHERE t.tag_type = 'collection' AND t.slug IN (${ALLOWED_SLUGS_SQL}))
        ORDER BY o.price ASC
        LIMIT 1000`,
     )
@@ -768,7 +776,7 @@ async function processDispenserDeals(
       `SELECT d.tx_hash, d.asset, d.source, d.price, d.give_remaining, d.block_time
        FROM dispensers d
        JOIN dispenser_stats ds ON ds.asset = d.asset
-       JOIN assets a ON a.asset = d.asset AND a.supply_normalized < ${MAX_SUPPLY} AND a.locked = 1
+       JOIN assets a ON a.asset = d.asset AND a.supply_normalized < ${MAX_SUPPLY} AND a.locked = 1 AND a.divisible = 0
        WHERE d.status < 10
          AND d.price > 0
          AND d.give_remaining > 0
@@ -776,7 +784,7 @@ async function processDispenserDeals(
          AND d.asset NOT IN (${EXCLUDED_ASSETS_SQL})
          AND ds.hidden = 0
          AND ds.total_dispense_count >= ${MIN_TRADES_FOR_DEAL}
-         AND d.asset IN (SELECT ta.asset FROM tag_assets ta JOIN tags t ON t.id = ta.tag_id WHERE t.tag_type = 'collection')
+         AND d.asset IN (SELECT ta.asset FROM tag_assets ta JOIN tags t ON t.id = ta.tag_id WHERE t.tag_type = 'collection' AND t.slug IN (${ALLOWED_SLUGS_SQL}))
        ORDER BY d.price ASC
        LIMIT 2000`,
     )
