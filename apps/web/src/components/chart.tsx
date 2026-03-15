@@ -1,13 +1,15 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { createChart, CandlestickSeries, HistogramSeries, type IChartApi, type ISeriesApi, type CandlestickData, type HistogramData, type Time, ColorType } from 'lightweight-charts'
+import { createChart, CandlestickSeries, AreaSeries, HistogramSeries, type IChartApi, type ISeriesApi, type CandlestickData, type AreaData, type HistogramData, type Time, ColorType } from 'lightweight-charts'
 import { useOhlc } from '@/lib/hooks/useOhlc'
 
 interface ChartProps {
   pairSlug: string
   pairLabel?: string
 }
+
+type ChartMode = 'candles' | 'line'
 
 const ALL_TIMEFRAMES = ['1H', '4H', '1D', '1W', '1M', '1Y'] as const
 
@@ -30,8 +32,10 @@ export function Chart({ pairSlug, pairLabel }: ChartProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
   const candleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null)
+  const areaSeriesRef = useRef<ISeriesApi<'Area'> | null>(null)
   const volumeSeriesRef = useRef<ISeriesApi<'Histogram'> | null>(null)
   const [activeTimeframe, setActiveTimeframe] = useState('1Y')
+  const [chartMode, setChartMode] = useState<ChartMode>('candles')
   const candlesRef = useRef<CandlestickData<Time>[]>([])
   const volumesRef = useRef<HistogramData<Time>[]>([])
   const prevCandleCount = useRef(0)
@@ -59,6 +63,10 @@ export function Chart({ pairSlug, pairLabel }: ChartProps) {
 
   // OHLC header values from crosshair or last candle
   const [ohlcHeader, setOhlcHeader] = useState<{ o: string; h: string; l: string; c: string; v: string; green: boolean } | null>(null)
+
+  // Ref to track current chart mode inside crosshair callback
+  const chartModeRef = useRef(chartMode)
+  chartModeRef.current = chartMode
 
   const initChart = () => {
     if (!containerRef.current) return
@@ -117,6 +125,25 @@ export function Chart({ pairSlug, pairLabel }: ChartProps) {
       },
     })
 
+    const areaSeries = chart.addSeries(AreaSeries, {
+      lineColor: '#22c55e',
+      topColor: 'rgba(34, 197, 94, 0.18)',
+      bottomColor: 'rgba(34, 197, 94, 0.02)',
+      lineWidth: 2,
+      lastValueVisible: false,
+      priceLineVisible: false,
+      crosshairMarkerVisible: true,
+      crosshairMarkerRadius: 3,
+      crosshairMarkerBorderColor: '#22c55e',
+      crosshairMarkerBackgroundColor: '#09090b',
+      visible: false,
+      priceFormat: {
+        type: 'custom',
+        minMove: 0.00000001,
+        formatter: fmtPrice,
+      },
+    })
+
     const volumeSeries = chart.addSeries(HistogramSeries, {
       priceFormat: { type: 'volume' },
       priceScaleId: '',
@@ -126,7 +153,7 @@ export function Chart({ pairSlug, pairLabel }: ChartProps) {
       scaleMargins: { top: 0.85, bottom: 0 },
     })
 
-    // Crosshair move → update OHLC header
+    // Crosshair move → update header
     chart.subscribeCrosshairMove((param) => {
       if (!param.time || !param.seriesData) {
         // Reset to last candle
@@ -145,22 +172,38 @@ export function Chart({ pairSlug, pairLabel }: ChartProps) {
         }
         return
       }
-      const d = param.seriesData.get(candleSeries) as CandlestickData<Time> | undefined
       const vol = param.seriesData.get(volumeSeries) as HistogramData<Time> | undefined
-      if (d) {
-        setOhlcHeader({
-          o: fmtPrice(d.open),
-          h: fmtPrice(d.high),
-          l: fmtPrice(d.low),
-          c: fmtPrice(d.close),
-          v: fmtVol(vol?.value ?? 0),
-          green: d.close >= d.open,
-        })
+      if (chartModeRef.current === 'line') {
+        const d = param.seriesData.get(areaSeries) as AreaData<Time> | undefined
+        if (d) {
+          // For line mode, use close value for all OHLC fields
+          setOhlcHeader({
+            o: fmtPrice(d.value),
+            h: fmtPrice(d.value),
+            l: fmtPrice(d.value),
+            c: fmtPrice(d.value),
+            v: fmtVol(vol?.value ?? 0),
+            green: true,
+          })
+        }
+      } else {
+        const d = param.seriesData.get(candleSeries) as CandlestickData<Time> | undefined
+        if (d) {
+          setOhlcHeader({
+            o: fmtPrice(d.open),
+            h: fmtPrice(d.high),
+            l: fmtPrice(d.low),
+            c: fmtPrice(d.close),
+            v: fmtVol(vol?.value ?? 0),
+            green: d.close >= d.open,
+          })
+        }
       }
     })
 
     chartRef.current = chart
     candleSeriesRef.current = candleSeries
+    areaSeriesRef.current = areaSeries
     volumeSeriesRef.current = volumeSeries
   }
 
@@ -175,9 +218,15 @@ export function Chart({ pairSlug, pairLabel }: ChartProps) {
     }
   }, [])
 
+  // Toggle series visibility when chart mode changes
+  useEffect(() => {
+    candleSeriesRef.current?.applyOptions({ visible: chartMode === 'candles' })
+    areaSeriesRef.current?.applyOptions({ visible: chartMode === 'line' })
+  }, [chartMode])
+
   // Update chart data when candles change
   useEffect(() => {
-    if (!candleSeriesRef.current || !volumeSeriesRef.current || !rawCandles.length) return
+    if (!candleSeriesRef.current || !areaSeriesRef.current || !volumeSeriesRef.current || !rawCandles.length) return
 
     const candles: CandlestickData<Time>[] = rawCandles.map((c) => ({
       time: c.t as Time,
@@ -185,6 +234,11 @@ export function Chart({ pairSlug, pairLabel }: ChartProps) {
       high: c.h,
       low: c.l,
       close: c.c,
+    }))
+
+    const areaData: AreaData<Time>[] = rawCandles.map((c) => ({
+      time: c.t as Time,
+      value: c.c,
     }))
 
     const volumes: HistogramData<Time>[] = rawCandles.map((c) => ({
@@ -196,6 +250,7 @@ export function Chart({ pairSlug, pairLabel }: ChartProps) {
     candlesRef.current = candles
     volumesRef.current = volumes
     candleSeriesRef.current.setData(candles)
+    areaSeriesRef.current.setData(areaData)
     volumeSeriesRef.current.setData(volumes)
 
     // Set OHLC header from last candle
@@ -305,21 +360,57 @@ export function Chart({ pairSlug, pairLabel }: ChartProps) {
               </button>
             ))}
           </div>
+          <div className="flex items-center gap-0.5 ml-1 border-l border-zinc-800 pl-2">
+            <button
+              onClick={() => setChartMode('candles')}
+              className={`px-1.5 py-0.5 rounded-sm transition-colors ${
+                chartMode === 'candles' ? 'text-zinc-100' : 'text-zinc-600 hover:text-zinc-400'
+              }`}
+              title="Candlestick"
+            >
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                <line x1="4" y1="1" x2="4" y2="13" />
+                <rect x="2" y="4" width="4" height="5" fill="currentColor" stroke="currentColor" strokeWidth="1" rx="0.5" />
+                <line x1="10" y1="1" x2="10" y2="13" />
+                <rect x="8" y="6" width="4" height="5" fill="currentColor" stroke="currentColor" strokeWidth="1" rx="0.5" />
+              </svg>
+            </button>
+            <button
+              onClick={() => setChartMode('line')}
+              className={`px-1.5 py-0.5 rounded-sm transition-colors ${
+                chartMode === 'line' ? 'text-zinc-100' : 'text-zinc-600 hover:text-zinc-400'
+              }`}
+              title="Line"
+            >
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="1,10 4,6 7,8 10,3 13,5" />
+              </svg>
+            </button>
+          </div>
         </div>
         {ohlcHeader && (
           <div className="flex items-center gap-2 max-sm:hidden">
             <span className="text-xs text-zinc-500">Volume</span>
             <span className="text-xs text-zinc-300 font-mono">{ohlcHeader.v}</span>
-            <span className="text-xs text-zinc-500">O</span>
-            <span className="text-xs text-zinc-300 font-mono">{ohlcHeader.o}</span>
-            <span className="text-xs text-zinc-500">H</span>
-            <span className="text-xs text-zinc-300 font-mono">{ohlcHeader.h}</span>
-            <span className="text-xs text-zinc-500">L</span>
-            <span className="text-xs text-zinc-300 font-mono">{ohlcHeader.l}</span>
-            <span className="text-xs text-zinc-500">C</span>
-            <span className={`text-xs font-mono ${ohlcHeader.green ? 'text-green-400' : 'text-red-400'}`}>
-              {ohlcHeader.c}
-            </span>
+            {chartMode === 'candles' ? (
+              <>
+                <span className="text-xs text-zinc-500">O</span>
+                <span className="text-xs text-zinc-300 font-mono">{ohlcHeader.o}</span>
+                <span className="text-xs text-zinc-500">H</span>
+                <span className="text-xs text-zinc-300 font-mono">{ohlcHeader.h}</span>
+                <span className="text-xs text-zinc-500">L</span>
+                <span className="text-xs text-zinc-300 font-mono">{ohlcHeader.l}</span>
+                <span className="text-xs text-zinc-500">C</span>
+                <span className={`text-xs font-mono ${ohlcHeader.green ? 'text-green-400' : 'text-red-400'}`}>
+                  {ohlcHeader.c}
+                </span>
+              </>
+            ) : (
+              <>
+                <span className="text-xs text-zinc-500">Price</span>
+                <span className="text-xs font-mono text-green-400">{ohlcHeader.c}</span>
+              </>
+            )}
           </div>
         )}
       </div>
