@@ -276,9 +276,12 @@ function SwapTable({ tab, listings, isLoading, satsMode, address, assetSearch, d
           <EmptyRows loading={isLoading} label={tab === 'filled' ? 'filled swaps' : 'swap listings'} cols={cols} />
         ) : (
           listings.map((listing) => {
-            const unitPrice = listing.price_sats / listing.asset_quantity
+            // Fee-inclusive prices (mirrors server: max(2%, 1000 sats))
+            const fee = Math.max(Math.floor(listing.price_sats * 0.02), 1000)
+            const totalSats = listing.price_sats + fee
+            const unitPrice = totalSats / listing.asset_quantity
             const unitPriceBtc = unitPrice / 1e8
-            const totalPriceBtc = listing.price_sats / 1e8
+            const totalPriceBtc = totalSats / 1e8
             const ts = listing.created_at ? new Date(listing.created_at + 'Z').getTime() / 1000 : 0
 
             return (
@@ -325,7 +328,7 @@ function SwapTable({ tab, listings, isLoading, satsMode, address, assetSearch, d
                 </td>
                 <td className="text-right text-zinc-400 font-mono px-3 py-1.5">
                   {satsMode
-                    ? listing.price_sats.toLocaleString()
+                    ? totalSats.toLocaleString()
                     : formatPrice(totalPriceBtc, false)}
                 </td>
                 <td className="text-right text-zinc-500 font-mono px-3 py-1.5">

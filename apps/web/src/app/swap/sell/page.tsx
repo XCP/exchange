@@ -39,6 +39,7 @@ function SellPageInner() {
   const [assetLongname, setAssetLongname] = useState(longnameParam ?? '')
   const [assetQuantity, setAssetQuantity] = useState(qtyParam ?? '')
   const [priceSats, setPriceSats] = useState('')
+  const [expiry, setExpiry] = useState<string>('none')
 
   async function handleSell() {
     if (!address) return
@@ -96,6 +97,16 @@ function SellPageInner() {
 
       // Step 3: Submit signed PSBT to create the listing
       setStatus('submitting')
+      const expiryMap: Record<string, number> = {
+        '1h': 3600_000,
+        '24h': 86400_000,
+        '7d': 604800_000,
+        '30d': 2592000_000,
+      }
+      const expiresAt = expiry !== 'none' && expiryMap[expiry]
+        ? new Date(Date.now() + expiryMap[expiry]).toISOString()
+        : null
+
       const createRes = await fetch(`${DEX_API_BASE}/swaps/complete-listing`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -108,6 +119,7 @@ function SellPageInner() {
           asset_quantity: qty,
           price_sats: price,
           signed_psbt_hex: signedPsbtHex,
+          expires_at: expiresAt,
         }),
       })
       const createData = await createRes.json()
@@ -235,6 +247,21 @@ function SellPageInner() {
                     className="w-full bg-zinc-900 border border-zinc-800 rounded-sm px-2.5 py-1.5 text-xs text-zinc-200 placeholder-zinc-700 font-mono focus:outline-none focus:border-zinc-600"
                   />
                 </div>
+              </div>
+
+              <div>
+                <label className="text-[10px] text-zinc-500 mb-1 block">Listing Expiry</label>
+                <select
+                  value={expiry}
+                  onChange={(e) => setExpiry(e.target.value)}
+                  className="w-full bg-zinc-900 border border-zinc-800 rounded-sm px-2.5 py-1.5 text-xs text-zinc-200 focus:outline-none focus:border-zinc-600"
+                >
+                  <option value="none">No expiry</option>
+                  <option value="1h">1 hour</option>
+                  <option value="24h">24 hours</option>
+                  <option value="7d">7 days</option>
+                  <option value="30d">30 days</option>
+                </select>
               </div>
 
               {address && (

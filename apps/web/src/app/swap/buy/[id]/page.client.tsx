@@ -23,7 +23,6 @@ export default function BuyPage({ params }: { params: Promise<{ id: string }> })
   const [status, setStatus] = useState<BuyStatus>('idle')
   const [error, setError] = useState<string | null>(null)
   const [txId, setTxId] = useState<string | null>(null)
-  const [platformFee, setPlatformFee] = useState<number | null>(null)
 
   async function handleBuy() {
     if (!address || !listing) return
@@ -42,8 +41,7 @@ export default function BuyPage({ params }: { params: Promise<{ id: string }> })
         throw new Error(prepData.error || prepData.details || 'Failed to prepare fill')
       }
 
-      const { fill_request_id, psbt_hex, buyer_input_indices, platform_fee_sats } = prepData
-      setPlatformFee(platform_fee_sats ?? 0)
+      const { fill_request_id, psbt_hex, buyer_input_indices } = prepData
 
       // Step 2: Sign PSBT via wallet extension
       // Only sign buyer's inputs (not the seller's input 0)
@@ -163,8 +161,11 @@ export default function BuyPage({ params }: { params: Promise<{ id: string }> })
     )
   }
 
-  const totalPriceBtc = listing.price_sats / 1e8
-  const unitPrice = listing.price_sats / listing.asset_quantity
+  // Display fee-inclusive price (mirrors server: max(2%, 1000 sats))
+  const fee = Math.max(Math.floor(listing.price_sats * 0.02), 1000)
+  const totalSats = listing.price_sats + fee
+  const totalBtc = totalSats / 1e8
+  const unitPrice = totalSats / listing.asset_quantity
 
   const isOwnListing = address === listing.seller_address
   const canBuy = address && !isOwnListing && status === 'idle'
@@ -208,11 +209,11 @@ export default function BuyPage({ params }: { params: Promise<{ id: string }> })
                 <div className="text-zinc-200 font-mono">{formatAmount(listing.asset_quantity)}</div>
               </div>
               <div>
-                <span className="text-zinc-500">Total Price</span>
+                <span className="text-zinc-500">Price</span>
                 <div className="text-zinc-200 font-mono">
                   {satsMode
-                    ? `${listing.price_sats.toLocaleString()} sats`
-                    : `${formatPrice(totalPriceBtc, false)} BTC`}
+                    ? `${totalSats.toLocaleString()} sats`
+                    : `${formatPrice(totalBtc, false)} BTC`}
                 </div>
               </div>
               <div>
@@ -232,13 +233,9 @@ export default function BuyPage({ params }: { params: Promise<{ id: string }> })
             <div className="text-[10px] text-zinc-600">
               UTXO: {listing.utxo_txid.slice(0, 12)}...:{listing.utxo_vout}
             </div>
-
-            {platformFee !== null && platformFee > 0 && (
-              <div className="text-[10px] text-zinc-600 pt-1 border-t border-zinc-800/50">
-                Platform fee: <span className="font-mono text-zinc-500">{platformFee.toLocaleString()} sats</span>
-                <span className="text-zinc-700"> ({platformFee >= Math.floor(listing.price_sats * 0.02) ? '2%' : 'minimum'})</span>
-              </div>
-            )}
+            <div className="text-[10px] text-zinc-700">
+              + network fee at broadcast
+            </div>
           </div>
 
           {/* Buy action area */}
