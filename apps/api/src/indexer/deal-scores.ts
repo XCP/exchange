@@ -20,7 +20,7 @@ const MAX_SUPPLY = 2000;          // Only score collectibles (supply < 2k)
 // Only score deals from these vetted collections
 const ALLOWED_COLLECTION_SLUGS = [
   'rare-pepe', 'spells-of-genesis', 'memorychain', 'force-of-will',
-  'bitcorn-crops', 'dank-directory', 'oasis-mining', 'age-of-rust',
+  'bitcorn-crops', 'oasis-mining', 'age-of-rust',
   'fake-rare', 'sarutobi-island',
 ];
 const ALLOWED_SLUGS_SQL = ALLOWED_COLLECTION_SLUGS.map(s => `'${s}'`).join(',');
