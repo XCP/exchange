@@ -376,8 +376,7 @@ export async function handleCompleteListingPsbt(
   const errors: string[] = [];
   if (!seller_address) errors.push("seller_address is required");
   if (!asset) errors.push("asset is required");
-  if (!Number.isInteger(asset_quantity) || asset_quantity <= 0)
-    errors.push("asset_quantity must be a positive integer");
+  // asset_quantity from client is advisory — server verifies from Counterparty API
   if (!/^[0-9a-f]{64}$/i.test(utxo_txid))
     errors.push("utxo_txid must be a 64-char hex string");
   if (!Number.isInteger(utxo_vout) || utxo_vout < 0)
@@ -460,13 +459,12 @@ export async function handleCompleteListingPsbt(
     );
   }
 
-  // Verify the UTXO holds the claimed asset and quantity
+  // Verify the UTXO holds the claimed asset — use server-verified quantity, not client-provided
   const assetCheck = await verifyUtxoAsset(
     env.CP_API_BASE,
     utxo_txid,
     utxo_vout,
-    asset,
-    asset_quantity
+    asset
   );
   if (!assetCheck.verified) {
     return Response.json(
@@ -474,6 +472,8 @@ export async function handleCompleteListingPsbt(
       { status: 400 }
     );
   }
+  // Use the verified quantity from the Counterparty API (normalized for display)
+  const verified_quantity = assetCheck.quantity_normalized ?? String(assetCheck.quantity ?? asset_quantity);
 
   const id = crypto.randomUUID();
 
@@ -486,7 +486,7 @@ export async function handleCompleteListingPsbt(
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .bind(
-        id, seller_address, asset, asset_longname, asset_quantity,
+        id, seller_address, asset, asset_longname, verified_quantity,
         utxo_txid, utxo_vout, price_sats, signed_psbt_hex, expires_at
       )
       .run();
@@ -507,7 +507,7 @@ export async function handleCompleteListingPsbt(
       seller_address,
       asset,
       asset_longname,
-      asset_quantity,
+      asset_quantity: verified_quantity,
       utxo_txid,
       utxo_vout,
       price_sats,

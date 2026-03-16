@@ -171,12 +171,12 @@ export async function verifyUtxoAsset(
   utxoVout: number,
   expectedAsset: string,
   expectedQuantity?: number
-): Promise<{ verified: boolean; error?: string }> {
+): Promise<{ verified: boolean; error?: string; quantity?: number; quantity_normalized?: string }> {
   try {
     const res = await fetchWithRetry(
-      `${apiBase}/utxos/${utxoTxid}:${utxoVout}/balances`
+      `${apiBase}/utxos/${utxoTxid}:${utxoVout}/balances?verbose=true`
     );
-    const data: { result: Array<{ asset: string; quantity: number; asset_longname: string | null }> } =
+    const data: { result: Array<{ asset: string; quantity: number; quantity_normalized: string; asset_longname: string | null }> } =
       await res.json();
 
     const match = data.result.find(
@@ -204,7 +204,7 @@ export async function verifyUtxoAsset(
       };
     }
 
-    return { verified: true };
+    return { verified: true, quantity: match.quantity, quantity_normalized: match.quantity_normalized };
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
     return { verified: false, error: `Failed to verify UTXO asset: ${msg}` };
