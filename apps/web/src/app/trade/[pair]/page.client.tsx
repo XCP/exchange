@@ -179,8 +179,8 @@ export default function PairOrdersPage({ params }: { params: Promise<{ pair: str
           <TradeForm
             baseSymbol={baseSymbol}
             quoteSymbol={quoteSymbol}
-            baseDivisible={pairData?.asset_info?.divisible ?? true}
-            quoteDivisible={quoteSymbol === 'BTC' || quoteSymbol === 'XCP'}
+            baseDivisible={baseDivisible}
+            quoteDivisible={quoteDivisible}
             tradeTab={tradeTab}
             setTradeTab={setTradeTab}
             priceInput={priceInput}
