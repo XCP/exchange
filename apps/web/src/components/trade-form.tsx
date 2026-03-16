@@ -11,6 +11,8 @@ import { WalletInstallModal } from '@/components/wallet-install-modal'
 interface TradeFormProps {
   baseSymbol: string
   quoteSymbol: string
+  baseDivisible: boolean | undefined
+  quoteDivisible: boolean | undefined
   tradeTab: 'buy' | 'sell'
   setTradeTab: (tab: 'buy' | 'sell') => void
   priceInput: string
@@ -19,9 +21,16 @@ interface TradeFormProps {
   setAmountInput: (v: string) => void
 }
 
+/** Convert a human-readable amount to the raw integer the Counterparty API expects. */
+function toRawQuantity(amount: number, divisible: boolean): number {
+  return Math.round(amount * (divisible ? 1e8 : 1))
+}
+
 export function TradeForm({
   baseSymbol,
   quoteSymbol,
+  baseDivisible,
+  quoteDivisible,
   tradeTab,
   setTradeTab,
   priceInput,
@@ -47,23 +56,23 @@ export function TradeForm({
   const handleSubmit = () => {
     const price = parseFloat(priceInput)
     const amount = parseFloat(amountInput?.replace(/,/g, '') || '0')
-    if (!price || !amount) return
+    if (!price || !amount || baseDivisible === undefined || quoteDivisible === undefined) return
 
     if (tradeTab === 'buy') {
       // Buy BASE: give QUOTE, get BASE
       composeOrder({
         give_asset: quoteSymbol,
-        give_quantity: Math.round(price * amount * 1e8),
+        give_quantity: toRawQuantity(price * amount, quoteDivisible),
         get_asset: baseSymbol,
-        get_quantity: Math.round(amount * 1e8),
+        get_quantity: toRawQuantity(amount, baseDivisible),
       })
     } else {
       // Sell BASE: give BASE, get QUOTE
       composeOrder({
         give_asset: baseSymbol,
-        give_quantity: Math.round(amount * 1e8),
+        give_quantity: toRawQuantity(amount, baseDivisible),
         get_asset: quoteSymbol,
-        get_quantity: Math.round(price * amount * 1e8),
+        get_quantity: toRawQuantity(price * amount, quoteDivisible),
       })
     }
   }

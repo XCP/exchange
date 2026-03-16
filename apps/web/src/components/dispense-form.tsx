@@ -18,6 +18,7 @@ interface DispenseFormProps {
   sortedDispensers: Dispenser[]
   selectedIndex: number
   onSelectIndex: (i: number) => void
+  divisible?: boolean
 }
 
 export function DispenseForm({ asset, sortedDispensers, selectedIndex, onSelectIndex }: DispenseFormProps) {
@@ -64,11 +65,12 @@ export function DispenseForm({ asset, sortedDispensers, selectedIndex, onSelectI
 
   const handleSell = () => {
     if (!sellPriceNum || !sellQtyNum || !sellEscrow) return
-    const mainchainrate = Math.round(sellPriceNum * sellQtyNum * 1e8)
+    const assetMul = divisible ? 1e8 : 1
+    const mainchainrate = Math.round(sellPriceNum * sellQtyNum * 1e8) // BTC is always divisible
     composeDispenser({
       asset,
-      give_quantity: Math.round(sellQtyNum * 1e8),
-      escrow_quantity: Math.round(parseFloat(sellEscrow) * 1e8),
+      give_quantity: Math.round(sellQtyNum * assetMul),
+      escrow_quantity: Math.round(parseFloat(sellEscrow) * assetMul),
       mainchainrate,
     })
   }

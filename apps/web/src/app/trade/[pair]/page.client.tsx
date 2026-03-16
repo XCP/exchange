@@ -39,6 +39,22 @@ export default function PairOrdersPage({ params }: { params: Promise<{ pair: str
   const { data: pairData, isLoading: pairLoading } = useTradingPair(pairSlug)
   const { bids, asks, spread, spreadPct } = useOrderBook(market)
 
+  // Asset divisibility for quantity normalization
+  const baseDivisible = pairData?.asset_info?.divisible
+  const [quoteDivisible, setQuoteDivisible] = useState<boolean | undefined>(
+    quoteSymbol === 'BTC' || quoteSymbol === 'XCP' ? true : undefined
+  )
+  useEffect(() => {
+    if (quoteSymbol === 'BTC' || quoteSymbol === 'XCP') {
+      setQuoteDivisible(true)
+      return
+    }
+    fetch(`https://api.counterparty.io:4000/v2/assets/${quoteSymbol}`)
+      .then(r => r.json())
+      .then(d => setQuoteDivisible(d?.result?.divisible ?? undefined))
+      .catch(() => {})
+  }, [quoteSymbol])
+
   const searchParams = useSearchParams()
   const [mobileDataTab, setMobileDataTab] = useState<TabKey>('trades')
 
@@ -102,6 +118,8 @@ export default function PairOrdersPage({ params }: { params: Promise<{ pair: str
             <TradeForm
               baseSymbol={baseSymbol}
               quoteSymbol={quoteSymbol}
+              baseDivisible={baseDivisible}
+              quoteDivisible={quoteDivisible}
               tradeTab={tradeTab}
               setTradeTab={setTradeTab}
               priceInput={priceInput}
@@ -170,6 +188,8 @@ export default function PairOrdersPage({ params }: { params: Promise<{ pair: str
           <TradeForm
             baseSymbol={baseSymbol}
             quoteSymbol={quoteSymbol}
+            baseDivisible={pairData?.asset_info?.divisible ?? true}
+            quoteDivisible={quoteSymbol === 'BTC' || quoteSymbol === 'XCP'}
             tradeTab={tradeTab}
             setTradeTab={setTradeTab}
             priceInput={priceInput}
