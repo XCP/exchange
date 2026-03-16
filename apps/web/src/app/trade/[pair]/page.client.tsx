@@ -1,6 +1,6 @@
 'use client'
 
-import { use, useEffect, useRef, useState } from 'react'
+import { use, useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { useTradingPair } from '@/lib/hooks/useTradingPair'
@@ -67,15 +67,6 @@ export default function PairOrdersPage({ params }: { params: Promise<{ pair: str
   const [tradeTab, setTradeTab] = useState<'buy' | 'sell'>(paramSide === 'sell' ? 'sell' : 'buy')
   const [priceInput, setPriceInput] = useState(paramPrice ?? '')
   const [amountInput, setAmountInput] = useState(paramAmount ?? '')
-
-  // Seed price input once when lastPrice first arrives (skip if query param provided price)
-  const seeded = useRef(!!paramPrice)
-  useEffect(() => {
-    if (lastPrice && !seeded.current) {
-      setPriceInput(lastPrice)
-      seeded.current = true
-    }
-  }, [lastPrice])
 
   // Click an order book row → fill price only (amount left to user intent)
   const handleBookRowClick = (entry: OrderBookEntry, side: 'buy' | 'sell') => {
