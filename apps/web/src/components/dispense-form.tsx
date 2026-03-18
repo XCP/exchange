@@ -21,7 +21,7 @@ interface DispenseFormProps {
   divisible?: boolean
 }
 
-export function DispenseForm({ asset, sortedDispensers, selectedIndex, onSelectIndex }: DispenseFormProps) {
+export function DispenseForm({ asset, sortedDispensers, selectedIndex, onSelectIndex, divisible }: DispenseFormProps) {
   const { satsMode } = useSatsMode()
   const btcLabel = satsMode ? 'sats' : 'BTC'
   const { status: walletStatus, address, connect, connecting } = useWallet()
