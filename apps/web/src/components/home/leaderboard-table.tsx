@@ -25,9 +25,11 @@ export interface LeaderboardTab {
 export function LeaderboardTable({
   title,
   tabs,
+  titleExtra,
 }: {
   title: string
   tabs: [LeaderboardTab, LeaderboardTab]
+  titleExtra?: React.ReactNode
 }) {
   const [tabIndex, setTabIndex] = useState<0 | 1>(0)
   const [sortIndices, setSortIndices] = useState<[number, number]>([0, 0])
@@ -51,6 +53,7 @@ export function LeaderboardTable({
     <div className="bg-zinc-900/50 border border-zinc-800 rounded-sm">
       <div className="px-3 py-2 flex items-center gap-2">
         <span className="text-xs text-zinc-500">{title}</span>
+        {titleExtra}
         <div className="ml-auto">
           <TogglePills
             options={[0, 1] as const}

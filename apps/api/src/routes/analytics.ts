@@ -10,6 +10,7 @@ export async function handleAnalytics(
   const includeHidden = url.searchParams.get("include_hidden") === "1";
   const section = url.searchParams.get("section"); // summary | charts | traders (null = all)
   const tag = url.searchParams.get("tag");
+  const quoteAsset = url.searchParams.get("quote_asset") || "XCP";
 
   const pairHidden = includeHidden ? "" : " AND hidden = 0";
   const dispHidden = includeHidden ? "" : " AND ds.hidden = 0";
@@ -126,10 +127,10 @@ export async function handleAnalytics(
                 ${volCol} AS volume,
                 ${pctCol} AS price_change
          FROM pair_stats
-         WHERE ${tradeCountCol} > 0 AND quote_asset = 'XCP'${pairHidden}
+         WHERE ${tradeCountCol} > 0 AND quote_asset = ?${pairHidden}
          ORDER BY ${tradeCountCol} DESC
          LIMIT 10`
-      ),
+      ).bind(quoteAsset),
       db.prepare(
         `SELECT ds.asset, ds.asset_longname,
                 ds.${dispVolCol} AS volume, ds.${dispCountCol} AS dispense_count,

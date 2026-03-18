@@ -106,10 +106,11 @@ export default function AnalyticsPage() {
   const [timeframe, setTimeframe] = useState<Timeframe>('all')
   const [hideLowQuality, setHideLowQuality] = useState(true)
   const [mobileMode, setMobileMode] = useState<MobileMode>('xcp')
+  const [quoteAsset, setQuoteAsset] = useState('XCP')
   const includeHidden = !hideLowQuality
 
   // Cascade: summary first → charts after summary → traders after charts
-  const { isLoading: summaryLoading, ...summaryProps } = useAnalyticsSummary(timeframe, includeHidden)
+  const { isLoading: summaryLoading, ...summaryProps } = useAnalyticsSummary(timeframe, includeHidden, undefined, quoteAsset)
   const chartsReady = !summaryLoading
   const { isLoading: chartsLoading } = useAnalyticsCharts(timeframe, includeHidden, chartsReady)
   const tradersReady = chartsReady && !chartsLoading
@@ -142,7 +143,7 @@ export default function AnalyticsPage() {
         </div>
       </div>
 
-      <SummarySection timeframe={timeframe} includeHidden={includeHidden} isLoading={summaryLoading} mobileMode={mobileMode} {...summaryProps} />
+      <SummarySection timeframe={timeframe} includeHidden={includeHidden} isLoading={summaryLoading} mobileMode={mobileMode} quoteAsset={quoteAsset} onQuoteAssetChange={setQuoteAsset} {...summaryProps} />
       <ChartsSection timeframe={timeframe} includeHidden={includeHidden} ready={chartsReady} mobileMode={mobileMode} />
       <TradersSection isLoading={tradersLoading} mobileMode={mobileMode} {...tradersProps} />
 
@@ -178,11 +179,13 @@ export default function AnalyticsPage() {
 
 // ── Summary: Counter Cards + Marquee + Leaderboards ─────────────────
 
-function SummarySection({ timeframe, includeHidden, isLoading, mobileMode, tradeSummary, dispenseSummary, topPairs, topDispensers, quoteVolumes, topTradedCollections, topDispensedCollections }: {
+function SummarySection({ timeframe, includeHidden, isLoading, mobileMode, quoteAsset, onQuoteAssetChange, tradeSummary, dispenseSummary, topPairs, topDispensers, quoteVolumes, topTradedCollections, topDispensedCollections }: {
   timeframe: Timeframe
   includeHidden: boolean
   isLoading: boolean
   mobileMode: MobileMode
+  quoteAsset: string
+  onQuoteAssetChange: (asset: string) => void
   tradeSummary: ReturnType<typeof useAnalyticsSummary>['tradeSummary']
   dispenseSummary: ReturnType<typeof useAnalyticsSummary>['dispenseSummary']
   topPairs: ReturnType<typeof useAnalyticsSummary>['topPairs']
@@ -329,8 +332,19 @@ function SummarySection({ timeframe, includeHidden, isLoading, mobileMode, trade
           <div className={mobileMode === 'btc' ? 'hidden md:block' : ''}>
             <LeaderboardTable
               title="Most Traded"
+              titleExtra={
+                <select
+                  value={quoteAsset}
+                  onChange={(e) => onQuoteAssetChange(e.target.value)}
+                  className="text-[10px] bg-zinc-800 text-zinc-300 border border-zinc-700 rounded px-1.5 py-0.5 outline-none cursor-pointer hover:border-zinc-600"
+                >
+                  {['XCP', 'PEPECASH', 'BITCRYSTALS', 'BITCORN'].map((a) => (
+                    <option key={a} value={a}>{a}</option>
+                  ))}
+                </select>
+              }
               tabs={[
-                { label: 'Assets', headers: ['Pair', 'Trades', 'Volume (XCP)', 'Chg'], rows: tradedAssetRows, sortable: [true, true, false] },
+                { label: 'Assets', headers: ['Pair', 'Trades', `Volume (${quoteAsset})`, 'Chg'], rows: tradedAssetRows, sortable: [true, true, false] },
                 { label: 'Collections', headers: ['Collection', 'Trades', 'Volume (XCP)', 'Chg'], rows: tradedCollRows, sortable: [true, true, false] },
               ]}
             />

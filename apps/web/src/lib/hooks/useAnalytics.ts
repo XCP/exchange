@@ -118,12 +118,13 @@ interface TradersResponse {
   top_btc_sellers: AnalyticsTopTrader[]
 }
 
-function buildParams(timeframe: Timeframe, includeHidden: boolean, section: string, tag?: string | null) {
+function buildParams(timeframe: Timeframe, includeHidden: boolean, section: string, tag?: string | null, quoteAsset?: string | null) {
   const params = new URLSearchParams()
   params.set('timeframe', timeframe)
   params.set('section', section)
   if (includeHidden) params.set('include_hidden', '1')
   if (tag) params.set('tag', tag)
+  if (quoteAsset && quoteAsset !== 'XCP') params.set('quote_asset', quoteAsset)
   return params.toString()
 }
 
@@ -133,8 +134,8 @@ const ANALYTICS_SWR_OPTS = {
   revalidateOnFocus: false,
 }
 
-export function useAnalyticsSummary(timeframe: Timeframe, includeHidden: boolean, tag?: string | null) {
-  const key = dexUrl(`/analytics?${buildParams(timeframe, includeHidden, 'summary', tag)}`)
+export function useAnalyticsSummary(timeframe: Timeframe, includeHidden: boolean, tag?: string | null, quoteAsset?: string | null) {
+  const key = dexUrl(`/analytics?${buildParams(timeframe, includeHidden, 'summary', tag, quoteAsset)}`)
   const { data, isLoading, error } = useSWR<SummaryResponse>(key, fetcher, ANALYTICS_SWR_OPTS)
   return {
     tradeSummary: data?.trade_summary ?? null,
