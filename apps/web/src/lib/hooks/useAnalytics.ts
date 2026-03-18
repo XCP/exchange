@@ -162,8 +162,8 @@ export function useAnalyticsCharts(timeframe: Timeframe, includeHidden: boolean,
   }
 }
 
-export function useAnalyticsTraders(timeframe: Timeframe, includeHidden: boolean, ready = true) {
-  const key = ready ? dexUrl(`/analytics?${buildParams(timeframe, includeHidden, 'traders')}`) : null
+export function useAnalyticsTraders(timeframe: Timeframe, includeHidden: boolean, ready = true, quoteAsset?: string | null) {
+  const key = ready ? dexUrl(`/analytics?${buildParams(timeframe, includeHidden, 'traders', null, quoteAsset)}`) : null
   const { data, isLoading, error } = useSWR<TradersResponse>(key, fetcher, ANALYTICS_SWR_OPTS)
   return {
     topMakers: data?.top_makers ?? [],

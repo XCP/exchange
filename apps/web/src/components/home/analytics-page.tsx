@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import dynamic from 'next/dynamic'
 import Image from 'next/image'
 import type { Timeframe } from '@/lib/hooks/useAnalytics'
@@ -114,7 +114,18 @@ export default function AnalyticsPage() {
   const chartsReady = !summaryLoading
   const { isLoading: chartsLoading } = useAnalyticsCharts(timeframe, includeHidden, chartsReady)
   const tradersReady = chartsReady && !chartsLoading
-  const { isLoading: tradersLoading, ...tradersProps } = useAnalyticsTraders(timeframe, includeHidden, tradersReady)
+  const { isLoading: tradersLoading, ...tradersProps } = useAnalyticsTraders(timeframe, includeHidden, tradersReady, quoteAsset)
+
+  // Build dropdown options from marquee data (XCP always first)
+  const quoteOptions = useMemo(() => {
+    const active = new Set(summaryProps.quoteVolumes.filter(q => q.trade_count > 0).map(q => q.quote_asset))
+    return ['XCP', ...QUOTE_CANDIDATES.filter(a => active.has(a))]
+  }, [summaryProps.quoteVolumes])
+
+  // Reset to XCP if current selection is no longer available
+  useEffect(() => {
+    if (quoteAsset !== 'XCP' && !quoteOptions.includes(quoteAsset)) setQuoteAsset('XCP')
+  }, [quoteOptions, quoteAsset])
 
   return (
     <div className="px-4 py-8">
@@ -143,9 +154,9 @@ export default function AnalyticsPage() {
         </div>
       </div>
 
-      <SummarySection timeframe={timeframe} includeHidden={includeHidden} isLoading={summaryLoading} mobileMode={mobileMode} quoteAsset={quoteAsset} onQuoteAssetChange={setQuoteAsset} {...summaryProps} />
+      <SummarySection timeframe={timeframe} includeHidden={includeHidden} isLoading={summaryLoading} mobileMode={mobileMode} quoteAsset={quoteAsset} quoteOptions={quoteOptions} onQuoteAssetChange={setQuoteAsset} {...summaryProps} />
       <ChartsSection timeframe={timeframe} includeHidden={includeHidden} ready={chartsReady} mobileMode={mobileMode} />
-      <TradersSection isLoading={tradersLoading} mobileMode={mobileMode} {...tradersProps} />
+      <TradersSection isLoading={tradersLoading} mobileMode={mobileMode} quoteAsset={quoteAsset} quoteOptions={quoteOptions} onQuoteAssetChange={setQuoteAsset} {...tradersProps} />
 
       {/* Floating mobile XCP/BTC toggle */}
       <div className="md:hidden fixed bottom-4 left-1/2 -translate-x-1/2 z-50">
@@ -179,12 +190,13 @@ export default function AnalyticsPage() {
 
 // ── Summary: Counter Cards + Marquee + Leaderboards ─────────────────
 
-function SummarySection({ timeframe, includeHidden, isLoading, mobileMode, quoteAsset, onQuoteAssetChange, tradeSummary, dispenseSummary, topPairs, topDispensers, quoteVolumes, topTradedCollections, topDispensedCollections }: {
+function SummarySection({ timeframe, includeHidden, isLoading, mobileMode, quoteAsset, quoteOptions, onQuoteAssetChange, tradeSummary, dispenseSummary, topPairs, topDispensers, quoteVolumes, topTradedCollections, topDispensedCollections }: {
   timeframe: Timeframe
   includeHidden: boolean
   isLoading: boolean
   mobileMode: MobileMode
   quoteAsset: string
+  quoteOptions: string[]
   onQuoteAssetChange: (asset: string) => void
   tradeSummary: ReturnType<typeof useAnalyticsSummary>['tradeSummary']
   dispenseSummary: ReturnType<typeof useAnalyticsSummary>['dispenseSummary']
@@ -332,17 +344,7 @@ function SummarySection({ timeframe, includeHidden, isLoading, mobileMode, quote
           <div className={mobileMode === 'btc' ? 'hidden md:block' : ''}>
             <LeaderboardTable
               title="Most Traded"
-              titleExtra={
-                <select
-                  value={quoteAsset}
-                  onChange={(e) => onQuoteAssetChange(e.target.value)}
-                  className="text-[10px] bg-zinc-800 text-zinc-300 border border-zinc-700 rounded px-1.5 py-0.5 outline-none cursor-pointer hover:border-zinc-600"
-                >
-                  {['XCP', 'PEPECASH', 'BITCRYSTALS', 'BITCORN'].map((a) => (
-                    <option key={a} value={a}>{a}</option>
-                  ))}
-                </select>
-              }
+              titleExtra={quoteDropdown(quoteAsset, onQuoteAssetChange, quoteOptions)}
               tabs={[
                 { label: 'Assets', headers: ['Pair', 'Trades', `Volume (${quoteAsset})`, 'Chg'], rows: tradedAssetRows, sortable: [true, true, false] },
                 { label: 'Collections', headers: ['Collection', 'Trades', 'Volume (XCP)', 'Chg'], rows: tradedCollRows, sortable: [true, true, false] },
@@ -398,13 +400,30 @@ function ChartsSection({ timeframe, includeHidden, ready, mobileMode }: { timefr
 
 // ── Traders: Top Traders ────────────────────────────────────────────
 
-function TradersSection({ topMakers, topTakers, topBtcBuyers, topBtcSellers, isLoading, mobileMode }: {
+const QUOTE_CANDIDATES = ['PEPECASH', 'BITCORN', 'BITCRYSTALS', 'WILLCOIN', 'MAFIACASH', 'DANKMEMECASH']
+
+const quoteDropdown = (quoteAsset: string, onChange: (v: string) => void, options: string[]) => (
+  <select
+    value={quoteAsset}
+    onChange={(e) => onChange(e.target.value)}
+    className="text-[10px] bg-zinc-800 text-zinc-300 border border-zinc-700 rounded px-1.5 py-0.5 outline-none cursor-pointer hover:border-zinc-600"
+  >
+    {options.map((a) => (
+      <option key={a} value={a}>{a}</option>
+    ))}
+  </select>
+)
+
+function TradersSection({ topMakers, topTakers, topBtcBuyers, topBtcSellers, isLoading, mobileMode, quoteAsset, quoteOptions, onQuoteAssetChange }: {
   topMakers: ReturnType<typeof useAnalyticsTraders>['topMakers']
   topTakers: ReturnType<typeof useAnalyticsTraders>['topTakers']
   topBtcBuyers: ReturnType<typeof useAnalyticsTraders>['topBtcBuyers']
   topBtcSellers: ReturnType<typeof useAnalyticsTraders>['topBtcSellers']
   isLoading: boolean
   mobileMode: MobileMode
+  quoteAsset: string
+  quoteOptions: string[]
+  onQuoteAssetChange: (asset: string) => void
 }) {
   const { satsMode } = useSatsMode()
   const btcLabel = satsMode ? 'sats' : 'BTC'
@@ -419,11 +438,12 @@ function TradersSection({ topMakers, topTakers, topBtcBuyers, topBtcSellers, isL
         <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
           <div className={mobileMode === 'btc' ? 'hidden md:block' : ''}>
             <TopTradersTable
-              title="Top Traders (XCP)"
-              unit="XCP"
+              title="Top Traders"
+              unit={quoteAsset}
               tabLabels={['Makers', 'Takers']}
               listA={topMakers}
               listB={topTakers}
+              titleExtra={quoteDropdown(quoteAsset, onQuoteAssetChange, quoteOptions)}
             />
           </div>
           <div className={mobileMode === 'xcp' ? 'hidden md:block' : ''}>

@@ -258,15 +258,15 @@ export async function handleAnalytics(
       db.prepare(
         `SELECT maker AS address, ROUND(SUM(volume), 2) AS volume, COUNT(*) AS trades
          FROM trades
-         WHERE quote_asset = 'XCP'${timeFilt}${tradeHidden}
+         WHERE quote_asset = ?${timeFilt}${tradeHidden}
          GROUP BY maker ORDER BY volume DESC LIMIT 21`
-      ),
+      ).bind(quoteAsset),
       db.prepare(
         `SELECT taker AS address, ROUND(SUM(volume), 2) AS volume, COUNT(*) AS trades
          FROM trades
-         WHERE quote_asset = 'XCP'${timeFilt}${tradeHidden}
+         WHERE quote_asset = ?${timeFilt}${tradeHidden}
          GROUP BY taker ORDER BY volume DESC LIMIT 21`
-      ),
+      ).bind(quoteAsset),
       db.prepare(
         `SELECT address, ROUND(SUM(volume), 8) AS volume, SUM(trades) AS trades FROM (
            SELECT taker AS address, SUM(volume) AS volume, COUNT(*) AS trades
