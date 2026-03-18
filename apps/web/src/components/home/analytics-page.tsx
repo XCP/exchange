@@ -122,10 +122,10 @@ export default function AnalyticsPage() {
     return ['XCP', ...QUOTE_CANDIDATES.filter(a => active.has(a))]
   }, [summaryProps.quoteVolumes])
 
-  // Reset to XCP if current selection is no longer available
+  // Reset to XCP if current selection is no longer available (skip during loading)
   useEffect(() => {
-    if (quoteAsset !== 'XCP' && !quoteOptions.includes(quoteAsset)) setQuoteAsset('XCP')
-  }, [quoteOptions, quoteAsset])
+    if (!summaryLoading && quoteAsset !== 'XCP' && !quoteOptions.includes(quoteAsset)) setQuoteAsset('XCP')
+  }, [quoteOptions, quoteAsset, summaryLoading])
 
   return (
     <div className="px-4 py-8">
@@ -215,7 +215,7 @@ function SummarySection({ timeframe, includeHidden, isLoading, mobileMode, quote
     key: p.pair,
     href: `/trade/${p.pair}`,
     icon: p.base_asset,
-    label: `${p.base_asset_longname ?? p.base_asset}/${p.quote_asset}`,
+    label: p.base_asset_longname ?? p.base_asset,
     cells: [
       { value: p.trade_count.toLocaleString() },
       { value: formatBig(p.volume) },
@@ -346,7 +346,7 @@ function SummarySection({ timeframe, includeHidden, isLoading, mobileMode, quote
               title="Most Traded"
               titleExtra={quoteDropdown(quoteAsset, onQuoteAssetChange, quoteOptions)}
               tabs={[
-                { label: 'Assets', headers: ['Pair', 'Trades', `Volume (${quoteAsset})`, 'Chg'], rows: tradedAssetRows, sortable: [true, true, false] },
+                { label: 'Assets', headers: ['Asset', 'Trades', `Volume (${quoteAsset})`, 'Chg'], rows: tradedAssetRows, sortable: [true, true, false] },
                 { label: 'Collections', headers: ['Collection', 'Trades', 'Volume (XCP)', 'Chg'], rows: tradedCollRows, sortable: [true, true, false] },
               ]}
             />
