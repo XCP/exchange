@@ -400,7 +400,11 @@ function ChartsSection({ timeframe, includeHidden, ready, mobileMode }: { timefr
 
 // ── Traders: Top Traders ────────────────────────────────────────────
 
-const QUOTE_CANDIDATES = ['PEPECASH', 'BITCORN', 'BITCRYSTALS', 'WILLCOIN', 'MAFIACASH', 'DANKMEMECASH']
+const QUOTE_CANDIDATES = [
+  'PEPECASH', 'BITCORN', 'BITCRYSTALS', 'WILLCOIN', 'MAFIACASH', 'DANKMEMECASH',
+  'XFCCOIN', 'FAKEAPECASH', 'BOBOCASH', 'RUSTBITS', 'OLINCOIN', 'NOJAK',
+  'LICKOIN', 'DANKROSECASH', 'KEKO', 'GREEEEEECOIN', 'BITROCK',
+]
 
 const quoteDropdown = (quoteAsset: string, onChange: (v: string) => void, options: string[]) => (
   <select
