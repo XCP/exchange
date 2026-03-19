@@ -7,7 +7,7 @@ import { useLatestOrders, type LatestOrder } from '@/lib/hooks/useLatestOrders'
 import { useDispensersLatest, useDispensesLatest, type LatestDispenser, type LatestDispense } from '@/lib/hooks/useDispensersLatest'
 import { useSatsMode } from '@/lib/sats-context'
 import { formatPrice } from '@/utils/format-price'
-import { formatAddress } from '@/utils/format-address'
+
 import { XCP_IMG_BASE } from '@/utils/constants'
 import { TogglePills } from './toggle-pills'
 
@@ -136,7 +136,7 @@ function DispensersCard() {
             options={[0, 1] as const}
             value={tab}
             onChange={setTab}
-            label={(i) => i === 0 ? 'Open' : 'Dispenses'}
+            label={(i) => i === 0 ? 'Open' : 'Filled'}
           />
         </div>
       </div>
@@ -144,32 +144,18 @@ function DispensersCard() {
         <table className="w-full text-xs whitespace-nowrap">
           <thead>
             <tr className="text-zinc-500 border-b border-zinc-800">
-              {tab === 0 ? (
-                <>
-                  <th className="text-left font-normal px-3 py-1.5 w-8">Time</th>
-                  <th className="text-right font-normal px-3 py-1.5">Price</th>
-                  <th className="text-right font-normal px-3 py-1.5">Per Dispense</th>
-                  <th className="text-left font-normal px-3 py-1.5">Asset</th>
-                  <th className="text-right font-normal px-3 py-1.5">Remaining</th>
-                  <th className="text-left font-normal px-3 py-1.5">Address</th>
-                </>
-              ) : (
-                <>
-                  <th className="text-left font-normal px-3 py-1.5 w-8">Time</th>
-                  <th className="text-right font-normal px-3 py-1.5">Price</th>
-                  <th className="text-right font-normal px-3 py-1.5">Qty</th>
-                  <th className="text-left font-normal px-3 py-1.5">Asset</th>
-                  <th className="text-right font-normal px-3 py-1.5">Total</th>
-                  <th className="text-left font-normal px-3 py-1.5">Buyer</th>
-                </>
-              )}
+              <th className="text-left font-normal px-3 py-1.5 w-8">Time</th>
+              <th className="text-right font-normal px-3 py-1.5">Eff. Price</th>
+              <th className="text-right font-normal px-3 py-1.5">{tab === 0 ? 'Per Dispense' : 'Qty'}</th>
+              <th className="text-left font-normal px-3 py-1.5">Asset</th>
+              <th className="text-right font-normal px-3 py-1.5">Remaining</th>
             </tr>
           </thead>
           <tbody>
             {tab === 0 ? (
               isLoading || dispensers.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="text-center py-6 text-zinc-500">
+                  <td colSpan={5} className="text-center py-6 text-zinc-500">
                     {isLoading ? 'Loading...' : 'No data'}
                   </td>
                 </tr>
@@ -179,7 +165,7 @@ function DispensersCard() {
             ) : (
               isLoading || dispenses.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="text-center py-6 text-zinc-500">
+                  <td colSpan={5} className="text-center py-6 text-zinc-500">
                     {isLoading ? 'Loading...' : 'No data'}
                   </td>
                 </tr>
@@ -219,9 +205,6 @@ function DispenserRow({ d, satsMode }: { d: LatestDispenser; satsMode: boolean }
       <td className="text-right text-zinc-500 font-mono px-3 py-1.5">
         {formatPrice(remaining)}
       </td>
-      <td className="text-zinc-500 font-mono px-3 py-1.5">
-        {formatAddress(d.source)}
-      </td>
     </tr>
   )
 }
@@ -247,12 +230,7 @@ function DispenseRow({ d, satsMode }: { d: LatestDispense; satsMode: boolean }) 
           <span className="text-zinc-200 truncate">{displayName}</span>
         </Link>
       </td>
-      <td className="text-right text-zinc-500 font-mono px-3 py-1.5">
-        {d.btc_amount > 0 ? formatPrice(d.btc_amount, satsMode) : '—'}
-      </td>
-      <td className="text-zinc-500 font-mono px-3 py-1.5">
-        {formatAddress(d.destination)}
-      </td>
+      <td className="text-right text-zinc-500 font-mono px-3 py-1.5">—</td>
     </tr>
   )
 }
