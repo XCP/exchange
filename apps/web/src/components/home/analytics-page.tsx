@@ -19,6 +19,7 @@ import { LeaderboardTable, type LeaderboardRow } from './leaderboard-table'
 import { TopTradersTable } from './top-traders-table'
 import { QuoteMarquee } from './quote-marquee'
 import { DispenseMarquee } from './dispense-marquee'
+import { RecentActivity } from './recent-activity'
 import {
   LeaderboardSkeleton,
   ChartsSkeleton,
@@ -155,6 +156,7 @@ export default function AnalyticsPage() {
       </div>
 
       <SummarySection timeframe={timeframe} includeHidden={includeHidden} isLoading={summaryLoading} mobileMode={mobileMode} quoteAsset={quoteAsset} quoteOptions={quoteOptions} onQuoteAssetChange={setQuoteAsset} {...summaryProps} />
+      <RecentActivity />
       <ChartsSection timeframe={timeframe} includeHidden={includeHidden} ready={chartsReady} mobileMode={mobileMode} />
       <TradersSection isLoading={tradersLoading} mobileMode={mobileMode} quoteAsset={quoteAsset} quoteOptions={quoteOptions} onQuoteAssetChange={setQuoteAsset} {...tradersProps} />
 
