@@ -7,5 +7,6 @@
 export { detectProvider, getProvider } from './detect'
 export { XcpWallet } from './provider'
 export { friendlyError } from './errors'
+export { validateProof, parseProofMessage } from './verify'
 export { BTC_ADDRESS_REGEX, USER_REJECTED, UNAUTHORIZED, UNSUPPORTED_METHOD, DISCONNECTED } from './constants'
-export type { XcpProvider, XcpWalletEvents } from './types'
+export type { XcpProvider, XcpWalletEvents, ConnectionProof, ConnectResult } from './types'

@@ -4,9 +4,11 @@ import type { XcpProvider } from './types'
  * Async detection that handles the race between script load and extension injection.
  * Resolves with the provider once available, or rejects after timeout.
  *
- * Default timeout is 2000ms to account for cold browser starts and slow devices.
+ * Uses a request/announce pattern: dispatches 'xcp-wallet#discover' to ask
+ * the extension to re-announce itself, so detection works regardless of
+ * whether the extension injected before or after this code runs.
  */
-export function detectProvider(timeoutMs = 2000): Promise<XcpProvider> {
+export function detectProvider(timeoutMs = 3000): Promise<XcpProvider> {
   if (typeof window === 'undefined') return Promise.reject(new Error('Not in a browser environment'))
   if (window.xcpwallet) return Promise.resolve(window.xcpwallet)
 
@@ -33,6 +35,10 @@ export function detectProvider(timeoutMs = 2000): Promise<XcpProvider> {
     }
 
     window.addEventListener('xcp-wallet#initialized', handler)
+
+    // Ask the extension to re-announce — handles the case where the extension
+    // injected before this listener was registered (race condition fix)
+    window.dispatchEvent(new Event('xcp-wallet#discover'))
   })
 }
 

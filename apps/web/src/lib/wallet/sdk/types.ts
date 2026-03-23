@@ -11,6 +11,23 @@ export interface XcpWalletEvents {
   disconnect: []
 }
 
+/** Proof of address ownership returned during connect */
+export interface ConnectionProof {
+  address: string
+  message: string
+  signature: string
+  verification: {
+    method: 'BIP-322'
+    format: string // e.g. 'p2tr', 'p2wpkh', 'p2pkh'
+  }
+}
+
+/** Response from xcp_requestAccounts */
+export interface ConnectResult {
+  accounts: string[]
+  proof: ConnectionProof | null
+}
+
 export interface SignPsbtParams {
   hex: string
   signInputs?: Record<string, number[]>

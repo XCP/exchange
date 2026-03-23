@@ -19,7 +19,11 @@ export function ConnectPrompt({ message }: ConnectPromptProps) {
       </svg>
       <span className="text-xs text-zinc-500">{message}</span>
       <button
-        onClick={status === 'disconnected' ? connect : () => setShowInstall(true)}
+        onClick={async () => {
+          await connect()
+          // If connect didn't work (no wallet ref set), show install modal
+          if (!window.xcpwallet) setShowInstall(true)
+        }}
         className="text-xs font-medium text-green-400 hover:text-green-300 transition-colors"
       >
         Connect Wallet

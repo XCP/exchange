@@ -1,4 +1,4 @@
-import type { XcpProvider, XcpWalletEvents, SignPsbtParams } from './types'
+import type { XcpProvider, XcpWalletEvents, SignPsbtParams, ConnectionProof, ConnectResult } from './types'
 import { BTC_ADDRESS_REGEX, HEX_REGEX, TXID_REGEX } from './constants'
 
 /** Per-method timeouts: interactive methods get longer, passive methods are short. */
@@ -36,13 +36,28 @@ export class XcpWallet {
     return withTimeout(this.provider.request(args), timeout)
   }
 
-  async connect(): Promise<string[]> {
+  async connect(): Promise<ConnectResult> {
     const result = await this.request({ method: 'xcp_requestAccounts' }, Timeout.interactive)
-    if (!Array.isArray(result)) throw new Error('Wallet returned invalid accounts response')
-    for (const addr of result) {
+
+    // Handle new { accounts, proof } response shape
+    let accounts: string[]
+    let proof: ConnectionProof | null = null
+
+    if (result && typeof result === 'object' && 'accounts' in result) {
+      const r = result as ConnectResult
+      accounts = r.accounts
+      proof = r.proof
+    } else if (Array.isArray(result)) {
+      // Backward compatibility with older extension versions
+      accounts = result
+    } else {
+      throw new Error('Wallet returned invalid accounts response')
+    }
+
+    for (const addr of accounts) {
       if (typeof addr !== 'string' || !BTC_ADDRESS_REGEX.test(addr)) throw new Error('Wallet returned invalid address')
     }
-    return result as string[]
+    return { accounts, proof }
   }
 
   async getAccounts(): Promise<string[]> {
