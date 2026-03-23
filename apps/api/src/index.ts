@@ -1,3 +1,12 @@
+/**
+ * xcpdex API Worker — Hono on Cloudflare Workers.
+ * Routes: market data, portfolio, swaps, indexer cron.
+ */
+
+import { Hono } from 'hono';
+import { cors } from 'hono/cors';
+import { bearerAuth } from 'hono/bearer-auth';
+
 import { LOCK_TIMEOUT_SECONDS } from "./lib/constants";
 import { fixScientificNotation } from "./lib/json";
 import { handleOhlc } from "./routes/ohlc";
@@ -37,758 +46,318 @@ export interface Env {
   FEE_ADDRESS?: string;
 }
 
-function corsHeaders(): Record<string, string> {
-  return {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type",
-  };
-}
+type Bindings = Env;
 
-async function withCors(response: Response): Promise<Response> {
-  const headers = new Headers(response.headers);
-  for (const [key, value] of Object.entries(corsHeaders())) {
-    headers.set(key, value);
+const app = new Hono<{ Bindings: Bindings }>();
+
+// ── Middleware ───────────────────────────────────────────────────────────
+
+app.use('*', cors());
+
+// Fix scientific notation in JSON responses (e.g. 7.1e-7 → 0.00000071)
+app.use('*', async (c, next) => {
+  await next();
+  const ct = c.res.headers.get('Content-Type') || '';
+  if (ct.includes('application/json')) {
+    const text = await c.res.text();
+    c.res = new Response(fixScientificNotation(text), {
+      status: c.res.status,
+      headers: c.res.headers,
+    });
   }
+});
 
-  // Fix scientific notation in JSON responses (e.g. 7.1e-7 → 0.00000071)
-  const ct = response.headers.get("Content-Type") || ""
-  if (ct.includes("application/json")) {
-    const text = await response.text()
-    return new Response(fixScientificNotation(text), {
-      status: response.status,
-      statusText: response.statusText,
-      headers,
-    })
+// Auth for indexer endpoints
+app.use('/indexer/*', async (c, next) => {
+  if (c.req.method !== 'POST') return next();
+  if (!c.env.INDEXER_TOKEN) {
+    return Response.json({ error: 'INDEXER_TOKEN not configured' }, { status: 500 });
   }
+  const auth = bearerAuth({ token: c.env.INDEXER_TOKEN });
+  return auth(c, next);
+});
 
-  return new Response(response.body, {
-    status: response.status,
-    statusText: response.statusText,
-    headers,
+// ── Public Routes ───────────────────────────────────────────────────────
+
+app.get('/ohlc/:pair', (c) => handleOhlc(c.req.raw, c.env.DB, c.req.param('pair')));
+app.get('/trades/:pair', (c) => handleTrades(c.req.raw, c.env.DB, c.req.param('pair')));
+app.get('/book/:pair', (c) => handleBook(c.req.raw, c.env.DB, c.req.param('pair')));
+app.get('/pair/:pair', (c) => handlePair(new URL(c.req.url), c.env.DB, c.req.param('pair')));
+app.get('/pairs', (c) => handlePairs(c.req.raw, c.env.DB));
+app.get('/trade-summary', (c) => handleTradeSummary(c.req.raw, c.env.DB));
+app.get('/markets', (c) => handleMarkets(c.req.raw, c.env.DB));
+app.get('/trending', (c) => handleTrending(c.req.raw, c.env.DB));
+app.get('/asset/:name', (c) => handleAsset(new URL(c.req.url), c.env.DB, c.req.param('name')));
+app.get('/portfolio/:address/bids', (c) => handlePortfolioBids(c.req.raw, c.env.DB, c.env.CP_API_BASE, c.req.param('address')));
+app.get('/portfolio/:address/orders', (c) => handlePortfolioOrders(c.req.raw, c.env.DB, c.req.param('address')));
+app.get('/portfolio/:address/dispensers', (c) => handlePortfolioDispensers(c.req.raw, c.env.DB, c.req.param('address')));
+app.get('/dispenser-stats', (c) => handleDispenserStatsList(c.req.raw, c.env.DB));
+app.get('/dispenser-stats/:asset', (c) => handleDispenserStats(new URL(c.req.url), c.env.DB, c.req.param('asset')));
+app.get('/orders/latest', (c) => handleOrdersLatest(c.req.raw, c.env.DB));
+app.get('/dispensers/latest', (c) => handleDispensersLatest(c.req.raw, c.env.DB));
+app.get('/dispenses/latest', (c) => handleDispensesLatest(c.req.raw, c.env.DB));
+app.get('/search', (c) => handleSearch(c.req.raw, c.env.DB));
+app.get('/analytics', (c) => handleAnalytics(c.req.raw, c.env.DB));
+app.get('/block', (c) => handleBlock(c.env.DB));
+app.get('/tags', (c) => handleTags(c.req.raw, c.env.DB));
+app.get('/deals', (c) => handleDeals(c.req.raw, c.env.DB));
+
+// ── Swap Routes ─────────────────────────────────────────────────────────
+
+app.get('/swaps', (c) => handleGetSwaps(c.req.raw, c.env.DB));
+app.get('/swaps/:id', (c) => handleGetSwap(c.env.DB, c.req.param('id')));
+app.post('/swaps/prepare-listing', (c) => handlePrepareListingPsbt(c.req.raw, c.env));
+app.post('/swaps/complete-listing', (c) => handleCompleteListingPsbt(c.req.raw, c.env));
+app.post('/swaps/:id/prepare-fill', (c) => handlePrepareFill(c.req.raw, c.env, c.req.param('id')));
+app.post('/swaps/:id/complete-fill', (c) => handleCompleteFill(c.req.raw, c.env.DB, c.req.param('id')));
+app.post('/swaps/:id/prepare-cancel', (c) => handlePrepareCancelSwap(c.env.DB, c.req.param('id')));
+app.post('/swaps/:id/cancel', (c) => handleCancelSwap(c.req.raw, c.env.DB, c.req.param('id')));
+
+// ── Status ──────────────────────────────────────────────────────────────
+
+app.get('/status', async (c) => {
+  const db = c.env.DB;
+  const mode = await getMode(db);
+
+  const [tradeCount, pairCount, openOrderCount, dispenseCount, openDispenserCount, candleCount, state] =
+    await db.batch([
+      db.prepare(`SELECT COUNT(*) as cnt FROM trades`),
+      db.prepare(`SELECT COUNT(*) as cnt FROM pair_stats`),
+      db.prepare(`SELECT COUNT(*) as cnt FROM orders WHERE status = 'open'`),
+      db.prepare(`SELECT COUNT(*) as cnt FROM dispenses`),
+      db.prepare(`SELECT COUNT(*) as cnt FROM dispensers WHERE status < 10`),
+      db.prepare(`SELECT COUNT(*) as cnt FROM candles`),
+      db.prepare(`SELECT key, value FROM indexer_state`),
+    ]);
+
+  const cnt = (r: D1Result) => (r.results[0] as { cnt: number } | undefined)?.cnt ?? 0;
+  const stateRows = state.results as { key: string; value: string }[];
+
+  return Response.json({
+    ok: true,
+    mode,
+    trades: cnt(tradeCount),
+    pairs: cnt(pairCount),
+    open_orders: cnt(openOrderCount),
+    dispenses: cnt(dispenseCount),
+    open_dispensers: cnt(openDispenserCount),
+    candles: cnt(candleCount),
+    indexer: Object.fromEntries(
+      stateRows
+        .filter((r) => !['aggregation_offset'].includes(r.key))
+        .map((r) => [r.key, r.value])
+    ),
   });
+});
+
+// ── Indexer Routes (auth handled by middleware) ─────────────────────────
+
+app.post('/indexer/refresh-deals', async (c) => {
+  const result = await refreshDealScores(c.env.DB);
+  return Response.json({ ok: true, ...result });
+});
+
+app.post('/indexer/sync-assets', async (c) => {
+  const url = new URL(c.req.url);
+  const mode = url.searchParams.get("mode") ?? "incremental";
+  const maxPages = parseInt(url.searchParams.get("pages") ?? (mode === "full" ? "20" : "10"), 10);
+  const reset = url.searchParams.get("reset") === "1";
+  const result = mode === "full"
+    ? await indexAllAssets(c.env.DB, maxPages, reset)
+    : await syncNewAssets(c.env.DB, maxPages);
+  return Response.json({ ok: true, mode, ...result });
+});
+
+app.post('/indexer/start', async (c) => {
+  const mode = await getMode(c.env.DB);
+  if (mode !== "IDLE") {
+    return Response.json({ error: `Cannot start: mode is ${mode}, expected IDLE` }, { status: 409 });
+  }
+  await Promise.all([
+    deleteState(c.env.DB, "trade_backfill_cursor"),
+    deleteState(c.env.DB, "trade_backfill_total"),
+    deleteState(c.env.DB, "dispense_backfill_cursor"),
+    deleteState(c.env.DB, "dispense_backfill_total"),
+    deleteState(c.env.DB, "dispenser_backfill_cursor"),
+    deleteState(c.env.DB, "dispenser_backfill_total"),
+    deleteState(c.env.DB, "aggregation_cursor"),
+    deleteState(c.env.DB, "sync_lock"),
+  ]);
+  await setMode(c.env.DB, "BACKFILL_TRADES");
+  return Response.json({ ok: true, mode: "BACKFILL_TRADES" });
+});
+
+app.post('/indexer/backfill', async (c) => {
+  const url = new URL(c.req.url);
+  const pages = Math.min(parseInt(url.searchParams.get("pages") ?? "20", 10), 50);
+  const mode = await getMode(c.env.DB);
+
+  switch (mode) {
+    case "BACKFILL_TRADES": return Response.json(await backfillTrades(c.env.DB, c.env.CP_API_BASE, pages));
+    case "BACKFILL_DISPENSES": return Response.json(await backfillDispenses(c.env.DB, c.env.CP_API_BASE, pages));
+    case "BACKFILL_DISPENSERS": return Response.json(await backfillDispensers(c.env.DB, c.env.CP_API_BASE, pages));
+    case "SNAPSHOT_SYNC": return Response.json({ type: "snapshot", ...await runSnapshotStep(c.env.DB, c.env.CP_API_BASE) });
+    case "BUILD_AGGREGATES": return Response.json({ type: "aggregates", ...await runCatchupAggregation(c.env.DB) });
+    case "FOLLOWING": return Response.json({ done: true, mode: "FOLLOWING" });
+    default: return Response.json({ error: `Cannot backfill in mode: ${mode}` }, { status: 409 });
+  }
+});
+
+app.post('/indexer/aggregate', async (c) => {
+  const url = new URL(c.req.url);
+  if (!url.searchParams.has("offset")) {
+    await c.env.DB.prepare(
+      `INSERT INTO indexer_state (key, value) VALUES ('aggregation_cursor', '') ON CONFLICT (key) DO NOTHING`
+    ).run();
+    return Response.json(await runCatchupAggregation(c.env.DB));
+  }
+
+  const offset = parseInt(url.searchParams.get("offset")!, 10);
+  const limit = Math.min(parseInt(url.searchParams.get("limit") ?? "100", 10), 200);
+  const pairs = await c.env.DB.prepare(
+    `SELECT pair, base_asset, quote_asset, first_trade_time FROM pair_stats ORDER BY pair LIMIT ? OFFSET ?`
+  ).bind(limit, offset).all<{ pair: string; base_asset: string; quote_asset: string; first_trade_time: number | null }>();
+
+  for (const p of pairs.results) {
+    await aggregateCandlesForPair(c.env.DB, p.pair, p.first_trade_time ?? 0);
+    await updatePairStats(c.env.DB, p.pair, p.base_asset, p.quote_asset);
+  }
+
+  return Response.json({ aggregated: pairs.results.length, offset, pairs: pairs.results.map((p) => p.pair) });
+});
+
+app.post('/indexer/sync', async (c) => {
+  const maxBlocks = Math.min(parseInt(new URL(c.req.url).searchParams.get("blocks") ?? "10", 10), 50);
+  return Response.json(await syncBlocks(c.env.DB, c.env.CP_API_BASE, maxBlocks));
+});
+
+app.post('/indexer/full-sync', async (c) => {
+  const [orderResult, dispenserResult] = await Promise.allSettled([
+    syncOrders(c.env.DB, c.env.CP_API_BASE),
+    syncDispensers(c.env.DB, c.env.CP_API_BASE),
+  ]);
+  return Response.json({
+    orders: orderResult.status === "fulfilled" ? orderResult.value : { error: String(orderResult.reason) },
+    dispensers: dispenserResult.status === "fulfilled" ? dispenserResult.value : { error: String(dispenserResult.reason) },
+  });
+});
+
+app.post('/indexer/reindex-orders', async (c) => {
+  const url = new URL(c.req.url);
+  const status = url.searchParams.get("status") ?? "open";
+  const cursor = url.searchParams.get("cursor") || null;
+  const batch = Math.min(parseInt(url.searchParams.get("batch") ?? "200", 10), 1000);
+  return Response.json(await reindexOrders(c.env.DB, c.env.CP_API_BASE, status, cursor, batch));
+});
+
+app.post('/indexer/reset', async (c) => {
+  await Promise.all([
+    setMode(c.env.DB, "IDLE"),
+    deleteState(c.env.DB, "trade_backfill_cursor"),
+    deleteState(c.env.DB, "trade_backfill_total"),
+    deleteState(c.env.DB, "dispense_backfill_cursor"),
+    deleteState(c.env.DB, "dispense_backfill_total"),
+    deleteState(c.env.DB, "dispenser_backfill_cursor"),
+    deleteState(c.env.DB, "dispenser_backfill_total"),
+    deleteState(c.env.DB, "aggregation_cursor"),
+  ]);
+  return Response.json({ ok: true, mode: "IDLE" });
+});
+
+app.post('/indexer/backfill-missing', async (c) => {
+  await Promise.all([
+    deleteState(c.env.DB, "dispense_backfill_cursor"),
+    deleteState(c.env.DB, "dispense_backfill_total"),
+    deleteState(c.env.DB, "dispenser_backfill_cursor"),
+    deleteState(c.env.DB, "dispenser_backfill_total"),
+  ]);
+  await setMode(c.env.DB, "BACKFILL_DISPENSES");
+  return Response.json({ ok: true, mode: "BACKFILL_DISPENSES" });
+});
+
+app.post('/indexer/sync-tags', async (c) => {
+  const tagType = new URL(c.req.url).searchParams.get("type") ?? "collection";
+  const syncFns: Record<string, () => Promise<any>> = {
+    tokenscan: () => syncTokenscanCollections(c.env.DB),
+    pepewtf: () => syncPepeWtfCollections(c.env.DB),
+    stampchain: () => syncStampchainCollection(c.env.DB),
+    scannable: () => syncScannableNfts(c.env.DB),
+    kaleidoscope: () => syncKaleidoscope(c.env.DB),
+  };
+  const fn = syncFns[tagType] ?? (() => syncTags(c.env.DB, tagType));
+  return Response.json({ ok: true, ...await fn() });
+});
+
+// ── Cron ─────────────────────────────────────────────────────────────────
+
+// The scheduled handler is separate from Hono (Workers API requirement)
+async function scheduled(env: Env): Promise<void> {
+  const now = Math.floor(Date.now() / 1000);
+  const lock = await env.DB.prepare(
+    `INSERT INTO indexer_state (key, value) VALUES ('cron_lock', ?)
+     ON CONFLICT (key) DO UPDATE SET value = excluded.value
+     WHERE CAST(value AS INTEGER) < ?`
+  ).bind(String(now), now - LOCK_TIMEOUT_SECONDS).run();
+  if (lock.meta.changes === 0) return;
+
+  try {
+    const mode = await getMode(env.DB);
+
+    switch (mode) {
+      case "IDLE": break;
+      case "BACKFILL_TRADES": {
+        const r = await backfillTrades(env.DB, env.CP_API_BASE, 20);
+        console.log(`Cron: backfill trades — ${r.inserted} inserted, ${r.progress}% done`);
+        break;
+      }
+      case "BACKFILL_DISPENSES": {
+        const r = await backfillDispenses(env.DB, env.CP_API_BASE, 20);
+        console.log(`Cron: backfill dispenses — ${r.inserted} inserted, ${r.progress}% done`);
+        break;
+      }
+      case "BACKFILL_DISPENSERS": {
+        const r = await backfillDispensers(env.DB, env.CP_API_BASE, 20);
+        console.log(`Cron: backfill dispensers — ${r.inserted} inserted, ${r.progress}% done`);
+        break;
+      }
+      case "SNAPSHOT_SYNC": {
+        const r = await runSnapshotStep(env.DB, env.CP_API_BASE);
+        console.log(`Cron: snapshot sync — phase=${r.phase}, done=${r.done}`);
+        break;
+      }
+      case "BUILD_AGGREGATES": {
+        const r = await runCatchupAggregation(env.DB);
+        console.log(`Cron: aggregation — done=${r.done}`);
+        break;
+      }
+      case "REFRESH_STATS": {
+        const statResult = await runCatchupStats(env.DB);
+        const dispResult = await runCatchupDispenserStats(env.DB);
+        console.log(`Cron: stats refresh — pairs=${statResult.updated}, dispensers=${dispResult.updated}`);
+        if (statResult.done && dispResult.done) {
+          await setMode(env.DB, "FOLLOWING");
+        }
+        break;
+      }
+      case "FOLLOWING": {
+        await syncBlocks(env.DB, env.CP_API_BASE, 10);
+        await refreshStalePairStats(env.DB);
+        await refreshStaleDispenserStats(env.DB);
+        await refreshDealScores(env.DB);
+        await checkPendingFills(env.DB);
+        break;
+      }
+    }
+  } finally {
+    await env.DB.prepare(
+      `UPDATE indexer_state SET value = '0' WHERE key = 'cron_lock'`
+    ).run();
+  }
 }
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
-    // Handle CORS preflight
-    if (request.method === "OPTIONS") {
-      return new Response(null, { status: 204, headers: corsHeaders() });
-    }
-
-    const url = new URL(request.url);
-    const path = url.pathname;
-
-    // Auth gate for internal indexer endpoints
-    if (path.startsWith("/indexer/") && request.method === "POST") {
-      if (!env.INDEXER_TOKEN) {
-        return await withCors(Response.json({ error: "INDEXER_TOKEN not configured" }, { status: 500 }));
-      }
-      const auth = request.headers.get("Authorization");
-      if (auth !== `Bearer ${env.INDEXER_TOKEN}`) {
-        return await withCors(Response.json({ error: "Unauthorized" }, { status: 401 }));
-      }
-    }
-
-    try {
-      // Route: GET /ohlc/:pair
-      const ohlcMatch = path.match(/^\/ohlc\/([A-Za-z0-9._]+)$/);
-      if (ohlcMatch) {
-        return await withCors(await handleOhlc(request, env.DB, ohlcMatch[1]));
-      }
-
-      // Route: GET /trades/:pair
-      const tradesMatch = path.match(/^\/trades\/([A-Za-z0-9._]+)$/);
-      if (tradesMatch) {
-        return await withCors(await handleTrades(request, env.DB, tradesMatch[1]));
-      }
-
-      // Route: GET /book/:pair
-      const bookMatch = path.match(/^\/book\/([A-Za-z0-9._]+)$/);
-      if (bookMatch) {
-        return await withCors(await handleBook(request, env.DB, bookMatch[1]));
-      }
-
-      // Route: GET /pair/:pair
-      const pairMatch = path.match(/^\/pair\/([A-Za-z0-9._]+)$/);
-      if (pairMatch) {
-        return await withCors(await handlePair(url, env.DB, pairMatch[1]));
-      }
-
-      // Route: GET /pairs
-      if (path === "/pairs") {
-        return await withCors(await handlePairs(request, env.DB));
-      }
-
-      // Route: GET /trade-summary
-      if (path === "/trade-summary") {
-        return await withCors(await handleTradeSummary(request, env.DB));
-      }
-
-      // Route: GET /markets
-      if (path === "/markets") {
-        return await withCors(await handleMarkets(request, env.DB));
-      }
-
-      // Route: GET /trending
-      if (path === "/trending") {
-        return await withCors(await handleTrending(request, env.DB));
-      }
-
-      // Route: GET /asset/:name
-      const assetMatch = path.match(/^\/asset\/([A-Za-z0-9._]+)$/);
-      if (assetMatch) {
-        return await withCors(await handleAsset(url, env.DB, assetMatch[1]));
-      }
-
-      // Route: GET /portfolio/:address/bids
-      const portfolioBidsMatch = path.match(
-        /^\/portfolio\/([A-Za-z0-9]+)\/bids$/
-      );
-      if (portfolioBidsMatch) {
-        return await withCors(
-          await handlePortfolioBids(
-            request,
-            env.DB,
-            env.CP_API_BASE,
-            portfolioBidsMatch[1]
-          )
-        );
-      }
-
-      // Route: GET /portfolio/:address/orders
-      const portfolioOrdersMatch = path.match(
-        /^\/portfolio\/([A-Za-z0-9]+)\/orders$/
-      );
-      if (portfolioOrdersMatch) {
-        return await withCors(
-          await handlePortfolioOrders(request, env.DB, portfolioOrdersMatch[1])
-        );
-      }
-
-      // Route: GET /portfolio/:address/dispensers
-      const portfolioDispensersMatch = path.match(
-        /^\/portfolio\/([A-Za-z0-9]+)\/dispensers$/
-      );
-      if (portfolioDispensersMatch) {
-        return await withCors(
-          await handlePortfolioDispensers(
-            request,
-            env.DB,
-            portfolioDispensersMatch[1]
-          )
-        );
-      }
-
-      // Route: GET /dispenser-stats (list)
-      if (path === "/dispenser-stats") {
-        return await withCors(await handleDispenserStatsList(request, env.DB));
-      }
-
-      // Route: GET /dispenser-stats/:asset
-      const dispenserStatsMatch = path.match(/^\/dispenser-stats\/([A-Za-z0-9._]+)$/);
-      if (dispenserStatsMatch) {
-        return await withCors(await handleDispenserStats(url, env.DB, dispenserStatsMatch[1]));
-      }
-
-      // Route: GET /orders/latest
-      if (path === "/orders/latest") {
-        return await withCors(await handleOrdersLatest(request, env.DB));
-      }
-
-      // Route: GET /dispensers/latest
-      if (path === "/dispensers/latest") {
-        return await withCors(await handleDispensersLatest(request, env.DB));
-      }
-
-      // Route: GET /dispenses/latest
-      if (path === "/dispenses/latest") {
-        return await withCors(await handleDispensesLatest(request, env.DB));
-      }
-
-      // Route: GET /search?q=...
-      if (path === "/search") {
-        return await withCors(await handleSearch(request, env.DB));
-      }
-
-      // Route: GET /analytics
-      if (path === "/analytics") {
-        return await withCors(await handleAnalytics(request, env.DB));
-      }
-
-      // Route: GET /block
-      if (path === "/block") {
-        return await withCors(await handleBlock(env.DB));
-      }
-
-      // Route: GET /tags?type=collection
-      if (path === "/tags") {
-        return await withCors(await handleTags(request, env.DB));
-      }
-
-      // Route: GET /deals — flip opportunity scoring (reads from pre-computed deal_scores table)
-      if (path === "/deals") {
-        return await withCors(await handleDeals(request, env.DB));
-      }
-
-      // Route: POST /indexer/refresh-deals — manual deal score refresh
-      if (path === "/indexer/refresh-deals" && request.method === "POST") {
-        const result = await refreshDealScores(env.DB);
-        return await withCors(Response.json({ ok: true, ...result }));
-      }
-
-      // Route: POST /indexer/sync-assets — index asset metadata from CP API
-      // ?mode=full — resumable full index (call repeatedly until done=true)
-      // ?mode=incremental — poll newest, stop after seeing known assets
-      // ?pages=20 — max pages per call (default 20 full, 10 incremental)
-      // ?reset=1 — restart full index from beginning
-      if (path === "/indexer/sync-assets" && request.method === "POST") {
-        const mode = url.searchParams.get("mode") ?? "incremental";
-        const maxPages = parseInt(url.searchParams.get("pages") ?? (mode === "full" ? "20" : "10"), 10);
-        const reset = url.searchParams.get("reset") === "1";
-        const result = mode === "full"
-          ? await indexAllAssets(env.DB, maxPages, reset)
-          : await syncNewAssets(env.DB, maxPages);
-        return await withCors(Response.json({ ok: true, mode, ...result }));
-      }
-
-      // Route: GET /status — mode, progress, table counts
-      if (path === "/status") {
-        const mode = await getMode(env.DB);
-
-        const [tradeCount, pairCount, openOrderCount, dispenseCount, openDispenserCount, candleCount, state] =
-          await env.DB.batch([
-            env.DB.prepare(`SELECT COUNT(*) as cnt FROM trades`),
-            env.DB.prepare(`SELECT COUNT(*) as cnt FROM pair_stats`),
-            env.DB.prepare(`SELECT COUNT(*) as cnt FROM orders WHERE status = 'open'`),
-            env.DB.prepare(`SELECT COUNT(*) as cnt FROM dispenses`),
-            env.DB.prepare(`SELECT COUNT(*) as cnt FROM dispensers WHERE status < 10`),
-            env.DB.prepare(`SELECT COUNT(*) as cnt FROM candles`),
-            env.DB.prepare(`SELECT key, value FROM indexer_state`),
-          ]);
-
-        const cnt = (r: D1Result) => (r.results[0] as { cnt: number } | undefined)?.cnt ?? 0;
-        const stateRows = state.results as { key: string; value: string }[];
-        const staleKeys = ['aggregation_offset'];
-
-        return await withCors(
-          Response.json({
-            ok: true,
-            mode,
-            trades: cnt(tradeCount),
-            pairs: cnt(pairCount),
-            open_orders: cnt(openOrderCount),
-            dispenses: cnt(dispenseCount),
-            open_dispensers: cnt(openDispenserCount),
-            candles: cnt(candleCount),
-            indexer: Object.fromEntries(
-              stateRows
-                .filter((r) => !staleKeys.includes(r.key))
-                .map((r) => [r.key, r.value])
-            ),
-          })
-        );
-      }
-
-      // POST /indexer/start — IDLE → BACKFILL_TRADES
-      if (path === "/indexer/start" && request.method === "POST") {
-        const mode = await getMode(env.DB);
-        if (mode !== "IDLE") {
-          return await withCors(
-            Response.json({ error: `Cannot start: mode is ${mode}, expected IDLE` }, { status: 409 })
-          );
-        }
-        // Clear any stale state from a previous aborted run before starting fresh
-        await Promise.all([
-          deleteState(env.DB, "trade_backfill_cursor"),
-          deleteState(env.DB, "trade_backfill_total"),
-          deleteState(env.DB, "dispense_backfill_cursor"),
-          deleteState(env.DB, "dispense_backfill_total"),
-          deleteState(env.DB, "dispenser_backfill_cursor"),
-          deleteState(env.DB, "dispenser_backfill_total"),
-          deleteState(env.DB, "aggregation_cursor"),
-          deleteState(env.DB, "sync_lock"),
-        ]);
-        await setMode(env.DB, "BACKFILL_TRADES");
-        return await withCors(Response.json({ ok: true, mode: "BACKFILL_TRADES" }));
-      }
-
-      // POST /indexer/backfill?pages=20 — auto-detects current phase
-      if (path === "/indexer/backfill" && request.method === "POST") {
-        const pages = Math.min(
-          parseInt(url.searchParams.get("pages") ?? "20", 10),
-          50
-        );
-        const mode = await getMode(env.DB);
-
-        switch (mode) {
-          case "BACKFILL_TRADES": {
-            const result = await backfillTrades(env.DB, env.CP_API_BASE, pages);
-            return await withCors(Response.json(result));
-          }
-          case "BACKFILL_DISPENSES": {
-            const result = await backfillDispenses(env.DB, env.CP_API_BASE, pages);
-            return await withCors(Response.json(result));
-          }
-          case "BACKFILL_DISPENSERS": {
-            const result = await backfillDispensers(env.DB, env.CP_API_BASE, pages);
-            return await withCors(Response.json(result));
-          }
-          case "SNAPSHOT_SYNC": {
-            const result = await runSnapshotStep(env.DB, env.CP_API_BASE);
-            return await withCors(Response.json({ type: "snapshot", ...result }));
-          }
-          case "BUILD_AGGREGATES": {
-            const result = await runCatchupAggregation(env.DB);
-            return await withCors(Response.json({ type: "aggregates", ...result }));
-          }
-          case "FOLLOWING":
-            return await withCors(Response.json({ done: true, mode: "FOLLOWING" }));
-          default:
-            return await withCors(
-              Response.json({ error: `Cannot backfill in mode: ${mode}` }, { status: 409 })
-            );
-        }
-      }
-
-      // POST /indexer/aggregate — manual aggregate trigger (any mode)
-      if (path === "/indexer/aggregate" && request.method === "POST") {
-        const hasOffset = url.searchParams.has("offset");
-
-        if (!hasOffset) {
-          await env.DB
-            .prepare(
-              `INSERT INTO indexer_state (key, value) VALUES ('aggregation_cursor', '')
-               ON CONFLICT (key) DO NOTHING`
-            )
-            .run();
-          const result = await runCatchupAggregation(env.DB);
-          return await withCors(Response.json(result));
-        }
-
-        const offset = parseInt(url.searchParams.get("offset")!, 10);
-        const limit = Math.min(
-          parseInt(url.searchParams.get("limit") ?? "100", 10),
-          200
-        );
-        const pairs = await env.DB
-          .prepare(
-            `SELECT pair, base_asset, quote_asset, first_trade_time
-             FROM pair_stats
-             ORDER BY pair LIMIT ? OFFSET ?`
-          )
-          .bind(limit, offset)
-          .all<{
-            pair: string;
-            base_asset: string;
-            quote_asset: string;
-            first_trade_time: number | null;
-          }>();
-
-        for (const p of pairs.results) {
-          const earliest = p.first_trade_time ?? 0;
-          await aggregateCandlesForPair(env.DB, p.pair, earliest);
-          await updatePairStats(env.DB, p.pair, p.base_asset, p.quote_asset);
-        }
-
-        return await withCors(
-          Response.json({
-            aggregated: pairs.results.length,
-            offset,
-            pairs: pairs.results.map((p) => p.pair),
-          })
-        );
-      }
-
-      // POST /indexer/sync?blocks=10 — manual block sync
-      if (path === "/indexer/sync" && request.method === "POST") {
-        const maxBlocks = Math.min(
-          parseInt(url.searchParams.get("blocks") ?? "10", 10),
-          50
-        );
-        const result = await syncBlocks(env.DB, env.CP_API_BASE, maxBlocks);
-        return await withCors(Response.json(result));
-      }
-
-      // POST /indexer/full-sync — re-snapshot orders+dispensers (recovery, any mode)
-      if (path === "/indexer/full-sync" && request.method === "POST") {
-        const [orderResult, dispenserResult] = await Promise.allSettled([
-          syncOrders(env.DB, env.CP_API_BASE),
-          syncDispensers(env.DB, env.CP_API_BASE),
-        ]);
-        return await withCors(Response.json({
-          orders: orderResult.status === "fulfilled" ? orderResult.value : { error: String(orderResult.reason) },
-          dispensers: dispenserResult.status === "fulfilled" ? dispenserResult.value : { error: String(dispenserResult.reason) },
-        }));
-      }
-
-      // POST /indexer/reindex-orders?status=open&cursor=...&batch=200
-      if (path === "/indexer/reindex-orders" && request.method === "POST") {
-        const status = url.searchParams.get("status") ?? "open";
-        const cursor = url.searchParams.get("cursor") || null;
-        const batch = Math.min(
-          parseInt(url.searchParams.get("batch") ?? "200", 10),
-          1000
-        );
-        const result = await reindexOrders(env.DB, env.CP_API_BASE, status, cursor, batch);
-        return await withCors(Response.json(result));
-      }
-
-      // POST /indexer/reset — reset to IDLE (for re-index)
-      if (path === "/indexer/reset" && request.method === "POST") {
-        await Promise.all([
-          setMode(env.DB, "IDLE"),
-          deleteState(env.DB, "trade_backfill_cursor"),
-          deleteState(env.DB, "trade_backfill_total"),
-          deleteState(env.DB, "dispense_backfill_cursor"),
-          deleteState(env.DB, "dispense_backfill_total"),
-          deleteState(env.DB, "dispenser_backfill_cursor"),
-          deleteState(env.DB, "dispenser_backfill_total"),
-          deleteState(env.DB, "aggregation_cursor"),
-        ]);
-        return await withCors(Response.json({ ok: true, mode: "IDLE" }));
-      }
-
-      // POST /indexer/backfill-missing — re-run dispenses + dispensers backfill then return to FOLLOWING
-      if (path === "/indexer/backfill-missing" && request.method === "POST") {
-        await Promise.all([
-          deleteState(env.DB, "dispense_backfill_cursor"),
-          deleteState(env.DB, "dispense_backfill_total"),
-          deleteState(env.DB, "dispenser_backfill_cursor"),
-          deleteState(env.DB, "dispenser_backfill_total"),
-        ]);
-        await setMode(env.DB, "BACKFILL_DISPENSES");
-        return await withCors(Response.json({ ok: true, mode: "BACKFILL_DISPENSES" }));
-      }
-
-      // POST /indexer/sync-tags?type=collection — manual tag sync
-      if (path === "/indexer/sync-tags" && request.method === "POST") {
-        const tagType = url.searchParams.get("type") ?? "collection";
-        if (tagType === "tokenscan") {
-          const result = await syncTokenscanCollections(env.DB);
-          return await withCors(Response.json({ ok: true, ...result }));
-        }
-        if (tagType === "pepewtf") {
-          const result = await syncPepeWtfCollections(env.DB);
-          return await withCors(Response.json({ ok: true, ...result }));
-        }
-        if (tagType === "stampchain") {
-          const result = await syncStampchainCollection(env.DB);
-          return await withCors(Response.json({ ok: true, ...result }));
-        }
-        if (tagType === "scannable") {
-          const result = await syncScannableNfts(env.DB);
-          return await withCors(Response.json({ ok: true, ...result }));
-        }
-        if (tagType === "kaleidoscope") {
-          const result = await syncKaleidoscope(env.DB);
-          return await withCors(Response.json({ ok: true, ...result }));
-        }
-        const result = await syncTags(env.DB, tagType);
-        return await withCors(Response.json({ ok: true, ...result }));
-      }
-
-      // ---- Swap routes (PSBT atomic swaps) ----
-
-      // Route: POST /swaps/prepare-listing — server constructs seller PSBT
-      if (path === "/swaps/prepare-listing" && request.method === "POST") {
-        return await withCors(await handlePrepareListingPsbt(request, env));
-      }
-
-      // Route: POST /swaps/complete-listing — seller submits signed PSBT
-      if (path === "/swaps/complete-listing" && request.method === "POST") {
-        return await withCors(await handleCompleteListingPsbt(request, env));
-      }
-
-      // Route: GET /swaps — browse listings
-      if (path === "/swaps" && request.method === "GET") {
-        return await withCors(await handleGetSwaps(request, env.DB));
-      }
-
-      // Route: POST /swaps/:id/prepare-fill — server constructs buyer PSBT
-      const swapPrepareFillMatch = path.match(/^\/swaps\/([0-9a-f-]+)\/prepare-fill$/);
-      if (swapPrepareFillMatch && request.method === "POST") {
-        return await withCors(await handlePrepareFill(request, env, swapPrepareFillMatch[1]));
-      }
-
-      // Route: POST /swaps/:id/complete-fill — buyer submits signed PSBT
-      const swapCompleteFillMatch = path.match(/^\/swaps\/([0-9a-f-]+)\/complete-fill$/);
-      if (swapCompleteFillMatch && request.method === "POST") {
-        return await withCors(await handleCompleteFill(request, env.DB, swapCompleteFillMatch[1]));
-      }
-
-      // Route: POST /swaps/:id/prepare-cancel
-      const swapPrepareCancelMatch = path.match(/^\/swaps\/([0-9a-f-]+)\/prepare-cancel$/);
-      if (swapPrepareCancelMatch && request.method === "POST") {
-        return await withCors(await handlePrepareCancelSwap(env.DB, swapPrepareCancelMatch[1]));
-      }
-
-      // Route: POST /swaps/:id/cancel
-      const swapCancelMatch = path.match(/^\/swaps\/([0-9a-f-]+)\/cancel$/);
-      if (swapCancelMatch && request.method === "POST") {
-        return await withCors(await handleCancelSwap(request, env.DB, swapCancelMatch[1]));
-      }
-
-      // Route: GET /swaps/:id — single listing
-      const swapMatch = path.match(/^\/swaps\/([0-9a-f-]+)$/);
-      if (swapMatch) {
-        return await withCors(await handleGetSwap(env.DB, swapMatch[1]));
-      }
-
-      return await withCors(
-        Response.json({ error: "Not found" }, { status: 404 })
-      );
-    } catch (e) {
-      const message = e instanceof Error ? e.message : String(e);
-      console.error("Request error:", message, e instanceof Error ? e.stack : "");
-      return await withCors(
-        Response.json({ error: "Internal server error" }, { status: 500 })
-      );
-    }
+  fetch: app.fetch,
+  async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    ctx.waitUntil(scheduled(env));
   },
-
-  async scheduled(
-    _event: ScheduledController,
-    env: Env,
-    ctx: ExecutionContext
-  ): Promise<void> {
-    ctx.waitUntil(
-      (async () => {
-        // Cron concurrency guard: prevent overlapping cron executions
-        const now = Math.floor(Date.now() / 1000);
-        const lock = await env.DB
-          .prepare(
-            `INSERT INTO indexer_state (key, value) VALUES ('cron_lock', ?)
-             ON CONFLICT (key) DO UPDATE SET value = excluded.value
-             WHERE CAST(value AS INTEGER) < ?`
-          )
-          .bind(String(now), now - LOCK_TIMEOUT_SECONDS)
-          .run();
-        if (lock.meta.changes === 0) return; // Another cron is running
-
-        try {
-          const mode = await getMode(env.DB);
-
-          switch (mode) {
-            case "IDLE":
-              break;
-
-            case "BACKFILL_TRADES": {
-              const r = await backfillTrades(env.DB, env.CP_API_BASE, 20);
-              console.log(`Cron: backfill trades — ${r.inserted} inserted, ${r.progress}% done`);
-              break;
-            }
-
-            case "BACKFILL_DISPENSES": {
-              const r = await backfillDispenses(env.DB, env.CP_API_BASE, 20);
-              console.log(`Cron: backfill dispenses — ${r.inserted} inserted, ${r.progress}% done`);
-              break;
-            }
-
-            case "BACKFILL_DISPENSERS": {
-              const r = await backfillDispensers(env.DB, env.CP_API_BASE, 20);
-              console.log(`Cron: backfill dispensers — ${r.inserted} inserted, ${r.progress}% done`);
-              break;
-            }
-
-            case "SNAPSHOT_SYNC": {
-              const r = await runSnapshotStep(env.DB, env.CP_API_BASE, 10);
-              console.log(`Cron: snapshot step=${r.step}`);
-              break;
-            }
-
-            case "BUILD_AGGREGATES": {
-              const aggStart = Date.now();
-              let aggTotal = 0;
-              let aggDone = false;
-              // Without per-pair stats, each batch uses ~30 D1 queries instead
-              // of ~270. With 200 pairs/batch and 1000 queries/invocation budget,
-              // we can safely run 8 batches (1600 pairs) per cron tick.
-              const MAX_AGG_BATCHES = 8;
-              for (let b = 0; b < MAX_AGG_BATCHES; b++) {
-                const r = await runCatchupAggregation(env.DB);
-                aggTotal += r.processed;
-                if (r.done) { aggDone = true; break; }
-              }
-              console.log(`Cron: aggregation — processed=${aggTotal}, done=${aggDone}, elapsed=${Date.now() - aggStart}ms`);
-              break;
-            }
-
-            case "REFRESH_STATS": {
-              const statsStart = Date.now();
-              let statsTotal = 0;
-              let allStatsDone = false;
-
-              // Bulk SQL: each call processes up to 7000 items using ~450-525
-              // D1 queries (6-7 per 95-item chunk). Both can fit if pair stats
-              // finishes early in this tick.
-              const pr = await runCatchupStats(env.DB);
-              statsTotal += pr.processed;
-
-              if (pr.done) {
-                const dr = await runCatchupDispenserStats(env.DB);
-                statsTotal += dr.processed;
-                allStatsDone = dr.done;
-              }
-
-              console.log(`Cron: stats refresh — processed=${statsTotal}, done=${allStatsDone}, elapsed=${Date.now() - statsStart}ms`);
-              break;
-            }
-
-            case "FOLLOWING": {
-              const sync = await syncBlocks(env.DB, env.CP_API_BASE, 50);
-              if (sync.blocks_processed > 0) {
-                console.log(
-                  `Sync: ${sync.blocks_processed} blocks (${sync.last_block}/${sync.current_block}) ` +
-                  `trades=${sync.trades_inserted} orders=+${sync.orders_upserted}/-${sync.orders_closed} ` +
-                  `dispensers=+${sync.dispensers_upserted}/~${sync.dispensers_updated} ` +
-                  `dispenses=${sync.dispenses_inserted}`
-                );
-              }
-
-              // Monitor pending swap fills for confirmation + detect anomalous UTXO spends
-              try {
-                const swapStatus = await checkPendingFills(env.DB);
-                if (swapStatus.confirmed > 0 || swapStatus.relisted > 0 || swapStatus.anomalous > 0) {
-                  console.log(
-                    `Swap monitor: confirmed=${swapStatus.confirmed} relisted=${swapStatus.relisted} anomalous=${swapStatus.anomalous}`
-                  );
-                }
-              } catch (e) {
-                console.error("Swap monitor error:", e);
-              }
-
-              const now = Math.floor(Date.now() / 1000);
-
-              // Periodic order reconciliation: re-sync open orders with CP API every 24 hours.
-              // Catches stale orders (filled/cancelled) that were missed by block events.
-              const ORDER_RECONCILE_INTERVAL = 24 * 3600;
-              const lastReconcileRow = await env.DB
-                .prepare(`SELECT value FROM indexer_state WHERE key = 'last_order_reconcile'`)
-                .first<{ value: string }>();
-              const lastReconcile = lastReconcileRow ? parseInt(lastReconcileRow.value, 10) : 0;
-
-              if (now - lastReconcile >= ORDER_RECONCILE_INTERVAL) {
-                try {
-                  const reconciled = await syncOrders(env.DB, env.CP_API_BASE);
-                  await env.DB
-                    .prepare(
-                      `INSERT INTO indexer_state (key, value) VALUES ('last_order_reconcile', ?)
-                       ON CONFLICT (key) DO UPDATE SET value = excluded.value`
-                    )
-                    .bind(String(now))
-                    .run();
-                  console.log(`Order reconciliation: synced=${reconciled.synced} closed=${reconciled.closed}`);
-                } catch (e) {
-                  console.error("Order reconciliation error:", e);
-                }
-              }
-
-              // Periodic stats refresh: recalculate stale 24h/7d windows every 6 hours
-              const STATS_REFRESH_INTERVAL = 6 * 3600;
-              const lastRefreshRow = await env.DB
-                .prepare(`SELECT value FROM indexer_state WHERE key = 'last_stats_refresh'`)
-                .first<{ value: string }>();
-              const lastRefresh = lastRefreshRow ? parseInt(lastRefreshRow.value, 10) : 0;
-
-              if (now - lastRefresh >= STATS_REFRESH_INTERVAL) {
-                const stalePairs = await refreshStalePairStats(env.DB);
-                const staleDispensers = await refreshStaleDispenserStats(env.DB);
-                await env.DB
-                  .prepare(
-                    `INSERT INTO indexer_state (key, value) VALUES ('last_stats_refresh', ?)
-                     ON CONFLICT (key) DO UPDATE SET value = excluded.value`
-                  )
-                  .bind(String(now))
-                  .run();
-                if (stalePairs > 0 || staleDispensers > 0) {
-                  console.log(`Stats refresh: ${stalePairs} pairs, ${staleDispensers} dispenser assets`);
-                }
-
-                // Refresh deal scores after stats (depends on fresh pair_stats)
-                try {
-                  const dealResult = await refreshDealScores(env.DB);
-                  if (dealResult.processed > 0) {
-                    console.log(`Deal scores: ${dealResult.processed} assets scored`);
-                  }
-                } catch (e) {
-                  console.error("Deal scores refresh error:", e);
-                }
-              }
-
-              // Periodic tag sync: refresh collection tags every 24 hours
-              const TAG_SYNC_INTERVAL = 24 * 3600;
-              const lastTagSyncRow = await env.DB
-                .prepare(`SELECT value FROM indexer_state WHERE key = 'last_tag_sync_collection'`)
-                .first<{ value: string }>();
-              const lastTagSync = lastTagSyncRow ? parseInt(lastTagSyncRow.value, 10) : 0;
-
-              if (now - lastTagSync >= TAG_SYNC_INTERVAL) {
-                try {
-                  const result = await syncTags(env.DB, "collection");
-                  console.log(`Tag sync (collection): ${result.tags} tags, ${result.assets} assets`);
-                } catch (e) {
-                  console.error("Tag sync error:", e);
-                }
-              }
-
-              // Periodic secondary collection syncs (all 24h interval)
-              const SECONDARY_SYNC_INTERVAL = 24 * 3600;
-              const secondarySources: { key: string; fn: (db: D1Database) => Promise<{ tags: number; assets: number }>; label: string }[] = [
-                { key: "last_tag_sync_tokenscan", fn: syncTokenscanCollections, label: "tokenscan" },
-                // { key: "last_tag_sync_pepewtf", fn: syncPepeWtfCollections, label: "pepe.wtf" },
-                // { key: "last_tag_sync_stampchain", fn: syncStampchainCollection, label: "stampchain" },
-                // { key: "last_tag_sync_scannable", fn: syncScannableNfts, label: "scannable" },
-                // { key: "last_tag_sync_kaleidoscope", fn: syncKaleidoscope, label: "kaleidoscope" },
-              ];
-
-              for (const src of secondarySources) {
-                const row = await env.DB
-                  .prepare(`SELECT value FROM indexer_state WHERE key = ?`)
-                  .bind(src.key)
-                  .first<{ value: string }>();
-                const lastSync = row ? parseInt(row.value, 10) : 0;
-                if (now - lastSync >= SECONDARY_SYNC_INTERVAL) {
-                  try {
-                    const result = await src.fn(env.DB);
-                    if (result.tags > 0) {
-                      console.log(`${src.label} sync: ${result.tags} new tags, ${result.assets} assets`);
-                    }
-                  } catch (e) {
-                    console.error(`${src.label} sync error:`, e);
-                  }
-                }
-              }
-
-              // Periodic asset metadata sync: every 24 hours
-              const ASSET_SYNC_INTERVAL = 24 * 3600;
-              const lastAssetSyncRow = await env.DB
-                .prepare(`SELECT value FROM indexer_state WHERE key = 'last_asset_sync'`)
-                .first<{ value: string }>();
-              const lastAssetSync = lastAssetSyncRow ? parseInt(lastAssetSyncRow.value, 10) : 0;
-
-              if (now - lastAssetSync >= ASSET_SYNC_INTERVAL) {
-                try {
-                  const result = await syncNewAssets(env.DB, 10);
-                  console.log(`Asset sync: ${result.indexed} assets in ${result.pages} pages`);
-                  await env.DB
-                    .prepare(`INSERT OR REPLACE INTO indexer_state (key, value) VALUES ('last_asset_sync', ?)`)
-                    .bind(String(now))
-                    .run();
-                } catch (e) {
-                  console.error("Asset sync error:", e);
-                }
-              }
-
-              break;
-            }
-          }
-        } catch (e) {
-          console.error("Cron error:", e);
-        } finally {
-          await env.DB.prepare(`DELETE FROM indexer_state WHERE key = 'cron_lock'`).run();
-        }
-      })()
-    );
-  },
-} satisfies ExportedHandler<Env>;
+} satisfies ExportedHandler<Bindings>;
