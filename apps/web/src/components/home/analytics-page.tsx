@@ -156,7 +156,7 @@ export default function AnalyticsPage() {
       </div>
 
       <SummarySection timeframe={timeframe} includeHidden={includeHidden} isLoading={summaryLoading} mobileMode={mobileMode} quoteAsset={quoteAsset} quoteOptions={quoteOptions} onQuoteAssetChange={setQuoteAsset} {...summaryProps} />
-      <RecentActivity />
+      <RecentActivity mobileMode={mobileMode} />
       <ChartsSection timeframe={timeframe} includeHidden={includeHidden} ready={chartsReady} mobileMode={mobileMode} />
       <TradersSection isLoading={tradersLoading} mobileMode={mobileMode} quoteAsset={quoteAsset} quoteOptions={quoteOptions} onQuoteAssetChange={setQuoteAsset} {...tradersProps} />
 

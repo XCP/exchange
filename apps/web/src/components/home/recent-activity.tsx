@@ -20,13 +20,17 @@ function compactTime(ts: number): string {
   return `${Math.floor(diff / 31536000)}y`
 }
 
-export function RecentActivity() {
+export function RecentActivity({ mobileMode }: { mobileMode?: 'xcp' | 'btc' }) {
   return (
     <>
       <h2 className="text-sm uppercase tracking-wider text-zinc-400 mb-2">Recent Activity</h2>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-8">
-        <OrdersCard />
-        <DispensersCard />
+        <div className={mobileMode === 'btc' ? 'hidden md:block' : ''}>
+          <OrdersCard />
+        </div>
+        <div className={mobileMode === 'xcp' ? 'hidden md:block' : ''}>
+          <DispensersCard />
+        </div>
       </div>
     </>
   )
