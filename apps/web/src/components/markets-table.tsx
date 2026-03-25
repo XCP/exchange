@@ -44,11 +44,13 @@ export function MarketsTable({ asset, currentPair }: MarketsTableProps) {
         {pairs.map((p) => {
           const isCurrent = p.pair === currentPair
           const slug = p.pair.replace('/', '_')
+          const [rawBase, quote] = p.pair.split('/')
+          const displayPair = `${p.base_asset_longname ?? rawBase}/${quote}`
           return (
             <tr key={p.pair} className={`hover:bg-zinc-900 transition-colors ${isCurrent ? 'bg-zinc-900/50' : ''}`}>
               <td className="px-2 py-1.5">
                 <Link href={`/trade/${slug}`} className="text-zinc-100 font-medium hover:underline">
-                  {p.pair}
+                  {displayPair}
                 </Link>
               </td>
               <td className="text-right text-zinc-300 font-mono px-2 py-1.5">

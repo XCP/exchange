@@ -204,6 +204,18 @@ export async function bulkUpdatePairStats(
       )
       .bind(JSON.stringify(updates))
       .run();
+
+    // Backfill NULL longnames from the assets table
+    await db
+      .prepare(
+        `UPDATE pair_stats SET
+          base_asset_longname = COALESCE(pair_stats.base_asset_longname, (SELECT asset_longname FROM assets WHERE asset = pair_stats.base_asset)),
+          quote_asset_longname = COALESCE(pair_stats.quote_asset_longname, (SELECT asset_longname FROM assets WHERE asset = pair_stats.quote_asset))
+        WHERE pair IN (${phFrom(1)})
+          AND (base_asset_longname IS NULL OR quote_asset_longname IS NULL)`
+      )
+      .bind(...pairs)
+      .run();
   }
 }
 
@@ -502,6 +514,16 @@ export async function updateOrderBookStats(
   });
 
   await batchExec(db, stmts);
+
+  // Backfill NULL longnames from the assets table for any newly-created rows
+  await db
+    .prepare(
+      `UPDATE pair_stats SET
+        base_asset_longname = COALESCE(pair_stats.base_asset_longname, (SELECT asset_longname FROM assets WHERE asset = pair_stats.base_asset)),
+        quote_asset_longname = COALESCE(pair_stats.quote_asset_longname, (SELECT asset_longname FROM assets WHERE asset = pair_stats.quote_asset))
+      WHERE base_asset_longname IS NULL OR quote_asset_longname IS NULL`
+    )
+    .run();
 
   // Zero out stats for pairs that no longer have open orders
   await db
