@@ -36,7 +36,7 @@ import { runCatchupAggregation, runCatchupStats, runCatchupDispenserStats, aggre
 import { backfillTrades, backfillDispenses, backfillDispensers } from "./indexer/backfill";
 import { syncOrders, syncDispensers, runSnapshotStep, reindexOrders } from "./indexer/snapshot";
 import { getMode, setMode, deleteState } from "./indexer/state";
-import { updatePairStats, refreshStalePairStats } from "./indexer/stats";
+import { updatePairStats, refreshStalePairStats, backfillMissingLongnames } from "./indexer/stats";
 import { refreshStaleDispenserStats } from "./indexer/dispenser-stats";
 
 export interface Env {
@@ -345,6 +345,8 @@ async function scheduled(env: Env): Promise<void> {
         await refreshStaleDispenserStats(env.DB);
         await refreshDealScores(env.DB);
         await checkPendingFills(env.DB);
+        await syncNewAssets(env.DB, 2);
+        await backfillMissingLongnames(env.DB, 10);
         break;
       }
     }

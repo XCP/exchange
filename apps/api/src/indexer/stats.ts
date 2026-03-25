@@ -572,3 +572,54 @@ export async function refreshStalePairStats(
 
   return stalePairs.results.length;
 }
+
+/**
+ * Resolve missing base_asset_longname values in pair_stats by querying the
+ * Counterparty API directly. Processes a small batch per call to stay within
+ * rate limits and CPU budget. Only targets numeric assets (A\d+) which are
+ * subassets that should have longnames.
+ */
+export async function backfillMissingLongnames(
+  db: D1Database,
+  batchSize: number = 10
+): Promise<number> {
+  const missing = await db
+    .prepare(
+      `SELECT DISTINCT base_asset FROM pair_stats
+       WHERE base_asset_longname IS NULL AND base_asset LIKE 'A%'
+       LIMIT ?`
+    )
+    .bind(batchSize)
+    .all<{ base_asset: string }>();
+
+  if (missing.results.length === 0) return 0;
+
+  let updated = 0;
+  for (const row of missing.results) {
+    try {
+      const resp = await fetch(
+        `https://api.counterparty.io:4000/v2/assets/${row.base_asset}`,
+        { headers: { Accept: "application/json" } }
+      );
+      if (!resp.ok) continue;
+      const data = (await resp.json()) as { result?: { asset_longname?: string | null } };
+      const longname = data.result?.asset_longname;
+      if (!longname) continue;
+
+      await db.batch([
+        db.prepare(
+          `UPDATE pair_stats SET base_asset_longname = ? WHERE base_asset = ? AND base_asset_longname IS NULL`
+        ).bind(longname, row.base_asset),
+        db.prepare(
+          `INSERT INTO assets (asset, asset_longname, updated_at) VALUES (?, ?, ?)
+           ON CONFLICT (asset) DO UPDATE SET asset_longname = COALESCE(assets.asset_longname, excluded.asset_longname), updated_at = excluded.updated_at`
+        ).bind(row.base_asset, longname, Math.floor(Date.now() / 1000)),
+      ]);
+      updated++;
+    } catch {
+      // Skip failures — will retry next cron tick
+    }
+  }
+
+  return updated;
+}
