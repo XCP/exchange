@@ -2,6 +2,7 @@ import useSWR from 'swr'
 
 const MEMPOOL_BASE = 'https://mempool.space/api'
 const COINGECKO_BASE = 'https://api.coingecko.com/api/v3'
+const XCPIO_BASE = 'https://app.xcp.io/api/v1'
 
 async function jsonFetcher<T>(url: string): Promise<T> {
   const res = await fetch(url)
@@ -28,6 +29,11 @@ interface CoinGeckoXcp {
   counterparty: { btc: number; usd: number }
 }
 
+interface XcpIoAsset {
+  last_trade_price_btc: number
+  last_trade_price_usd: number
+}
+
 /** BTC/USD price — globally cached via SWR key */
 export function useBtcPrice() {
   const { data } = useSWR<MempoolPrices>(
@@ -38,16 +44,34 @@ export function useBtcPrice() {
   return data?.USD ?? null
 }
 
-/** XCP price (BTC and USD) — globally cached via SWR key */
-export function useXcpPrice() {
-  const { data } = useSWR<CoinGeckoXcp>(
-    `${COINGECKO_BASE}/simple/price?ids=counterparty&vs_currencies=btc,usd`,
-    jsonFetcher,
-    { refreshInterval: 120_000, dedupingInterval: 60_000 }
+async function xcpPriceFetcher(): Promise<{ btc: number; usd: number }> {
+  try {
+    const res = await fetch(`${XCPIO_BASE}/asset/XCP`)
+    if (res.ok) {
+      const data: XcpIoAsset = await res.json()
+      if (data.last_trade_price_btc && data.last_trade_price_usd) {
+        return { btc: data.last_trade_price_btc, usd: data.last_trade_price_usd }
+      }
+    }
+  } catch {}
+  // Fallback to CoinGecko
+  const res = await fetch(
+    `${COINGECKO_BASE}/simple/price?ids=counterparty&vs_currencies=btc,usd`
   )
+  if (!res.ok) throw new Error(`Fetch error: ${res.status}`)
+  const data: CoinGeckoXcp = await res.json()
+  return { btc: data.counterparty.btc, usd: data.counterparty.usd }
+}
+
+/** XCP price (BTC and USD) — xcp.io primary, CoinGecko fallback */
+export function useXcpPrice() {
+  const { data } = useSWR('xcp-price', xcpPriceFetcher, {
+    refreshInterval: 120_000,
+    dedupingInterval: 60_000,
+  })
   return {
-    xcpBtc: data?.counterparty?.btc ?? null,
-    xcpUsd: data?.counterparty?.usd ?? null,
+    xcpBtc: data?.btc ?? null,
+    xcpUsd: data?.usd ?? null,
   }
 }
 
