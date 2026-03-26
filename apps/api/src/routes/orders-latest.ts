@@ -28,7 +28,8 @@ export async function handleOrdersLatest(
   const columns = `o.tx_hash, o.pair, o.base_asset, o.quote_asset, o.source, o.side, o.price, o.amount,
                     o.give_quantity, o.get_quantity, o.give_remaining, o.get_remaining, o.remaining,
                     o.expire_index, o.block_index, o.block_time, o.status,
-                    ps.base_asset_longname, ps.quote_asset_longname`;
+                    ps.base_asset_longname, ps.quote_asset_longname,
+                    base_tag.slug AS collection_slug, base_tag.name AS collection_name`;
 
   const conditions: string[] = [];
   const binds: (string | number)[] = [];
@@ -133,7 +134,8 @@ export async function handleOrdersLatest(
           ? ` ORDER BY o.price DESC`
           : ` ORDER BY o.block_index DESC`;
 
-  const dataQuery = `SELECT ${columns} FROM orders o LEFT JOIN pair_stats ps ON o.pair = ps.pair${whereClause}${orderBy} LIMIT ? OFFSET ?`;
+  const tagJoin = ` LEFT JOIN tag_assets base_ta ON o.base_asset = base_ta.asset LEFT JOIN tags base_tag ON base_ta.tag_id = base_tag.id AND base_tag.tag_type = 'collection'`;
+  const dataQuery = `SELECT ${columns} FROM orders o LEFT JOIN pair_stats ps ON o.pair = ps.pair${tagJoin}${whereClause}${orderBy} LIMIT ? OFFSET ?`;
   const countQuery = `SELECT COUNT(*) as total FROM orders o LEFT JOIN pair_stats ps ON o.pair = ps.pair${whereClause}`;
 
   const dataStmt = db.prepare(dataQuery).bind(...binds, limit, offset);

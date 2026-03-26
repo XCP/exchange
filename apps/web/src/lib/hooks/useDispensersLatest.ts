@@ -15,6 +15,8 @@ export interface LatestDispenser {
   status: number
   block_index: number
   block_time: number
+  collection_slug: string | null
+  collection_name: string | null
 }
 
 export interface LatestDispense {
@@ -30,6 +32,8 @@ export interface LatestDispense {
   price: number
   block_index: number
   block_time: number
+  collection_slug: string | null
+  collection_name: string | null
 }
 
 export interface DispenserFilters {

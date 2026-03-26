@@ -21,6 +21,8 @@ export interface LatestOrder {
   status: string
   base_asset_longname: string | null
   quote_asset_longname: string | null
+  collection_slug: string | null
+  collection_name: string | null
 }
 
 interface LatestOrdersResponse {
