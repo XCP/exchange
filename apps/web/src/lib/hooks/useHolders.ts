@@ -3,7 +3,7 @@ import { fetcher } from '@/lib/api/client'
 import { holdersUrl } from '@/lib/api/counterparty'
 import { formatAddress } from '@/utils/format-address'
 import { formatCommas } from '@/utils/format-commas'
-import { BURN_ADDRESSES } from '@/utils/constants'
+import { BURN_ADDRESSES, EXCHANGE_ADDRESSES } from '@/utils/constants'
 import type { CounterpartyResponse } from '@/types/api'
 
 interface RawBalance {
@@ -24,6 +24,7 @@ export interface ProcessedHolder {
 function processHolders(balances: RawBalance[], totalSupply: number): ProcessedHolder[] {
   return balances.map(b => {
     const isBurn = BURN_ADDRESSES.includes(b.address)
+    const exchangeName = EXCHANGE_ADDRESSES[b.address]
     const pct = totalSupply > 0 ? (b.quantity / totalSupply) * 100 : 0
     return {
       address: b.address,
@@ -31,7 +32,7 @@ function processHolders(balances: RawBalance[], totalSupply: number): ProcessedH
       balance: formatCommas(b.quantity_normalized),
       balanceRaw: b.quantity,
       percentage: pct,
-      tag: isBurn ? 'Burn' : '',
+      tag: isBurn ? 'Burn' : exchangeName ?? '',
     }
   })
 }

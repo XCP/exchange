@@ -122,7 +122,7 @@ function OrderRow({ order: o, satsMode, last }: { order: LatestOrder; satsMode: 
             {isBid ? 'Buy' : 'Sell'}
           </span>
         </div>
-        <span className="text-[11px] text-zinc-300 font-mono truncate">
+        <span className="text-[11px] text-zinc-300 font-mono tabular-nums truncate">
           {displayAmount > 0 ? formatPrice(displayAmount) : '—'}
           {isFinite(o.price) && o.price > 0 ? ` @ ${formatPrice(o.price, o.quote_asset === 'BTC' && satsMode)} ${quote}` : ''}
         </span>
@@ -131,11 +131,11 @@ function OrderRow({ order: o, satsMode, last }: { order: LatestOrder; satsMode: 
         )}
       </div>
       <div className="flex flex-col items-end shrink-0 gap-0.5">
-        <span className="text-[10px] text-zinc-500 font-mono">
+        <span className="text-[10px] text-zinc-500 font-mono tabular-nums">
           {o.block_time ? compactTime(o.block_time) : ''}
         </span>
         {isFinite(o.price) && o.price > 0 && displayAmount > 0 && (
-          <span className="text-[11px] text-zinc-400 font-mono">
+          <span className="text-[11px] text-zinc-400 font-mono tabular-nums">
             {formatPrice(o.price * displayAmount, o.quote_asset === 'BTC' && satsMode)} {quote}
           </span>
         )}
@@ -209,7 +209,7 @@ function DispenserRow({ d, satsMode, last }: { d: LatestDispenser; satsMode: boo
       </div>
       <div className="flex flex-col justify-center min-w-0 flex-1 gap-0.5">
         <span className="text-xs text-zinc-100 font-medium truncate">{displayName}</span>
-        <span className="text-[11px] text-zinc-300 font-mono">
+        <span className="text-[11px] text-zinc-300 font-mono tabular-nums">
           {formatPrice(d.price, satsMode)} {unit} · {formatPrice(d.give_quantity)} per dispense
         </span>
         {d.collection_slug && d.collection_name && (
@@ -217,7 +217,7 @@ function DispenserRow({ d, satsMode, last }: { d: LatestDispenser; satsMode: boo
         )}
       </div>
       <div className="flex flex-col items-end shrink-0 gap-0.5">
-        <span className="text-[10px] text-zinc-500 font-mono">
+        <span className="text-[10px] text-zinc-500 font-mono tabular-nums">
           {d.block_time ? compactTime(d.block_time) : ''}
         </span>
         <span className="text-[11px] text-zinc-400 font-mono">
@@ -250,7 +250,7 @@ function DispenseRow({ d, satsMode, last }: { d: LatestDispense; satsMode: boole
       </div>
       <div className="flex flex-col justify-center min-w-0 flex-1 gap-0.5">
         <span className="text-xs text-zinc-100 font-medium truncate">{displayName}</span>
-        <span className="text-[11px] text-zinc-300 font-mono">
+        <span className="text-[11px] text-zinc-300 font-mono tabular-nums">
           {price > 0 ? `${formatPrice(price, satsMode)} ${unit}` : '—'}
           {' · '}{formatPrice(d.dispense_quantity)} dispensed
         </span>
@@ -259,11 +259,11 @@ function DispenseRow({ d, satsMode, last }: { d: LatestDispense; satsMode: boole
         )}
       </div>
       <div className="flex flex-col items-end shrink-0 gap-0.5">
-        <span className="text-[10px] text-zinc-500 font-mono">
+        <span className="text-[10px] text-zinc-500 font-mono tabular-nums">
           {d.block_time ? compactTime(d.block_time) : ''}
         </span>
         {d.btc_amount > 0 && (
-          <span className="text-[11px] text-zinc-400 font-mono">
+          <span className="text-[11px] text-zinc-400 font-mono tabular-nums">
             {formatPrice(satsMode ? d.btc_amount * 1e8 : d.btc_amount, false)} {unit}
           </span>
         )}

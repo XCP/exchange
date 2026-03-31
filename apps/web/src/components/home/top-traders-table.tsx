@@ -67,8 +67,8 @@ export function TopTradersTable({
                   <span className="hidden md:inline">{t.address}</span>
                   <span className="md:hidden">{t.address.slice(0, 6)}...{t.address.slice(-4)}</span>
                 </td>
-                <td className="text-right text-zinc-400 font-mono px-3 py-1.5">{formatBig(t.volume)}</td>
-                <td className="text-right text-zinc-400 font-mono px-3 py-1.5">{t.trades.toLocaleString()}</td>
+                <td className="text-right text-zinc-400 font-mono tabular-nums px-3 py-1.5">{formatBig(t.volume)}</td>
+                <td className="text-right text-zinc-400 font-mono tabular-nums px-3 py-1.5">{t.trades.toLocaleString()}</td>
               </tr>
             ))}
             {list.length === 0 && (

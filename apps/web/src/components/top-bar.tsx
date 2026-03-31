@@ -47,10 +47,10 @@ export function TopBar() {
       <div className="flex items-center gap-3 sm:gap-5">
         {/* Mobile search icon */}
         <button
-          className="sm:hidden flex items-center justify-center h-7 w-7 rounded-sm border border-zinc-800 bg-zinc-900 text-zinc-500 hover:text-zinc-300 hover:border-zinc-700 transition-colors"
+          className="sm:hidden flex items-center justify-center size-7 rounded-sm border border-zinc-800 bg-zinc-900 text-zinc-500 hover:text-zinc-300 hover:border-zinc-700 transition-colors"
           onClick={() => setMobileSearchOpen(true)}
         >
-          <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+          <svg className="size-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
           </svg>
         </button>

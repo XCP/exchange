@@ -45,7 +45,7 @@ export function HoldersTable({ asset, totalSupply }: HoldersTableProps) {
             <td className="text-zinc-400 font-mono px-2 py-1">
               {holder.address}
               {holder.tag && (
-                <span className="ml-1.5 text-yellow-500/80">({holder.tag})</span>
+                <span className={`ml-1.5 ${holder.tag === 'Burn' ? 'text-yellow-500/80' : 'text-blue-400/80'}`}>({holder.tag})</span>
               )}
             </td>
             <td className="text-right text-zinc-400 font-mono px-2 py-1">{holder.balance}</td>

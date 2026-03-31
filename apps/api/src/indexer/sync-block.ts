@@ -39,6 +39,7 @@ interface SyncResult {
   dispensers_upserted: number;
   dispensers_updated: number;
   dispenses_inserted: number;
+  sends_inserted: number;
 }
 
 async function fetchCurrentBlock(
@@ -396,6 +397,7 @@ export async function syncBlocks(
     dispensers_upserted: 0,
     dispensers_updated: 0,
     dispenses_inserted: 0,
+    sends_inserted: 0,
   };
 
   // Only run when in FOLLOWING mode
@@ -497,6 +499,7 @@ export async function syncBlocks(
       db.prepare(`DELETE FROM dispenses WHERE block_index > ?`).bind(rollbackTo),
       db.prepare(`DELETE FROM orders WHERE block_index > ?`).bind(rollbackTo),
       db.prepare(`DELETE FROM dispensers WHERE block_index > ?`).bind(rollbackTo),
+      db.prepare(`DELETE FROM sends WHERE block_index > ?`).bind(rollbackTo),
       // Re-open orders/dispensers that pre-date the rollback but were closed recently
       // (i.e., closed by events in the now-invalidated blocks).
       // The next sync cycle re-processes replacement blocks and re-closes as needed.
@@ -544,6 +547,7 @@ export async function syncBlocks(
     dispensers_upserted: 0,
     dispensers_updated: 0,
     dispenses_inserted: 0,
+    sends_inserted: 0,
   };
 
   // Track affected pairs/assets for post-processing
@@ -711,6 +715,28 @@ export async function syncBlocks(
               affectedDispenseAssets.set(dispense.asset, longname ?? affectedDispenseAssets.get(dispense.asset) ?? null);
             }
             result.dispenses_inserted++;
+            break;
+          }
+
+          case "SEND":
+          case "ENHANCED_SEND":
+          case "MPMA_SEND": {
+            if (!eventBlockTime) break;
+            const sendStatus = params.status as string;
+            if (sendStatus !== "valid") break;
+            const sendAsset = params.asset as string;
+            const sendSource = params.source as string;
+            const sendDest = params.destination as string;
+            const sendQty = params.quantity as number;
+            const sendTxHash = params.tx_hash as string;
+            if (sendAsset && sendSource && sendDest && sendTxHash) {
+              stmts.push((db: D1Database) =>
+                db.prepare(
+                  `INSERT OR IGNORE INTO sends (tx_hash, asset, source, destination, quantity, block_index, block_time) VALUES (?, ?, ?, ?, ?, ?, ?)`
+                ).bind(sendTxHash, sendAsset, sendSource, sendDest, sendQty ?? 0, blockIndex, eventBlockTime)
+              );
+              result.sends_inserted++;
+            }
             break;
           }
         }

@@ -1,4 +1,5 @@
-export function formatAddress(address: string): string {
+export function formatAddress(address: string | null | undefined): string {
+  if (!address) return '—'
   if (address.length <= 10) {
     return address
   }

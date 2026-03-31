@@ -104,7 +104,7 @@ export function LeaderboardTable({
                   </Link>
                 </td>
                 {row.cells.map((cell, j) => (
-                  <td key={j} className={`text-right font-mono px-3 py-1.5 ${cell.className ?? 'text-zinc-400'}`}>
+                  <td key={j} className={`text-right font-mono tabular-nums px-3 py-1.5 ${cell.className ?? 'text-zinc-400'}`}>
                     {cell.value}
                   </td>
                 ))}

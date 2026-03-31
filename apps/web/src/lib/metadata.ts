@@ -14,17 +14,19 @@ function formatPrice(price: number | null | undefined): string {
   return price.toPrecision(4).replace(/\.?0+$/, '')
 }
 
-function ogFields(title: string, description: string, path?: string): Pick<Metadata, 'openGraph' | 'twitter'> {
+function ogFields(title: string, description: string, path?: string, image?: string): Pick<Metadata, 'openGraph' | 'twitter'> {
   return {
     openGraph: {
       title,
       description,
       ...(path ? { url: path } : {}),
+      ...(image ? { images: [{ url: image }] } : {}),
     },
     twitter: {
-      card: 'summary',
+      card: image ? 'summary_large_image' : 'summary',
       title,
       description,
+      ...(image ? { images: [image] } : {}),
     },
   }
 }
@@ -97,7 +99,7 @@ export function buildAssetMetadata(
   return {
     title,
     description: desc,
-    ...ogFields(title, desc, `/${asset}`),
+    ...ogFields(title, desc, `/${asset}`, `https://app.xcp.io/img/full/${asset}`),
   }
 }
 

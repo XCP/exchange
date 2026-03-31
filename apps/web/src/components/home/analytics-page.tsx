@@ -142,7 +142,7 @@ export default function AnalyticsPage() {
               type="checkbox"
               checked={hideLowQuality}
               onChange={(e) => setHideLowQuality(e.target.checked)}
-              className="accent-zinc-500 w-3 h-3"
+              className="accent-zinc-500 size-3"
             />
             <span className="text-xs text-zinc-500">Hide low quality</span>
           </label>

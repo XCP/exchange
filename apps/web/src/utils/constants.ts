@@ -21,6 +21,14 @@ export const BURN_ADDRESSES: string[] = [
   '1BitcoinEaterAddressDontSendf59kuE',
 ]
 
+export const EXCHANGE_ADDRESSES: Record<string, string> = {
+  '1XCPdWb6kk7PGfvbdRbRuNh51aPc4vqC7': 'Poloniex',
+  '1AeqgtHedfA2yVXH6GiKLS2JGkfWfgyTC6': 'Bittrex',
+  '19fNvdGbD3dP5zqAsQhDqGyENnR5bHvZB1': 'Dex-Trade',
+  '1F2zjMv6dTwTW4r9fJ7zTonXp7Tfk23su3': 'Zaif',
+  '1ML2b9tY5V8S9qQw6jNUs5uxkm6nKayk6x': 'Zaif',
+}
+
 export const DEFAULT_MARKET = 'XCP'
 
 export const COMPOSE_STATUS_LABELS: Record<string, string> = {

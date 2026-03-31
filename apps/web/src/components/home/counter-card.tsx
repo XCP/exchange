@@ -23,8 +23,8 @@ export function CounterCard({
         </>
       ) : (
         <>
-          <div className="text-lg font-mono font-semibold text-zinc-100">{value}</div>
-          {sub ? <div className="text-xs text-zinc-500 font-mono mt-0.5">{sub}</div> : <div className="h-3 mt-0.5" />}
+          <div className="text-lg font-mono tabular-nums font-semibold text-zinc-100">{value}</div>
+          {sub ? <div className="text-xs text-zinc-500 font-mono tabular-nums mt-0.5">{sub}</div> : <div className="h-3 mt-0.5" />}
         </>
       )}
     </div>
