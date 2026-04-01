@@ -23,6 +23,8 @@ export async function syncOrders(
 
     for (const order of orders) {
       try {
+        const rawGive = parseFloat(order.give_quantity_normalized ?? order.give_remaining_normalized ?? "0");
+        if (rawGive <= 0) continue;
         allOrders.push(normalizeOrder(order));
       } catch (e) {
         console.error(`Failed to normalize order ${order.tx_hash}:`, e);
@@ -316,6 +318,10 @@ export async function reindexOrders(
   const stmts: D1PreparedStatement[] = [];
   for (const order of orders) {
     try {
+      // Skip invalid orders with zero quantities (CP API sometimes returns these as "open")
+      const rawGive = parseFloat(order.give_quantity_normalized ?? order.give_remaining_normalized ?? "0");
+      if (rawGive <= 0 && order.status === "open") continue;
+
       const o = normalizeOrder(order);
       const cpStatus = order.status === "open" ? "open"
         : order.status === "expired" ? "expired"
