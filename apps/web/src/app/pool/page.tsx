@@ -1,20 +1,31 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
 import { Pagination } from '@/components/Pagination'
 import { CounterCard } from '@/components/home/counter-card'
-import { usePools, type PoolSummary } from '@/lib/hooks/usePools'
+import { usePools, type PoolSortKey, type PoolSummary } from '@/lib/hooks/usePools'
 import { formatAmount } from '@/utils/format-amount'
 import { formatTimeAgo } from '@/utils/format-time-ago'
 import { XCP_IMG_BASE } from '@/utils/constants'
 
 const LIMIT = 50
+const SORT_OPTIONS: { value: PoolSortKey; label: string }[] = [
+  { value: 'match_count', label: 'Matches' },
+  { value: 'fees_30d', label: '30D Fees' },
+  { value: 'implied_fee_apr_30d', label: '30D APR' },
+  { value: 'last_block_time', label: 'Recently Updated' },
+  { value: 'deposit_count', label: 'Deposits' },
+  { value: 'withdrawal_count', label: 'Withdrawals' },
+  { value: 'opened_block_time', label: 'Opened' },
+]
 
 export default function PoolPage() {
   const [offset, setOffset] = useState(0)
-  const { pools, total, isLoading } = usePools(offset, LIMIT)
+  const [sort, setSort] = useState<PoolSortKey>('match_count')
+  const [order, setOrder] = useState<'asc' | 'desc'>('desc')
+  const { pools, total, isLoading } = usePools(offset, LIMIT, sort, order)
   const totals = pools.reduce(
     (acc, pool) => {
       acc.matches += pool.match_count
@@ -25,6 +36,10 @@ export default function PoolPage() {
     { matches: 0, deposits: 0, withdrawals: 0 }
   )
 
+  useEffect(() => {
+    setOffset(0)
+  }, [sort, order])
+
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
       <div className="px-4 py-8">
@@ -32,6 +47,25 @@ export default function PoolPage() {
           <div>
             <h1 className="text-lg font-semibold text-zinc-100 mb-1">Pools</h1>
             <p className="text-xs text-zinc-500">AMM liquidity pools indexed from Counterparty events</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <select
+              value={sort}
+              onChange={(e) => setSort(e.target.value as PoolSortKey)}
+              className="px-2 py-1 text-xs font-mono bg-zinc-900 border border-zinc-800 rounded-sm text-zinc-300 outline-none"
+            >
+              {SORT_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>Sort: {option.label}</option>
+              ))}
+            </select>
+            <select
+              value={order}
+              onChange={(e) => setOrder(e.target.value as 'asc' | 'desc')}
+              className="px-2 py-1 text-xs font-mono bg-zinc-900 border border-zinc-800 rounded-sm text-zinc-300 outline-none"
+            >
+              <option value="desc">Desc</option>
+              <option value="asc">Asc</option>
+            </select>
           </div>
         </div>
 

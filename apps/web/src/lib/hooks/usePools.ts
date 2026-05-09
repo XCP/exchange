@@ -45,6 +45,7 @@ export interface PoolSummary {
   display_implied_fees_7d_quote?: number
   display_implied_fees_30d_base?: number
   display_implied_fees_30d_quote?: number
+  fees_30d_total_quote?: number
   updated_at: number
 }
 
@@ -182,10 +183,26 @@ interface PoolResponse {
   matches: PoolMatch[]
 }
 
-export function usePools(offset = 0, limit = 50) {
+export type PoolSortKey =
+  | 'match_count'
+  | 'deposit_count'
+  | 'withdrawal_count'
+  | 'last_block_time'
+  | 'opened_block_time'
+  | 'fees_30d'
+  | 'implied_fee_apr_30d'
+
+export function usePools(
+  offset = 0,
+  limit = 50,
+  sort: PoolSortKey = 'match_count',
+  order: 'asc' | 'desc' = 'desc'
+) {
   const params = new URLSearchParams({
     limit: String(limit),
     offset: String(offset),
+    sort,
+    order,
   })
 
   const { data, error, isLoading } = useDexSWR<PoolsResponse>(
