@@ -27,6 +27,7 @@ export function TopBar() {
           {[
             { label: 'Trade', href: '/trade' },
             { label: 'Dispense', href: '/dispense' },
+            { label: 'Pools', href: '/pool' },
           ].map((link) => {
             const isActive = link.href !== '#' && pathname.startsWith(link.href)
             return (

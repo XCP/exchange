@@ -16,7 +16,7 @@ export async function handleTrades(
   // id is monotonically increasing with block_time, so ORDER BY id DESC
   // is equivalent to chronological DESC and enables efficient cursor scan.
   let query = `SELECT id, block_time, price, amount, volume, side, maker, taker,
-                      tx0_hash, tx1_hash
+                      tx0_hash, tx1_hash, source_type, lp_asset, order_tx_hash
                FROM trades WHERE pair = ?`;
   const binds: (string | number)[] = [pair];
 
@@ -46,6 +46,9 @@ export async function handleTrades(
       taker: string;
       tx0_hash: string;
       tx1_hash: string;
+      source_type: string;
+      lp_asset: string | null;
+      order_tx_hash: string | null;
     }>();
 
   const trades = result.results.map((t) => ({
@@ -59,6 +62,9 @@ export async function handleTrades(
     taker: t.taker,
     tx0: t.tx0_hash,
     tx1: t.tx1_hash,
+    source_type: t.source_type,
+    lp_asset: t.lp_asset,
+    order_tx_hash: t.order_tx_hash,
   }));
 
   const nextCursor =

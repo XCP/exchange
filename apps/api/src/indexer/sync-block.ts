@@ -1,12 +1,33 @@
 import { OrderMatch, Order, CounterpartyDispenser, fetchOrderByHash } from "../lib/counterparty";
 import { API_TIMEOUT_MS, LOCK_TIMEOUT_SECONDS } from "../lib/constants";
 import { batchExec } from "../lib/batch";
-import { normalizeOrderMatch, normalizeOrder, normalizeDispenser, normalizeDispensePrice, buildOrderUpsertStmt, buildDispenserUpsertStmt } from "./normalize";
+import { normalizeOrderMatch, normalizeOrder, normalizeDispenser, normalizeDispensePrice, normalizePoolMatch, buildOrderUpsertStmt, buildDispenserUpsertStmt } from "./normalize";
 import { aggregateCandlesForPair, bucketTimestamp } from "./aggregate";
 import { updatePairStats, updateOrderBookStats } from "./stats";
 import { updateDispenserStats } from "./dispenser-stats";
 import { scoreNewOrders, scoreNewDispensers, pruneClosedDeals } from "./deal-scores";
 import { getMode } from "./state";
+import { makePoolPair } from "../lib/pools";
+import { eventQuantity, normalizeRawQuantity, parseQuantity } from "../lib/quantity";
+import {
+  findPoolPairByLpAsset,
+  findPoolLpAsset,
+  processOpenPool,
+  processPoolDeposit,
+  processPoolMatch,
+  processPoolUpdate,
+  processPoolWithdrawal,
+  rebuildPoolFromHistory,
+} from "./pools";
+import {
+  addBalanceSnapshots,
+  addCreditDebitLpDelta,
+  allocatePoolFees,
+  prunePoolBalanceSnapshots,
+  rebuildPoolAccountingFromHistory,
+  refreshPoolFeeTotals,
+  type PendingPoolBalances,
+} from "./pool-accounting";
 
 // Event types we care about for DEX indexing
 const DEX_EVENTS = [
@@ -18,6 +39,17 @@ const DEX_EVENTS = [
   "OPEN_DISPENSER",
   "DISPENSER_UPDATE",
   "DISPENSE",
+  "OPEN_POOL",
+  "POOL_UPDATE",
+  "NEW_POOL_DEPOSIT",
+  "NEW_POOL_WITHDRAWAL",
+  "POOL_MATCH",
+  "ASSET_ISSUANCE",
+  "CREDIT",
+  "DEBIT",
+  "SEND",
+  "ENHANCED_SEND",
+  "MPMA_SEND",
 ].join(",");
 
 interface BlockEvent {
@@ -40,6 +72,11 @@ interface SyncResult {
   dispensers_updated: number;
   dispenses_inserted: number;
   sends_inserted: number;
+  pools_updated: number;
+  pool_deposits_inserted: number;
+  pool_withdrawals_inserted: number;
+  pool_matches_inserted: number;
+  pool_fee_accruals_inserted: number;
 }
 
 async function fetchCurrentBlock(
@@ -60,6 +97,16 @@ async function fetchBlockHash(
   if (!res.ok) throw new Error(`Failed to fetch block ${blockIndex}: ${res.status}`);
   const data: { result: { block_hash: string } } = await res.json();
   return data.result.block_hash;
+}
+
+async function fetchBlockInfo(
+  apiBase: string,
+  blockIndex: number
+): Promise<{ block_hash: string; block_time: number }> {
+  const res = await fetch(`${apiBase}/blocks/${blockIndex}`, { signal: AbortSignal.timeout(API_TIMEOUT_MS) });
+  if (!res.ok) throw new Error(`Failed to fetch block ${blockIndex}: ${res.status}`);
+  const data: { result: { block_hash: string; block_time: number } } = await res.json();
+  return data.result;
 }
 
 async function fetchBlockEvents(
@@ -165,6 +212,75 @@ function processOrderMatch(
   };
 }
 
+function processPoolTrade(
+  params: Record<string, unknown>,
+  lpAsset: string,
+  eventIndex: number,
+  blockIndex: number,
+  blockTime: number
+): {
+  stmt: (db: D1Database) => D1PreparedStatement;
+  pair: string;
+  base: string;
+  quote: string;
+  baseLongname: string | null;
+  quoteLongname: string | null;
+  earliestTime: number;
+} | null {
+  const txHash = params.tx_hash as string | undefined;
+  const source = params.source as string | undefined;
+  const forwardAsset = params.forward_asset as string | undefined;
+  const backwardAsset = params.backward_asset as string | undefined;
+  if (!txHash || !source || !forwardAsset || !backwardAsset) return null;
+
+  const forwardQuantity = eventQuantity(params, "forward_quantity_normalized", "forward_quantity", "forward_asset_info");
+  const backwardQuantity = eventQuantity(params, "backward_quantity_normalized", "backward_quantity", "backward_asset_info");
+  if (forwardQuantity <= 0 || backwardQuantity <= 0) return null;
+
+  const t = normalizePoolMatch({
+    event_index: eventIndex,
+    tx_hash: txHash,
+    order_tx_hash: (params.order_tx_hash as string | undefined) ?? null,
+    source,
+    lp_asset: lpAsset,
+    forward_asset: forwardAsset,
+    backward_asset: backwardAsset,
+    forward_quantity_normalized: String(forwardQuantity),
+    backward_quantity_normalized: String(backwardQuantity),
+    block_index: blockIndex,
+    block_time: blockTime,
+  });
+
+  const fwdLongname = extractAssetLongname(params.forward_asset_info);
+  const bwdLongname = extractAssetLongname(params.backward_asset_info);
+  const baseLongname = t.base_asset === forwardAsset ? fwdLongname : bwdLongname;
+  const quoteLongname = t.quote_asset === forwardAsset ? fwdLongname : bwdLongname;
+
+  return {
+    pair: t.pair,
+    base: t.base_asset,
+    quote: t.quote_asset,
+    baseLongname,
+    quoteLongname,
+    earliestTime: blockTime,
+    stmt: (db) =>
+      db
+        .prepare(
+          `INSERT OR IGNORE INTO trades
+           (match_id, pair, base_asset, quote_asset, block_index, block_time,
+            price, amount, volume, side, maker, taker, tx0_hash, tx1_hash,
+            source_type, lp_asset, order_tx_hash)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        )
+        .bind(
+          t.match_id, t.pair, t.base_asset, t.quote_asset,
+          t.block_index, t.block_time, t.price, t.amount, t.volume,
+          t.side, t.maker, t.taker, t.tx0_hash, t.tx1_hash,
+          t.source_type, t.lp_asset, t.order_tx_hash
+        ),
+  };
+}
+
 function processOpenOrder(
   params: Record<string, unknown>,
   blockIndex: number,
@@ -220,7 +336,7 @@ function processOrderClose(
   // ORDER_UPDATE uses tx_hash, CANCEL_ORDER uses offer_hash, ORDER_EXPIRATION uses order_hash
   const txHash = (params.tx_hash ?? params.offer_hash ?? params.order_hash) as string;
 
-  // When filled, zero out remaining — the order is fully consumed
+  // When filled, zero out remaining - the order is fully consumed
   if (closedStatus === "filled") {
     return (db) =>
       db
@@ -276,14 +392,6 @@ function processOpenDispenser(
   return (db) => buildDispenserUpsertStmt(db, d, now);
 }
 
-function normalizeRawQuantity(
-  raw: number,
-  assetInfo: Record<string, unknown> | undefined
-): number {
-  const divisible = assetInfo?.divisible === true;
-  return divisible ? raw / 1e8 : raw;
-}
-
 function processDispenserUpdate(
   params: Record<string, unknown>,
   now: number
@@ -316,14 +424,14 @@ function processDispenserUpdate(
           )
           .bind(status, giveRemaining, dispenseCount, now, txHash);
     }
-    // Some close events (status=11) omit remaining/count — just update status
+    // Some close events (status=11) omit remaining/count - just update status
     return (db) =>
       db
         .prepare(`UPDATE dispensers SET status = ?, closed_at = ? WHERE tx_hash = ?`)
         .bind(status, now, txHash);
   }
 
-  // status 0 (STATUS_OPEN) or 1 (STATUS_OPEN_EMPTY_ADDRESS) — still open
+  // status 0 (STATUS_OPEN) or 1 (STATUS_OPEN_EMPTY_ADDRESS) - still open
   if (giveRemaining != null && dispenseCount != null) {
     return (db) =>
       db
@@ -398,6 +506,11 @@ export async function syncBlocks(
     dispensers_updated: 0,
     dispenses_inserted: 0,
     sends_inserted: 0,
+    pools_updated: 0,
+    pool_deposits_inserted: 0,
+    pool_withdrawals_inserted: 0,
+    pool_matches_inserted: 0,
+    pool_fee_accruals_inserted: 0,
   };
 
   // Only run when in FOLLOWING mode
@@ -432,7 +545,7 @@ export async function syncBlocks(
   let rollbackTo: number | null = null;
 
   if (currentBlock.block_index < lastBlock) {
-    // Chain tip went backwards — obvious reorg
+    // Chain tip went backwards - obvious reorg
     console.log(`Reorg detected: chain tip ${currentBlock.block_index} < checkpoint ${lastBlock}`);
     rollbackTo = currentBlock.block_index;
   } else if (lastHashRow) {
@@ -454,7 +567,7 @@ export async function syncBlocks(
     // Gather context BEFORE deleting any rows
 
     // Affected pairs/assets for stats recalculation
-    const [affectedReorgPairs, affectedReorgAssets] = await Promise.all([
+    const [affectedReorgPairs, affectedReorgAssets, affectedReorgPools] = await Promise.all([
       db
         .prepare(
           `SELECT DISTINCT pair, base_asset, quote_asset FROM trades WHERE block_index > ?`
@@ -465,9 +578,25 @@ export async function syncBlocks(
         .prepare(`SELECT DISTINCT asset FROM dispenses WHERE block_index > ?`)
         .bind(rollbackTo)
         .all<{ asset: string }>(),
+      db
+        .prepare(
+          `SELECT DISTINCT lp_asset FROM pool_updates WHERE block_index > ?
+           UNION
+           SELECT DISTINCT lp_asset FROM pool_deposits WHERE block_index > ?
+           UNION
+           SELECT DISTINCT lp_asset FROM pool_withdrawals WHERE block_index > ?
+           UNION
+           SELECT DISTINCT lp_asset FROM pool_matches WHERE block_index > ?
+           UNION
+           SELECT DISTINCT lp_asset FROM pool_lp_balance_events WHERE block_index > ?
+           UNION
+           SELECT DISTINCT lp_asset FROM pool_fee_accruals WHERE block_index > ?`
+        )
+        .bind(rollbackTo, rollbackTo, rollbackTo, rollbackTo, rollbackTo, rollbackTo)
+        .all<{ lp_asset: string }>(),
     ]);
 
-    // Earliest block_time in invalidated blocks — used for candle cleanup
+    // Earliest block_time in invalidated blocks - used for candle cleanup
     const rollbackBlock = await db
       .prepare(`SELECT MIN(block_time) as t FROM trades WHERE block_index > ?`)
       .bind(rollbackTo)
@@ -500,6 +629,13 @@ export async function syncBlocks(
       db.prepare(`DELETE FROM orders WHERE block_index > ?`).bind(rollbackTo),
       db.prepare(`DELETE FROM dispensers WHERE block_index > ?`).bind(rollbackTo),
       db.prepare(`DELETE FROM sends WHERE block_index > ?`).bind(rollbackTo),
+      db.prepare(`DELETE FROM pool_updates WHERE block_index > ?`).bind(rollbackTo),
+      db.prepare(`DELETE FROM pool_deposits WHERE block_index > ?`).bind(rollbackTo),
+      db.prepare(`DELETE FROM pool_withdrawals WHERE block_index > ?`).bind(rollbackTo),
+      db.prepare(`DELETE FROM pool_matches WHERE block_index > ?`).bind(rollbackTo),
+      db.prepare(`DELETE FROM pool_lp_balance_events WHERE block_index > ?`).bind(rollbackTo),
+      db.prepare(`DELETE FROM pool_lp_balance_snapshots WHERE block_index > ?`).bind(rollbackTo),
+      db.prepare(`DELETE FROM pool_fee_accruals WHERE block_index > ?`).bind(rollbackTo),
       // Re-open orders/dispensers that pre-date the rollback but were closed recently
       // (i.e., closed by events in the now-invalidated blocks).
       // The next sync cycle re-processes replacement blocks and re-closes as needed.
@@ -528,6 +664,10 @@ export async function syncBlocks(
     for (const a of affectedReorgAssets.results) {
       await updateDispenserStats(db, a.asset);
     }
+    for (const p of affectedReorgPools.results) {
+      await rebuildPoolFromHistory(db, p.lp_asset);
+      await rebuildPoolAccountingFromHistory(db, p.lp_asset);
+    }
     // Recalculate order book stats after reorg
     await updateOrderBookStats(db, now);
 
@@ -548,6 +688,11 @@ export async function syncBlocks(
     dispensers_updated: 0,
     dispenses_inserted: 0,
     sends_inserted: 0,
+    pools_updated: 0,
+    pool_deposits_inserted: 0,
+    pool_withdrawals_inserted: 0,
+    pool_matches_inserted: 0,
+    pool_fee_accruals_inserted: 0,
   };
 
   // Track affected pairs/assets for post-processing
@@ -556,14 +701,38 @@ export async function syncBlocks(
     { base: string; quote: string; baseLongname: string | null; quoteLongname: string | null; earliestTime: number }
   >();
   const affectedDispenseAssets = new Map<string, string | null>();
+  const affectedPools = new Set<string>();
+  const knownPoolLpByPair = new Map<string, string>();
+  const knownPoolPairByLp = new Map<string, string>();
 
   for (let blockIdx = lastBlock + 1; blockIdx <= targetBlock; blockIdx++) {
     const events = await fetchBlockEvents(apiBase, blockIdx);
 
-    // Sort by event_index ASC — the Counterparty API returns DESC order,
+    // Sort by event_index ASC - the Counterparty API returns DESC order,
     // but we need ASC so that OPEN_ORDER runs before ORDER_UPDATE (fill)
     // when an order is created and filled in the same block.
     events.sort((a, b) => a.event_index - b.event_index);
+
+    const restartDepositTxHashes = new Set<string>();
+    for (const ev of events) {
+      const params = ev.params;
+      if (ev.event === "OPEN_POOL") {
+        const lpAsset = params.lp_asset as string | undefined;
+        const assetA = params.asset_a as string | undefined;
+        const assetB = params.asset_b as string | undefined;
+        if (lpAsset && assetA && assetB) {
+          const pair = makePoolPair(assetA, assetB);
+          knownPoolLpByPair.set(pair, lpAsset);
+          knownPoolPairByLp.set(lpAsset, pair);
+        }
+      } else if (
+        ev.event === "ASSET_ISSUANCE" &&
+        (params.asset_events as string | undefined) === "pool_restart"
+      ) {
+        const txHash = params.tx_hash as string | undefined;
+        if (txHash) restartDepositTxHashes.add(txHash);
+      }
+    }
 
     // Derive block_time from any event that carries it (ORDER_MATCH, OPEN_ORDER,
     // OPEN_DISPENSER, DISPENSE all include block_time; ORDER_UPDATE and others don't).
@@ -572,8 +741,12 @@ export async function syncBlocks(
       blockTime = ev.block_time ?? (ev.params.block_time as number | undefined);
       if (blockTime) break;
     }
+    if (!blockTime && events.length > 0) {
+      blockTime = (await fetchBlockInfo(apiBase, blockIdx)).block_time;
+    }
 
     const stmts: ((db: D1Database) => D1PreparedStatement)[] = [];
+    const pendingPoolBalances: PendingPoolBalances = new Map();
 
     for (const event of events) {
       try {
@@ -581,16 +754,16 @@ export async function syncBlocks(
         const blockIndex = event.block_index ?? (params.block_index as number | undefined) ?? blockIdx;
         // Per-event block_time if available, otherwise fall back to block-level.
         // Some events (ORDER_UPDATE, CANCEL_ORDER, ORDER_EXPIRATION, DISPENSER_UPDATE)
-        // don't carry block_time — that's fine, they don't need it for their SQL ops.
+        // don't carry block_time - that's fine, they don't need it for their SQL ops.
         const eventBlockTime = event.block_time ?? (params.block_time as number | undefined) ?? blockTime;
 
         switch (event.event) {
           case "ORDER_MATCH": {
             if (!eventBlockTime) {
-              console.error(`Block ${blockIdx}: skipping ORDER_MATCH — no block_time`);
+              console.error(`Block ${blockIdx}: skipping ORDER_MATCH - no block_time`);
               break;
             }
-            // Only insert completed order matches — pending/expired matches
+            // Only insert completed order matches - pending/expired matches
             // produce phantom trades with wrong prices (especially BTC pairs)
             const matchStatus = params.status as string | undefined;
             if (matchStatus && matchStatus !== "completed") {
@@ -622,7 +795,7 @@ export async function syncBlocks(
 
           case "OPEN_ORDER": {
             if (!eventBlockTime) {
-              console.error(`Block ${blockIdx}: skipping OPEN_ORDER — no block_time`);
+              console.error(`Block ${blockIdx}: skipping OPEN_ORDER - no block_time`);
               break;
             }
             stmts.push(processOpenOrder(params, blockIndex, eventBlockTime, now));
@@ -633,7 +806,7 @@ export async function syncBlocks(
           case "ORDER_UPDATE": {
             const orderStatus = params.status as string;
             if (orderStatus === "open") {
-              // Partial fill — ORDER_UPDATE events don't include _normalized remaining
+              // Partial fill - ORDER_UPDATE events don't include _normalized remaining
               // fields, so fetch the full order from the Counterparty API with verbose=true.
               const txHash = params.tx_hash as string;
               const cpOrder = await fetchOrderByHash(apiBase, txHash);
@@ -676,7 +849,7 @@ export async function syncBlocks(
 
           case "OPEN_DISPENSER": {
             if (!eventBlockTime) {
-              console.error(`Block ${blockIdx}: skipping OPEN_DISPENSER — no block_time`);
+              console.error(`Block ${blockIdx}: skipping OPEN_DISPENSER - no block_time`);
               break;
             }
             const dispenserStmt = processOpenDispenser(params, blockIndex, eventBlockTime, now);
@@ -705,7 +878,7 @@ export async function syncBlocks(
 
           case "DISPENSE": {
             if (!eventBlockTime) {
-              console.error(`Block ${blockIdx}: skipping DISPENSE — no block_time`);
+              console.error(`Block ${blockIdx}: skipping DISPENSE - no block_time`);
               break;
             }
             const dispense = processDispense(params, blockIndex, eventBlockTime);
@@ -715,6 +888,180 @@ export async function syncBlocks(
               affectedDispenseAssets.set(dispense.asset, longname ?? affectedDispenseAssets.get(dispense.asset) ?? null);
             }
             result.dispenses_inserted++;
+            break;
+          }
+
+          case "OPEN_POOL": {
+            if (!eventBlockTime) {
+              console.error(`Block ${blockIdx}: skipping OPEN_POOL - no block_time`);
+              break;
+            }
+            const pool = processOpenPool(params, event.event_index, blockIndex, eventBlockTime);
+            if (pool) {
+              stmts.push(pool.stmt);
+              affectedPools.add(pool.lpAsset);
+              knownPoolLpByPair.set(pool.pair, pool.lpAsset);
+              knownPoolPairByLp.set(pool.lpAsset, pool.pair);
+              result.pools_updated++;
+            }
+            break;
+          }
+
+          case "POOL_UPDATE": {
+            if (!eventBlockTime) {
+              console.error(`Block ${blockIdx}: skipping POOL_UPDATE - no block_time`);
+              break;
+            }
+            const assetA = params.asset_a as string | undefined;
+            const assetB = params.asset_b as string | undefined;
+            if (!assetA || !assetB) break;
+            const pair = makePoolPair(assetA, assetB);
+            const lpAsset = knownPoolLpByPair.get(pair) ?? await findPoolLpAsset(db, assetA, assetB);
+            if (!lpAsset) break;
+            const pool = processPoolUpdate(params, lpAsset, event.event_index, blockIndex, eventBlockTime);
+            if (pool) {
+              stmts.push(pool.stmt);
+              affectedPools.add(pool.lpAsset);
+              knownPoolLpByPair.set(pool.pair, pool.lpAsset);
+              knownPoolPairByLp.set(pool.lpAsset, pool.pair);
+              result.pools_updated++;
+            }
+            break;
+          }
+
+          case "NEW_POOL_DEPOSIT": {
+            if (!eventBlockTime) {
+              console.error(`Block ${blockIdx}: skipping NEW_POOL_DEPOSIT - no block_time`);
+              break;
+            }
+            const assetA = params.asset_a as string | undefined;
+            const assetB = params.asset_b as string | undefined;
+            const depositStatus = (params.status as string | undefined) ?? "valid";
+            if (depositStatus !== "valid") break;
+            if (!assetA || !assetB) break;
+            const pair = makePoolPair(assetA, assetB);
+            const lpAsset = knownPoolLpByPair.get(pair) ?? await findPoolLpAsset(db, assetA, assetB);
+            if (!lpAsset) break;
+            const deposit = processPoolDeposit(
+              params,
+              lpAsset,
+              event.event_index,
+              blockIndex,
+              eventBlockTime,
+              restartDepositTxHashes.has(params.tx_hash as string)
+            );
+            if (deposit) {
+              stmts.push(deposit.stmt);
+              affectedPools.add(deposit.lpAsset);
+              result.pool_deposits_inserted++;
+            }
+            break;
+          }
+
+          case "NEW_POOL_WITHDRAWAL": {
+            if (!eventBlockTime) {
+              console.error(`Block ${blockIdx}: skipping NEW_POOL_WITHDRAWAL - no block_time`);
+              break;
+            }
+            const assetA = params.asset_a as string | undefined;
+            const assetB = params.asset_b as string | undefined;
+            const withdrawalStatus = (params.status as string | undefined) ?? "valid";
+            if (withdrawalStatus !== "valid") break;
+            if (!assetA || !assetB) break;
+            const pair = makePoolPair(assetA, assetB);
+            const lpAsset = knownPoolLpByPair.get(pair) ?? await findPoolLpAsset(db, assetA, assetB);
+            if (!lpAsset) break;
+            const withdrawal = processPoolWithdrawal(params, lpAsset, event.event_index, blockIndex, eventBlockTime);
+            if (withdrawal) {
+              stmts.push(withdrawal.stmt);
+              affectedPools.add(withdrawal.lpAsset);
+              result.pool_withdrawals_inserted++;
+            }
+            break;
+          }
+
+          case "POOL_MATCH": {
+            if (!eventBlockTime) {
+              console.error(`Block ${blockIdx}: skipping POOL_MATCH - no block_time`);
+              break;
+            }
+            const assetA = params.asset_a as string | undefined;
+            const assetB = params.asset_b as string | undefined;
+            const poolMatchStatus = (params.status as string | undefined) ?? "valid";
+            if (poolMatchStatus !== "valid" && poolMatchStatus !== "completed") break;
+            if (!assetA || !assetB) break;
+            const pair = makePoolPair(assetA, assetB);
+            const lpAsset = knownPoolLpByPair.get(pair) ?? await findPoolLpAsset(db, assetA, assetB);
+            if (!lpAsset) break;
+            const match = processPoolMatch(params, lpAsset, event.event_index, blockIndex, eventBlockTime);
+            if (match) {
+              stmts.push(match.stmt);
+              affectedPools.add(match.lpAsset);
+              const trade = processPoolTrade(params, match.lpAsset, event.event_index, blockIndex, eventBlockTime);
+              if (trade) {
+                stmts.push(trade.stmt);
+                result.trades_inserted++;
+                const existing = affectedPairs.get(trade.pair);
+                if (!existing || eventBlockTime < existing.earliestTime) {
+                  affectedPairs.set(trade.pair, {
+                    base: trade.base,
+                    quote: trade.quote,
+                    baseLongname: trade.baseLongname ?? existing?.baseLongname ?? null,
+                    quoteLongname: trade.quoteLongname ?? existing?.quoteLongname ?? null,
+                    earliestTime: eventBlockTime,
+                  });
+                } else {
+                  if (trade.baseLongname && !existing.baseLongname) {
+                    existing.baseLongname = trade.baseLongname;
+                  }
+                  if (trade.quoteLongname && !existing.quoteLongname) {
+                    existing.quoteLongname = trade.quoteLongname;
+                  }
+                }
+              }
+              result.pool_fee_accruals_inserted += await allocatePoolFees(
+                db,
+                stmts,
+                pendingPoolBalances,
+                {
+                  txHash: params.tx_hash as string,
+                  orderTxHash: (params.order_tx_hash as string | undefined) ?? null,
+                  eventIndex: event.event_index,
+                  blockIndex,
+                  blockTime: eventBlockTime,
+                  lpAsset: match.lpAsset,
+                  pair: match.pair,
+                  feeAsset: params.backward_asset as string,
+                  feeQuantityRaw: parseQuantity(params.fee_quantity),
+                  feeQuantity: eventQuantity(params, "fee_quantity_normalized", "fee_quantity", "backward_asset_info"),
+                }
+              );
+              result.pool_matches_inserted++;
+            }
+            break;
+          }
+
+          case "CREDIT":
+          case "DEBIT": {
+            if (!eventBlockTime) break;
+            const lpAsset = params.asset as string | undefined;
+            if (!lpAsset) break;
+
+            const pair = knownPoolPairByLp.get(lpAsset) ?? await findPoolPairByLpAsset(db, lpAsset);
+            if (!pair) break;
+
+            knownPoolPairByLp.set(lpAsset, pair);
+            affectedPools.add(lpAsset);
+            addCreditDebitLpDelta(stmts, pendingPoolBalances, {
+              event: event.event,
+              txHash: event.tx_hash,
+              params,
+              eventIndex: event.event_index,
+              blockIndex,
+              blockTime: eventBlockTime,
+              lpAsset,
+              pair,
+            });
             break;
           }
 
@@ -736,6 +1083,7 @@ export async function syncBlocks(
                 ).bind(sendTxHash, sendAsset, sendSource, sendDest, sendQty ?? 0, blockIndex, eventBlockTime)
               );
               result.sends_inserted++;
+
             }
             break;
           }
@@ -746,6 +1094,10 @@ export async function syncBlocks(
         );
         // Skip this event, continue processing the rest of the block
       }
+    }
+
+    if (pendingPoolBalances.size > 0 && blockTime) {
+      await addBalanceSnapshots(db, stmts, pendingPoolBalances, blockIdx, blockTime);
     }
 
     // Execute all statements for this block in batches
@@ -781,6 +1133,11 @@ export async function syncBlocks(
   // Post-processing: update dispenser stats for affected assets
   for (const [asset, longname] of affectedDispenseAssets) {
     await updateDispenserStats(db, asset, longname);
+  }
+
+  for (const lpAsset of affectedPools) {
+    await rebuildPoolFromHistory(db, lpAsset);
+    await refreshPoolFeeTotals(db, lpAsset);
   }
 
   // Update order book stats for pairs with changed orders
@@ -824,6 +1181,7 @@ export async function syncBlocks(
       `INSERT INTO indexer_state (key, value) VALUES ('last_block_hash', ?)
        ON CONFLICT (key) DO UPDATE SET value = excluded.value`
     ).bind(lastProcessedHash).run();
+    await prunePoolBalanceSnapshots(db, lastBlock);
   }
 
   result.last_block = lastBlock;

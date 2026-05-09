@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 
 /**
- * Enforce uppercase slugs for /trade/[pair] and /dispense/[asset].
- * Redirects /trade/xcp_btc → /trade/XCP_BTC (301 permanent).
+ * Enforce uppercase slugs for /trade/[pair], /dispense/[asset], and /pool/[lp_asset].
+ * Redirects /trade/xcp_btc to /trade/XCP_BTC (301 permanent).
  */
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
 
   // Only apply to dynamic route segments
-  const match = pathname.match(/^\/(trade|dispense)\/(.+)$/)
+  const match = pathname.match(/^\/(trade|dispense|pool)\/(.+)$/)
   if (!match) return NextResponse.next()
 
   const [, prefix, slug] = match
@@ -24,5 +24,5 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/trade/:path+', '/dispense/:path+'],
+  matcher: ['/trade/:path+', '/dispense/:path+', '/pool/:path+'],
 }

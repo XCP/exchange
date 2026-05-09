@@ -18,6 +18,9 @@ export interface NormalizedTrade {
   taker: string;
   tx0_hash: string;
   tx1_hash: string;
+  source_type: "order" | "pool";
+  lp_asset: string | null;
+  order_tx_hash: string | null;
 }
 
 export function normalizeOrderMatch(match: OrderMatch): NormalizedTrade {
@@ -64,6 +67,71 @@ export function normalizeOrderMatch(match: OrderMatch): NormalizedTrade {
     taker: match.tx1_address,
     tx0_hash: match.tx0_hash,
     tx1_hash: match.tx1_hash,
+    source_type: "order",
+    lp_asset: null,
+    order_tx_hash: null,
+  };
+}
+
+export interface PoolTradeInput {
+  event_index: number;
+  tx_hash: string;
+  order_tx_hash: string | null;
+  source: string;
+  lp_asset: string;
+  forward_asset: string;
+  backward_asset: string;
+  forward_quantity_normalized: string;
+  backward_quantity_normalized: string;
+  block_index: number;
+  block_time: number;
+}
+
+export function normalizePoolMatch(match: PoolTradeInput): NormalizedTrade {
+  const { base, quote } = determineBaseQuote(
+    match.forward_asset,
+    match.backward_asset
+  );
+  const pair = makePairString(base, quote);
+
+  const forwardQty = parseFloat(match.forward_quantity_normalized);
+  const backwardQty = parseFloat(match.backward_quantity_normalized);
+
+  let price: number;
+  let amount: number;
+  let side: "buy" | "sell";
+
+  if (match.forward_asset === base) {
+    amount = forwardQty;
+    price = forwardQty > 0 ? backwardQty / forwardQty : 0;
+    side = "buy";
+  } else {
+    amount = backwardQty;
+    price = backwardQty > 0 ? forwardQty / backwardQty : 0;
+    side = "sell";
+  }
+
+  price = parseFloat(price.toFixed(8));
+  amount = parseFloat(amount.toFixed(8));
+
+  return {
+    match_id: `pool:${match.event_index}`,
+    pair,
+    base_asset: base,
+    quote_asset: quote,
+    block_index: match.block_index,
+    block_time: match.block_time,
+    price,
+    amount,
+    volume: parseFloat((price * amount).toFixed(8)),
+    side,
+    maker: match.source,
+    taker: match.source,
+    tx0_hash: match.tx_hash,
+    tx1_hash: match.order_tx_hash ?? match.tx_hash,
+    source_type: "pool",
+    lp_asset: match.lp_asset,
+    order_tx_hash: match.order_tx_hash,
   };
 }
 

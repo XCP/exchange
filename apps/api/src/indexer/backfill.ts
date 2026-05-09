@@ -1,4 +1,4 @@
-import { normalizeOrderMatch, NormalizedTrade, normalizeDispensePrice, normalizeDispenser, buildDispenserUpsertStmt } from "./normalize";
+import { normalizeOrderMatch, NormalizedTrade, normalizeDispensePrice, normalizeDispenser, normalizePoolMatch, buildDispenserUpsertStmt } from "./normalize";
 import { fetchOrderMatches, fetchDispenses, fetchDispensers } from "../lib/counterparty";
 import { API_TIMEOUT_MS } from "../lib/constants";
 import { batchExec } from "../lib/batch";
@@ -8,12 +8,101 @@ const BATCH_SIZE = 200;
 const DEFAULT_MAX_PAGES = 20;
 
 interface BackfillResult {
-  type: "trades" | "dispenses" | "dispensers";
+  type: "trades" | "dispenses" | "dispensers" | "pool_trades";
   inserted: number;
   pages: number;
   done: boolean;
   total: number;
   progress: string;
+}
+
+export async function backfillPoolTradesFromIndexedMatches(
+  db: D1Database,
+  limit: number = 500
+): Promise<BackfillResult & { affected_pairs: string[] }> {
+  const rows = await db
+    .prepare(
+      `SELECT pm.event_index, pm.tx_hash, pm.order_tx_hash, pm.source, pm.lp_asset,
+              pm.forward_asset, pm.backward_asset, pm.forward_quantity, pm.backward_quantity,
+              pm.block_index, pm.block_time
+       FROM pool_matches pm
+       LEFT JOIN trades t ON t.match_id = 'pool:' || pm.event_index
+       WHERE t.match_id IS NULL AND pm.status IN ('valid', 'completed')
+       ORDER BY pm.event_index ASC
+       LIMIT ?`
+    )
+    .bind(limit)
+    .all<{
+      event_index: number;
+      tx_hash: string;
+      order_tx_hash: string | null;
+      source: string;
+      lp_asset: string;
+      forward_asset: string;
+      backward_asset: string;
+      forward_quantity: number;
+      backward_quantity: number;
+      block_index: number;
+      block_time: number;
+    }>();
+
+  const trades = rows.results.map((row) =>
+    normalizePoolMatch({
+      event_index: row.event_index,
+      tx_hash: row.tx_hash,
+      order_tx_hash: row.order_tx_hash,
+      source: row.source,
+      lp_asset: row.lp_asset,
+      forward_asset: row.forward_asset,
+      backward_asset: row.backward_asset,
+      forward_quantity_normalized: String(row.forward_quantity),
+      backward_quantity_normalized: String(row.backward_quantity),
+      block_index: row.block_index,
+      block_time: row.block_time,
+    })
+  );
+
+  let inserted = 0;
+  if (trades.length > 0) {
+    const results = await batchExec(db, trades.map((t) =>
+      db
+        .prepare(
+          `INSERT OR IGNORE INTO trades
+           (match_id, pair, base_asset, quote_asset, block_index, block_time,
+            price, amount, volume, side, maker, taker, tx0_hash, tx1_hash,
+            source_type, lp_asset, order_tx_hash)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        )
+        .bind(
+          t.match_id, t.pair, t.base_asset, t.quote_asset,
+          t.block_index, t.block_time, t.price, t.amount, t.volume,
+          t.side, t.maker, t.taker, t.tx0_hash, t.tx1_hash,
+          t.source_type, t.lp_asset, t.order_tx_hash
+        )
+    ));
+    for (const r of results) {
+      if (r.meta.changes > 0) inserted++;
+    }
+  }
+
+  const remaining = await db
+    .prepare(
+      `SELECT COUNT(*) AS cnt
+       FROM pool_matches pm
+       LEFT JOIN trades t ON t.match_id = 'pool:' || pm.event_index
+       WHERE t.match_id IS NULL AND pm.status IN ('valid', 'completed')`
+    )
+    .first<{ cnt: number }>();
+
+  return {
+    type: "pool_trades",
+    inserted,
+    pages: rows.results.length > 0 ? 1 : 0,
+    done: (remaining?.cnt ?? 0) === 0,
+    total: rows.results.length + (remaining?.cnt ?? 0),
+    progress: (remaining?.cnt ?? 0) === 0 ? "100.0" : "0.0",
+    affected_pairs: [...new Set(trades.map((t) => t.pair))],
+  };
 }
 
 /**

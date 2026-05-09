@@ -13,6 +13,9 @@ export interface Trade {
   block_time: number
   tx0: string
   tx1: string
+  source_type: 'order' | 'pool'
+  lp_asset: string | null
+  order_tx_hash: string | null
 }
 
 interface DexTrade {
@@ -26,6 +29,9 @@ interface DexTrade {
   taker: string
   tx0: string
   tx1: string
+  source_type?: string
+  lp_asset?: string | null
+  order_tx_hash?: string | null
 }
 
 interface TradesResponse {
@@ -49,6 +55,9 @@ function mapTrade(t: DexTrade): Trade {
     block_time: t.t,
     tx0: t.tx0,
     tx1: t.tx1,
+    source_type: t.source_type === 'pool' ? 'pool' : 'order',
+    lp_asset: t.lp_asset ?? null,
+    order_tx_hash: t.order_tx_hash ?? null,
   }
 }
 

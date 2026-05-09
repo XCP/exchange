@@ -86,7 +86,7 @@ export function TradesList({ market, baseSymbol, quoteSymbol }: TradesListProps)
                 {trade.block_time ? compactTime(trade.block_time) : '—'}
               </td>
               <td className={`font-medium px-2 py-px ${trade.side === 'buy' ? 'text-green-400' : 'text-red-400'}`}>
-                {trade.side === 'buy' ? 'Buy' : 'Sell'}
+                {trade.side === 'buy' ? 'Buy' : 'Sell'}{trade.source_type === 'pool' ? ' Pool' : ''}
               </td>
               <td className="text-right text-zinc-300 font-mono px-2 py-px">
                 {formatPrice(trade.price)}

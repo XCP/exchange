@@ -62,7 +62,7 @@ const COLORS = {
 
 function aggregateMonthly(data: ActivityDay[]): MonthBucket[] {
   if (data.length === 0) return []
-  const buckets = new Map<string, { trades: number; dispenses: number; orders: number; dispensers: number }>()
+  const buckets = new Map<string, { orders: number; dispensers: number; sends: number }>()
   for (const d of data) {
     const key = d.day.slice(0, 7)
     const b = buckets.get(key) ?? { orders: 0, dispensers: 0, sends: 0 }
