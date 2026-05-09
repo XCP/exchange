@@ -61,7 +61,7 @@ function balanceKey(lpAsset: string, holder: string): string {
 
 function feeShare(feeRaw: number, balanceRaw: number, totalRaw: number): number {
   if (feeRaw <= 0 || balanceRaw <= 0 || totalRaw <= 0) return 0;
-  return Math.floor((feeRaw * balanceRaw) / totalRaw);
+  return Number((BigInt(feeRaw) * BigInt(balanceRaw)) / BigInt(totalRaw));
 }
 
 interface PoolBalanceState {

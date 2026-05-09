@@ -63,6 +63,8 @@ function PoolsTable({ pools, isLoading }: { pools: PoolSummary[]; isLoading: boo
           <th className="text-right font-normal px-3 py-1.5">Base Reserve</th>
           <th className="text-right font-normal px-3 py-1.5">Quote Reserve</th>
           <th className="text-right font-normal px-3 py-1.5">Fees</th>
+          <th className="text-right font-normal px-3 py-1.5">30D Fees</th>
+          <th className="text-right font-normal px-3 py-1.5">30D APR</th>
           <th className="text-right font-normal px-3 py-1.5">Matches</th>
           <th className="text-right font-normal px-3 py-1.5">Updated</th>
         </tr>
@@ -70,7 +72,7 @@ function PoolsTable({ pools, isLoading }: { pools: PoolSummary[]; isLoading: boo
       <tbody>
         {isLoading || pools.length === 0 ? (
           <tr>
-            <td colSpan={7} className="text-center py-10 text-zinc-500 text-xs">
+            <td colSpan={9} className="text-center py-10 text-zinc-500 text-xs">
               {isLoading ? 'Loading pools...' : 'No pools indexed yet'}
             </td>
           </tr>
@@ -93,6 +95,12 @@ function PoolsTable({ pools, isLoading }: { pools: PoolSummary[]; isLoading: boo
             <td className="text-right font-mono text-zinc-400 px-3 py-1.5">
               {formatPoolFees(pool)}
             </td>
+            <td className="text-right font-mono text-zinc-400 px-3 py-1.5">
+              {formatPoolFees(pool, '30d')}
+            </td>
+            <td className="text-right font-mono text-zinc-400 px-3 py-1.5">
+              {formatApr(pool.implied_fee_apr_30d)}
+            </td>
             <td className="text-right font-mono text-zinc-400 px-3 py-1.5">{pool.match_count.toLocaleString()}</td>
             <td className="text-right font-mono text-zinc-500 px-3 py-1.5">
               {pool.last_block_time ? formatTimeAgo(pool.last_block_time) : '-'}
@@ -104,8 +112,17 @@ function PoolsTable({ pools, isLoading }: { pools: PoolSummary[]; isLoading: boo
   )
 }
 
-function formatPoolFees(pool: PoolSummary) {
-  const baseFees = pool.display_base_asset === pool.asset_a ? pool.total_fees_a : pool.total_fees_b
-  const quoteFees = pool.display_quote_asset === pool.asset_a ? pool.total_fees_a : pool.total_fees_b
+function formatPoolFees(pool: PoolSummary, window?: '30d') {
+  const baseFees = window === '30d'
+    ? pool.display_implied_fees_30d_base ?? 0
+    : pool.display_base_asset === pool.asset_a ? pool.total_fees_a : pool.total_fees_b
+  const quoteFees = window === '30d'
+    ? pool.display_implied_fees_30d_quote ?? 0
+    : pool.display_quote_asset === pool.asset_a ? pool.total_fees_a : pool.total_fees_b
   return `${formatAmount(baseFees)} ${pool.display_base_asset ?? pool.asset_a} / ${formatAmount(quoteFees)} ${pool.display_quote_asset ?? pool.asset_b}`
+}
+
+function formatApr(apr: number | null | undefined) {
+  if (apr == null || !Number.isFinite(apr)) return '-'
+  return `${(apr * 100).toFixed(2)}%`
 }

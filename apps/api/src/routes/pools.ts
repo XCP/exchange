@@ -37,6 +37,11 @@ interface PoolRow {
   updated_at: number;
 }
 
+interface PoolListRow extends PoolRow {
+  fees_30d_a: number;
+  fees_30d_b: number;
+}
+
 interface AddressPoolRow {
   lp_asset: string;
   pair: string;
@@ -133,34 +138,71 @@ export async function handlePools(request: Request, db: D1Database): Promise<Res
     parseInt(url.searchParams.get("offset") ?? "0", 10) || 0,
     0
   );
+  const now = Math.floor(Date.now() / 1000);
+  const monthAgo = now - 30 * 24 * 60 * 60;
 
   let query = `SELECT
-    lp_asset, pair, asset_a, asset_b,
-    reserve_a, reserve_b, reserve_a_raw, reserve_b_raw,
-    opened_tx_hash, opened_block_index, opened_block_time,
-    last_tx_hash, last_block_index, last_block_time,
-    deposit_count, withdrawal_count, match_count, restart_count,
-    total_fees_a, total_fees_b, total_fees_a_raw, total_fees_b_raw,
-    updated_at
-  FROM pools`;
+    p.lp_asset, p.pair, p.asset_a, p.asset_b,
+    p.reserve_a, p.reserve_b, p.reserve_a_raw, p.reserve_b_raw,
+    p.opened_tx_hash, p.opened_block_index, p.opened_block_time,
+    p.last_tx_hash, p.last_block_index, p.last_block_time,
+    p.deposit_count, p.withdrawal_count, p.match_count, p.restart_count,
+    p.total_fees_a, p.total_fees_b, p.total_fees_a_raw, p.total_fees_b_raw,
+    p.updated_at,
+    COALESCE(f.fees_30d_a, 0) AS fees_30d_a,
+    COALESCE(f.fees_30d_b, 0) AS fees_30d_b
+  FROM pools p
+  LEFT JOIN (
+    SELECT lp_asset,
+           SUM(CASE WHEN fee_asset = asset_a THEN fee_quantity ELSE 0 END) AS fees_30d_a,
+           SUM(CASE WHEN fee_asset = asset_b THEN fee_quantity ELSE 0 END) AS fees_30d_b
+    FROM pool_matches
+    WHERE status IN ('valid', 'completed') AND block_time >= ?
+    GROUP BY lp_asset
+  ) f ON f.lp_asset = p.lp_asset`;
   let countQuery = `SELECT COUNT(*) AS total FROM pools`;
-  const binds: (string | number)[] = [];
+  const binds: (string | number)[] = [monthAgo];
+  const countBinds: (string | number)[] = [];
 
   if (asset) {
-    query += ` WHERE asset_a = ? OR asset_b = ? OR lp_asset = ?`;
+    query += ` WHERE p.asset_a = ? OR p.asset_b = ? OR p.lp_asset = ?`;
     countQuery += ` WHERE asset_a = ? OR asset_b = ? OR lp_asset = ?`;
     binds.push(asset, asset, asset);
+    countBinds.push(asset, asset, asset);
   }
 
-  query += ` ORDER BY ${sort} ${order}, lp_asset ASC LIMIT ? OFFSET ?`;
+  query += ` ORDER BY ${sort} ${order}, p.lp_asset ASC LIMIT ? OFFSET ?`;
 
   const [result, countResult] = await Promise.all([
-    db.prepare(query).bind(...binds, limit, offset).all<PoolRow>(),
-    db.prepare(countQuery).bind(...binds).first<{ total: number }>(),
+    db.prepare(query).bind(...binds, limit, offset).all<PoolListRow>(),
+    db.prepare(countQuery).bind(...countBinds).first<{ total: number }>(),
   ]);
 
   return Response.json(
-    { pools: result.results.map(withPoolDisplay), total: countResult?.total ?? 0, limit, offset },
+    {
+      pools: result.results.map((pool) => {
+        const displayPool = withPoolDisplay(pool);
+        const baseFees30d = displayPool.display_base_asset === pool.asset_a ? pool.fees_30d_a : pool.fees_30d_b;
+        const quoteFees30d = displayPool.display_quote_asset === pool.asset_a ? pool.fees_30d_a : pool.fees_30d_b;
+        return {
+          ...displayPool,
+          implied_fees_30d_a: pool.fees_30d_a,
+          implied_fees_30d_b: pool.fees_30d_b,
+          display_implied_fees_30d_base: baseFees30d,
+          display_implied_fees_30d_quote: quoteFees30d,
+          implied_fee_apr_30d: calculatePoolFeeAprInQuote(
+            displayPool.display_base_reserve,
+            displayPool.display_quote_reserve,
+            baseFees30d,
+            quoteFees30d,
+            30 * 24 * 60 * 60
+          ),
+        };
+      }),
+      total: countResult?.total ?? 0,
+      limit,
+      offset,
+    },
     { headers: { "Cache-Control": cacheControl(url, 60) } }
   );
 }
