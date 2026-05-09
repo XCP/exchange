@@ -13,7 +13,6 @@ import { XCP_IMG_BASE } from '@/utils/constants'
 const LIMIT = 50
 const SORT_OPTIONS: { value: PoolSortKey; label: string }[] = [
   { value: 'match_count', label: 'Matches' },
-  { value: 'fees_30d', label: '30D Fees' },
   { value: 'implied_fee_apr_30d', label: '30D APR' },
   { value: 'last_block_time', label: 'Recently Updated' },
   { value: 'deposit_count', label: 'Deposits' },

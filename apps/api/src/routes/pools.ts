@@ -7,7 +7,6 @@ const VALID_POOL_SORTS = new Set([
   "withdrawal_count",
   "last_block_time",
   "opened_block_time",
-  "fees_30d",
   "implied_fee_apr_30d",
 ]);
 
@@ -17,7 +16,6 @@ const POOL_SORT_SQL: Record<string, string> = {
   withdrawal_count: "p.withdrawal_count",
   last_block_time: "p.last_block_time",
   opened_block_time: "p.opened_block_time",
-  fees_30d: "fees_30d_total_quote",
   implied_fee_apr_30d: "implied_fee_apr_30d",
 };
 
@@ -52,7 +50,6 @@ interface PoolRow {
 interface PoolListRow extends PoolRow {
   fees_30d_a: number;
   fees_30d_b: number;
-  fees_30d_total_quote: number;
   implied_fee_apr_30d: number | null;
 }
 
@@ -167,11 +164,6 @@ export async function handlePools(request: Request, db: D1Database): Promise<Res
     COALESCE(f.fees_30d_b, 0) AS fees_30d_b,
     CASE
       WHEN p.reserve_a > 0 AND p.reserve_b > 0
-      THEN COALESCE(f.fees_30d_b, 0) + COALESCE(f.fees_30d_a, 0) * (p.reserve_b / p.reserve_a)
-      ELSE 0
-    END AS fees_30d_total_quote,
-    CASE
-      WHEN p.reserve_a > 0 AND p.reserve_b > 0
       THEN (
         (COALESCE(f.fees_30d_b, 0) + COALESCE(f.fees_30d_a, 0) * (p.reserve_b / p.reserve_a))
         / (p.reserve_b + p.reserve_a * (p.reserve_b / p.reserve_a))
@@ -217,7 +209,6 @@ export async function handlePools(request: Request, db: D1Database): Promise<Res
           implied_fees_30d_b: pool.fees_30d_b,
           display_implied_fees_30d_base: baseFees30d,
           display_implied_fees_30d_quote: quoteFees30d,
-          fees_30d_total_quote: pool.fees_30d_total_quote,
           implied_fee_apr_30d: pool.implied_fee_apr_30d,
         };
       }),

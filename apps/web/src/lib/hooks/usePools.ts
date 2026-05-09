@@ -45,7 +45,6 @@ export interface PoolSummary {
   display_implied_fees_7d_quote?: number
   display_implied_fees_30d_base?: number
   display_implied_fees_30d_quote?: number
-  fees_30d_total_quote?: number
   updated_at: number
 }
 
@@ -189,7 +188,6 @@ export type PoolSortKey =
   | 'withdrawal_count'
   | 'last_block_time'
   | 'opened_block_time'
-  | 'fees_30d'
   | 'implied_fee_apr_30d'
 
 export function usePools(

@@ -77,45 +77,53 @@ export function TradesList({ market, baseSymbol, quoteSymbol }: TradesListProps)
           </tr>
         </thead>
         <tbody>
-          {trades.map((trade) => (
-            <tr
-              key={trade.id ?? `${trade.tx0}-${trade.tx1}`}
-              className="hover:bg-zinc-900 cursor-default"
-            >
-              <td className="text-zinc-500 font-mono px-2 py-px">
-                {trade.block_time ? compactTime(trade.block_time) : '—'}
-              </td>
-              <td className={`font-medium px-2 py-px ${trade.side === 'buy' ? 'text-green-400' : 'text-red-400'}`}>
-                {trade.side === 'buy' ? 'Buy' : 'Sell'}{trade.source_type === 'pool' ? ' Pool' : ''}
-              </td>
-              <td className="text-right text-zinc-300 font-mono px-2 py-px">
-                {formatPrice(trade.price)}
-              </td>
-              <td className="text-right text-zinc-400 font-mono px-2 py-px">
-                {formatPrice(trade.amount)}
-              </td>
-              <td className="text-right text-zinc-400 font-mono px-2 py-px max-sm:hidden">
-                {formatPrice(trade.volume)}
-              </td>
-              <td className="text-right text-zinc-500 font-mono px-2 py-px max-sm:hidden">
-                {formatAddress(trade.taker)}
-              </td>
-              <td className="text-right text-zinc-500 font-mono px-2 py-px max-sm:hidden">
-                {formatAddress(trade.maker)}
-              </td>
-              <td className="text-center px-2 py-px max-sm:hidden">
-                <a
-                  href={`https://xcp.io/tx/${trade.tx0}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-zinc-500 hover:text-zinc-300 transition-colors"
-                  title="View transaction"
-                >
-                  ↗
-                </a>
-              </td>
-            </tr>
-          ))}
+          {trades.map((trade) => {
+            const makerLabel = trade.source_type === 'pool'
+              ? trade.lp_asset ? `Pool ${trade.lp_asset}` : 'Pool'
+              : formatAddress(trade.maker)
+
+            return (
+              <tr
+                key={trade.id ?? `${trade.tx0}-${trade.tx1}`}
+                className="hover:bg-zinc-900 cursor-default"
+              >
+                <td className="text-zinc-500 font-mono px-2 py-px">
+                  {trade.block_time ? compactTime(trade.block_time) : '-'}
+                </td>
+                <td className={`font-medium px-2 py-px ${trade.side === 'buy' ? 'text-green-400' : 'text-red-400'}`}>
+                  {trade.side === 'buy' ? 'Buy' : 'Sell'}{trade.source_type === 'pool' ? ' Pool' : ''}
+                </td>
+                <td className="text-right text-zinc-300 font-mono px-2 py-px">
+                  {formatPrice(trade.price)}
+                </td>
+                <td className="text-right text-zinc-400 font-mono px-2 py-px">
+                  {formatPrice(trade.amount)}
+                </td>
+                <td className="text-right text-zinc-400 font-mono px-2 py-px max-sm:hidden">
+                  {formatPrice(trade.volume)}
+                </td>
+                <td className="text-right text-zinc-500 font-mono px-2 py-px max-sm:hidden">
+                  {formatAddress(trade.taker)}
+                </td>
+                <td className="text-right text-zinc-500 font-mono px-2 py-px max-sm:hidden">
+                  <span title={trade.source_type === 'pool' ? trade.lp_asset ?? 'Pool liquidity' : trade.maker}>
+                    {makerLabel}
+                  </span>
+                </td>
+                <td className="text-center px-2 py-px max-sm:hidden">
+                  <a
+                    href={`https://xcp.io/tx/${trade.tx0}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-zinc-500 hover:text-zinc-300 transition-colors"
+                    title="View transaction"
+                  >
+                    -&gt;
+                  </a>
+                </td>
+              </tr>
+            )
+          })}
         </tbody>
       </table>
       {loadingMore && (
