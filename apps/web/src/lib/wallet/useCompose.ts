@@ -166,6 +166,34 @@ export function useCompose() {
     quantity: params.quantity,
   })
 
+  const composePoolDeposit = (params: {
+    asset_a: string
+    asset_b: string
+    quantity_a: number
+    quantity_b: number
+    min_lp_quantity?: number
+    lp_asset?: string
+  }) => execute('pooldeposit', {
+    asset_a: params.asset_a,
+    asset_b: params.asset_b,
+    quantity_a: params.quantity_a,
+    quantity_b: params.quantity_b,
+    min_lp_quantity: params.min_lp_quantity ?? 0,
+    ...(params.lp_asset ? { lp_asset: params.lp_asset } : {}),
+  })
+
+  const composePoolWithdraw = (params: {
+    lp_asset: string
+    quantity: number
+    min_quantity_a?: number
+    min_quantity_b?: number
+  }) => execute('poolwithdraw', {
+    lp_asset: params.lp_asset,
+    quantity: params.quantity,
+    min_quantity_a: params.min_quantity_a ?? 0,
+    min_quantity_b: params.min_quantity_b ?? 0,
+  })
+
   const composeDetach = (utxo: string) => executeUtxo(utxo, 'detach', {})
 
   const reset = () => setState(INITIAL_STATE)
@@ -176,6 +204,8 @@ export function useCompose() {
     composeDispenser,
     composeDispense,
     composeAttach,
+    composePoolDeposit,
+    composePoolWithdraw,
     composeDetach,
     reset,
   }

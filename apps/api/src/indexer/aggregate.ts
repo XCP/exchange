@@ -6,7 +6,7 @@ import { getMode } from "./state";
 
 const CATCHUP_BATCH_SIZE = 400;
 
-/** Max pairs per SQL chunk — D1 allows 100 bound params per statement */
+/** Max pairs per SQL chunk - D1 allows 100 bound params per statement */
 const SQL_CHUNK = 100;
 
 export function bucketTimestamp(
@@ -213,7 +213,7 @@ async function bulkAggregateCandlesForPairs(
 
 /**
  * Catch-up aggregation: processes a batch of pairs that haven't been aggregated yet.
- * Uses pure SQL window functions + json_each bulk insert — 12 queries per 100-pair
+ * Uses pure SQL window functions + json_each bulk insert - 12 queries per 100-pair
  * chunk instead of ~900 individual INSERT statements.
  */
 export async function runCatchupAggregation(
@@ -243,7 +243,7 @@ export async function runCatchupAggregation(
     }>();
 
   if (!pairs.results.length) {
-    // All pairs processed — clean up and transition
+    // All pairs processed - clean up and transition
     const mode = await getMode(db);
     const nextMode = mode === "BUILD_AGGREGATES" ? "REFRESH_STATS" : "FOLLOWING";
     await db.batch([
@@ -266,7 +266,7 @@ export async function runCatchupAggregation(
     return { done: true, processed: 0, cursor };
   }
 
-  // Bulk candle aggregation (skip stats during catchup — they'll be
+  // Bulk candle aggregation (skip stats during catchup - they'll be
   // computed once we transition to FOLLOWING mode, saving ~250 D1
   // queries per batch)
   const pairNames = pairs.results.map((p) => p.pair);
@@ -290,7 +290,7 @@ const STATS_BATCH_SIZE = 7000;
 /**
  * Catch-up stats: bulk-compute rolling-window pair stats for many pairs.
  * Uses set-based SQL (GROUP BY + JSON UPDATE) instead of per-pair queries.
- * 6 D1 queries per chunk of 95 pairs ≈ 450 queries for 7000 pairs.
+ * 6 D1 queries per chunk of 95 pairs approx 450 queries for 7000 pairs.
  */
 export async function runCatchupStats(
   db: D1Database
@@ -313,7 +313,7 @@ export async function runCatchupStats(
     .all<{ pair: string; base_asset: string; quote_asset: string }>();
 
   if (!pairs.results.length) {
-    // Pair stats done — seed dispenser stats cursor for next phase
+    // Pair stats done - seed dispenser stats cursor for next phase
     await db.batch([
       db.prepare(`DELETE FROM indexer_state WHERE key = 'stats_cursor'`),
       db.prepare(
@@ -344,7 +344,7 @@ const DISPENSER_STATS_BATCH_SIZE = 7000;
 /**
  * Catch-up dispenser stats: bulk-compute all-time metrics for many assets.
  * Uses set-based SQL (GROUP BY + JSON UPDATE) instead of per-asset queries.
- * 7 D1 queries per chunk of 95 assets ≈ 525 queries for 7000 assets.
+ * 7 D1 queries per chunk of 95 assets approx 525 queries for 7000 assets.
  */
 export async function runCatchupDispenserStats(
   db: D1Database
@@ -366,7 +366,7 @@ export async function runCatchupDispenserStats(
     .all<{ asset: string }>();
 
   if (!assets.results.length) {
-    // All assets done — transition to FOLLOWING
+    // All assets done - transition to FOLLOWING
     await db.batch([
       db.prepare(`DELETE FROM indexer_state WHERE key = 'dispenser_stats_cursor'`),
       db.prepare(

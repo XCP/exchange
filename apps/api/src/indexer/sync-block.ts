@@ -143,6 +143,28 @@ async function fetchBlockEvents(
   return events;
 }
 
+async function seedPoolPairsForAssets(
+  db: D1Database,
+  assets: Iterable<string>,
+  knownPoolPairByLp: Map<string, string>
+): Promise<void> {
+  const candidates = [...new Set(assets)].filter((asset) => asset && !knownPoolPairByLp.has(asset));
+  const chunkSize = 90;
+
+  for (let i = 0; i < candidates.length; i += chunkSize) {
+    const chunk = candidates.slice(i, i + chunkSize);
+    const placeholders = chunk.map(() => "?").join(",");
+    const rows = await db
+      .prepare(`SELECT lp_asset, pair FROM pools WHERE lp_asset IN (${placeholders})`)
+      .bind(...chunk)
+      .all<{ lp_asset: string; pair: string }>();
+
+    for (const row of rows.results) {
+      knownPoolPairByLp.set(row.lp_asset, row.pair);
+    }
+  }
+}
+
 function extractAssetLongname(info: unknown): string | null {
   if (info && typeof info === "object" && "asset_longname" in (info as Record<string, unknown>)) {
     const ln = (info as Record<string, unknown>).asset_longname;
@@ -556,7 +578,7 @@ export async function syncBlocks(
     if (checkpointHash !== lastHashRow.value) {
       console.log(
         `Reorg detected at block ${lastBlock}: hash mismatch ` +
-        `(stored=${lastHashRow.value.slice(0, 16)}… actual=${checkpointHash.slice(0, 16)}…)`
+        `(stored=${lastHashRow.value.slice(0, 16)}... actual=${checkpointHash.slice(0, 16)}...)`
       );
       rollbackTo = lastBlock - 1;
     }
@@ -714,6 +736,7 @@ export async function syncBlocks(
     events.sort((a, b) => a.event_index - b.event_index);
 
     const restartDepositTxHashes = new Set<string>();
+    const creditDebitAssets = new Set<string>();
     for (const ev of events) {
       const params = ev.params;
       if (ev.event === "OPEN_POOL") {
@@ -731,8 +754,13 @@ export async function syncBlocks(
       ) {
         const txHash = params.tx_hash as string | undefined;
         if (txHash) restartDepositTxHashes.add(txHash);
+      } else if (ev.event === "CREDIT" || ev.event === "DEBIT") {
+        const lpAsset = params.asset as string | undefined;
+        if (lpAsset) creditDebitAssets.add(lpAsset);
       }
     }
+    await seedPoolPairsForAssets(db, creditDebitAssets, knownPoolPairByLp);
+    const nonPoolAssets = new Set<string>();
 
     // Derive block_time from any event that carries it (ORDER_MATCH, OPEN_ORDER,
     // OPEN_DISPENSER, DISPENSE all include block_time; ORDER_UPDATE and others don't).
@@ -1047,8 +1075,12 @@ export async function syncBlocks(
             const lpAsset = params.asset as string | undefined;
             if (!lpAsset) break;
 
+            if (nonPoolAssets.has(lpAsset)) break;
             const pair = knownPoolPairByLp.get(lpAsset) ?? await findPoolPairByLpAsset(db, lpAsset);
-            if (!pair) break;
+            if (!pair) {
+              nonPoolAssets.add(lpAsset);
+              break;
+            }
 
             knownPoolPairByLp.set(lpAsset, pair);
             affectedPools.add(lpAsset);

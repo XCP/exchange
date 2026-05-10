@@ -1,4 +1,5 @@
-import { dexUrl } from '@/lib/api/client'
+import useSWR from 'swr'
+import { counterpartyUrl, dexUrl, fetcher } from '@/lib/api/client'
 import { useDexSWR } from '@/lib/api/use-dex-swr'
 
 export interface PoolSummary {
@@ -9,6 +10,7 @@ export interface PoolSummary {
   display_base_asset?: string
   display_quote_asset?: string
   display_pair?: string
+  display_pair_slug?: string
   display_price?: number | null
   display_base_reserve?: number
   display_quote_reserve?: number
@@ -30,6 +32,12 @@ export interface PoolSummary {
   total_fees_b: number
   total_fees_a_raw: number
   total_fees_b_raw: number
+  fees_24h_a?: number
+  fees_24h_b?: number
+  fees_7d_a?: number
+  fees_7d_b?: number
+  fees_30d_a?: number
+  fees_30d_b?: number
   implied_fees_24h_a?: number
   implied_fees_24h_b?: number
   implied_fees_7d_a?: number
@@ -39,6 +47,12 @@ export interface PoolSummary {
   implied_fee_apr_24h?: number | null
   implied_fee_apr_7d?: number | null
   implied_fee_apr_30d?: number | null
+  display_fees_24h_base?: number
+  display_fees_24h_quote?: number
+  display_fees_7d_base?: number
+  display_fees_7d_quote?: number
+  display_fees_30d_base?: number
+  display_fees_30d_quote?: number
   display_implied_fees_24h_base?: number
   display_implied_fees_24h_quote?: number
   display_implied_fees_7d_base?: number
@@ -165,6 +179,47 @@ export interface PoolAddressPosition {
   }[]
 }
 
+export interface AddressPoolSummary extends PoolSummary {
+  balance: number
+  balance_raw: number
+  total_lp_supply_raw: number
+  total_lp_supply: number
+  implied_fees_a: number
+  implied_fees_b: number
+}
+
+export interface PoolAssetInfo {
+  asset: string
+  divisible: boolean
+  supply: number
+  supply_normalized: string
+}
+
+interface CounterpartyAssetResponse {
+  result: PoolAssetInfo
+}
+
+export interface PoolDepositQuote {
+  first_deposit: boolean
+  asset_a: string
+  asset_b: string
+  quantity_a_required: number | null
+  quantity_b_required: number | null
+  quantity_minted_estimate: number | null
+  message?: string
+}
+
+export interface PoolWithdrawQuote {
+  pool_exists: boolean
+  asset_a?: string
+  asset_b?: string
+  quantity?: number
+  supply?: number
+  quantity_a_estimate?: number
+  quantity_b_estimate?: number
+  message?: string
+}
+
 interface PoolsResponse {
   pools: PoolSummary[]
   total: number
@@ -252,6 +307,65 @@ export function usePoolAddressPosition(lpAsset: string | null, address: string |
 
   return {
     position: data ?? null,
+    error,
+    isLoading,
+  }
+}
+
+export function useAddressPools(address: string | null) {
+  const { data, error, isLoading } = useDexSWR<{ address: string; pools: AddressPoolSummary[] }>(
+    address ? dexUrl(`/addresses/${encodeURIComponent(address)}/pools`) : null
+  )
+
+  return {
+    pools: data?.pools ?? [],
+    error,
+    isLoading,
+  }
+}
+
+export function usePoolAssetInfo(asset: string | null) {
+  const { data, error, isLoading } = useSWR<CounterpartyAssetResponse>(
+    asset ? counterpartyUrl(`/assets/${encodeURIComponent(asset)}?verbose=true`) : null,
+    fetcher,
+  )
+
+  return {
+    info: data?.result ?? null,
+    error,
+    isLoading,
+  }
+}
+
+export function usePoolDepositQuote(assetA: string | null, assetB: string | null, quantityRaw: number | null) {
+  const enabled = !!assetA && !!assetB && quantityRaw != null && quantityRaw > 0
+  const { data, error, isLoading } = useSWR<{ result: PoolDepositQuote }>(
+    enabled
+      ? counterpartyUrl(`/pools/${encodeURIComponent(assetA!)}/${encodeURIComponent(assetB!)}/quote/deposit?quantity=${quantityRaw}`)
+      : null,
+    fetcher,
+    { refreshInterval: 30_000 },
+  )
+
+  return {
+    quote: data?.result ?? null,
+    error,
+    isLoading,
+  }
+}
+
+export function usePoolWithdrawQuote(assetA: string | null, assetB: string | null, quantityRaw: number | null) {
+  const enabled = !!assetA && !!assetB && quantityRaw != null && quantityRaw > 0
+  const { data, error, isLoading } = useSWR<{ result: PoolWithdrawQuote }>(
+    enabled
+      ? counterpartyUrl(`/pools/${encodeURIComponent(assetA!)}/${encodeURIComponent(assetB!)}/quote/withdraw?quantity=${quantityRaw}`)
+      : null,
+    fetcher,
+    { refreshInterval: 30_000 },
+  )
+
+  return {
+    quote: data?.result ?? null,
     error,
     isLoading,
   }

@@ -1,5 +1,5 @@
-// Quote asset priority — higher index = higher priority as quote
-// Must match apps/web/src/utils/constants.ts QUOTE_ASSETS (reversed)
+// Quote asset priority - higher index = higher priority as quote.
+// Must match apps/web/src/utils/constants.ts QUOTE_ASSETS (reversed).
 const QUOTE_PRIORITY: string[] = [
   "FUTURECREDIT", "MUUI", "VACUS", "WOOOOK", "FUUUUUH", "FUUUUUH.BTC",
   "RAIZER", "RAIZER.BTC", "BASSMINT", "NOMNI", "NOJAK", "POWC", "NVST",
@@ -14,7 +14,7 @@ const QUOTE_PRIORITY: string[] = [
   "XBTC", "XCP", "BTC",
 ];
 
-// Keyword-based fallback for assets not in the explicit list
+// Keyword-based fallback for assets not in the explicit list.
 const QUOTE_KEYWORDS: string[] = ["CASH", "COIN", "MONEY", "BTC"];
 
 function isQuoteByKeyword(symbol: string): boolean {
@@ -28,24 +28,24 @@ export function determineBaseQuote(asset1: string, asset2: string): {
   const rank1 = QUOTE_PRIORITY.indexOf(asset1);
   const rank2 = QUOTE_PRIORITY.indexOf(asset2);
 
-  // If both are on the list, higher rank = quote
+  // If both are on the list, higher rank = quote.
   if (rank1 >= 0 && rank2 >= 0) {
     return rank1 > rank2
       ? { base: asset2, quote: asset1 }
       : { base: asset1, quote: asset2 };
   }
 
-  // If only one is on the list, it's the quote
+  // If only one is on the list, it's the quote.
   if (rank1 >= 0) return { base: asset2, quote: asset1 };
   if (rank2 >= 0) return { base: asset1, quote: asset2 };
 
-  // Neither on the list — check keyword fallback
+  // Neither on the list - check keyword fallback.
   const kw1 = isQuoteByKeyword(asset1);
   const kw2 = isQuoteByKeyword(asset2);
   if (kw1 && !kw2) return { base: asset2, quote: asset1 };
   if (kw2 && !kw1) return { base: asset1, quote: asset2 };
 
-  // Both or neither match keywords — alphabetical (lower = base)
+  // Both or neither match keywords - alphabetical lower sorts as base.
   return asset1 < asset2
     ? { base: asset1, quote: asset2 }
     : { base: asset2, quote: asset1 };

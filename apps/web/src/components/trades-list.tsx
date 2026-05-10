@@ -1,6 +1,7 @@
 'use client'
 
-import { useCallback, useRef } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
+import Link from 'next/link'
 import { useTrades } from '@/lib/hooks/useTrades'
 import { formatPrice } from '@/utils/format-price'
 import { formatAddress } from '@/utils/format-address'
@@ -24,8 +25,11 @@ function compactTime(ts: number): string {
 export function TradesList({ market, baseSymbol, quoteSymbol }: TradesListProps) {
   const { trades, isLoading, loadMore, loadingMore, hasMore } = useTrades(market, baseSymbol, quoteSymbol)
   const loadMoreRef = useRef(loadMore)
-  loadMoreRef.current = loadMore
   const observerRef = useRef<IntersectionObserver | null>(null)
+
+  useEffect(() => {
+    loadMoreRef.current = loadMore
+  }, [loadMore])
 
   const sentinelRef = useCallback((node: HTMLDivElement | null) => {
     if (observerRef.current) {
@@ -78,10 +82,6 @@ export function TradesList({ market, baseSymbol, quoteSymbol }: TradesListProps)
         </thead>
         <tbody>
           {trades.map((trade) => {
-            const makerLabel = trade.source_type === 'pool'
-              ? trade.lp_asset ? `Pool ${trade.lp_asset}` : 'Pool'
-              : formatAddress(trade.maker)
-
             return (
               <tr
                 key={trade.id ?? `${trade.tx0}-${trade.tx1}`}
@@ -106,9 +106,13 @@ export function TradesList({ market, baseSymbol, quoteSymbol }: TradesListProps)
                   {formatAddress(trade.taker)}
                 </td>
                 <td className="text-right text-zinc-500 font-mono px-2 py-px max-sm:hidden">
-                  <span title={trade.source_type === 'pool' ? trade.lp_asset ?? 'Pool liquidity' : trade.maker}>
-                    {makerLabel}
-                  </span>
+                  {trade.source_type === 'pool' && trade.lp_asset ? (
+                    <Link href={`/pool/${trade.lp_asset}`} title={trade.lp_asset} className="hover:text-zinc-300 hover:underline">
+                      Pool {trade.lp_asset}
+                    </Link>
+                  ) : (
+                    <span title={trade.maker}>{formatAddress(trade.maker)}</span>
+                  )}
                 </td>
                 <td className="text-center px-2 py-px max-sm:hidden">
                   <a

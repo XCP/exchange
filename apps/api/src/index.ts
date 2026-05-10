@@ -1,5 +1,5 @@
 /**
- * xcpdex API Worker — Hono on Cloudflare Workers.
+ * xcpdex API Worker - Hono on Cloudflare Workers.
  * Routes: market data, portfolio, swaps, indexer cron.
  */
 
@@ -54,11 +54,11 @@ type Bindings = Env;
 
 const app = new Hono<{ Bindings: Bindings }>();
 
-// ── Middleware ───────────────────────────────────────────────────────────
+// Middleware
 
 app.use('*', cors());
 
-// Fix scientific notation in JSON responses (e.g. 7.1e-7 → 0.00000071)
+// Fix scientific notation in JSON responses (e.g. 7.1e-7 -> 0.00000071).
 app.use('*', async (c, next) => {
   await next();
   const ct = c.res.headers.get('Content-Type') || '';
@@ -81,7 +81,7 @@ app.use('/indexer/*', async (c, next) => {
   return auth(c, next);
 });
 
-// ── Public Routes ───────────────────────────────────────────────────────
+// Public Routes
 
 app.get('/ohlc/:pair', (c) => handleOhlc(c.req.raw, c.env.DB, c.req.param('pair')));
 app.get('/trades/:pair', (c) => handleTrades(c.req.raw, c.env.DB, c.req.param('pair')));
@@ -113,7 +113,7 @@ app.get('/pools/:lpAsset', (c) => handlePool(new URL(c.req.url), c.env.DB, c.req
 app.get('/pools/:lpAsset/addresses/:address', (c) => handlePoolAddress(new URL(c.req.url), c.env.DB, c.req.param('lpAsset'), c.req.param('address')));
 app.get('/addresses/:address/pools', (c) => handleAddressPools(new URL(c.req.url), c.env.DB, c.req.param('address')));
 
-// ── Swap Routes ─────────────────────────────────────────────────────────
+// Swap Routes
 
 app.get('/swaps', (c) => handleGetSwaps(c.req.raw, c.env.DB));
 app.get('/swaps/:id', (c) => handleGetSwap(c.env.DB, c.req.param('id')));
@@ -124,7 +124,7 @@ app.post('/swaps/:id/complete-fill', (c) => handleCompleteFill(c.req.raw, c.env.
 app.post('/swaps/:id/prepare-cancel', (c) => handlePrepareCancelSwap(c.env.DB, c.req.param('id')));
 app.post('/swaps/:id/cancel', (c) => handleCancelSwap(c.req.raw, c.env.DB, c.req.param('id')));
 
-// ── Status ──────────────────────────────────────────────────────────────
+// Status
 
 app.get('/status', async (c) => {
   const db = c.env.DB;
@@ -163,7 +163,7 @@ app.get('/status', async (c) => {
   });
 });
 
-// ── Indexer Routes (auth handled by middleware) ─────────────────────────
+// Indexer Routes (auth handled by middleware)
 
 app.post('/indexer/refresh-deals', async (c) => {
   const result = await refreshDealScores(c.env.DB);
@@ -193,6 +193,7 @@ app.post('/indexer/start', async (c) => {
     deleteState(c.env.DB, "dispense_backfill_total"),
     deleteState(c.env.DB, "dispenser_backfill_cursor"),
     deleteState(c.env.DB, "dispenser_backfill_total"),
+    deleteState(c.env.DB, "pool_snapshot_cursor"),
     deleteState(c.env.DB, "aggregation_cursor"),
     deleteState(c.env.DB, "sync_lock"),
   ]);
@@ -306,6 +307,7 @@ app.post('/indexer/reset', async (c) => {
     deleteState(c.env.DB, "dispense_backfill_total"),
     deleteState(c.env.DB, "dispenser_backfill_cursor"),
     deleteState(c.env.DB, "dispenser_backfill_total"),
+    deleteState(c.env.DB, "pool_snapshot_cursor"),
     deleteState(c.env.DB, "aggregation_cursor"),
   ]);
   return Response.json({ ok: true, mode: "IDLE" });
@@ -335,7 +337,7 @@ app.post('/indexer/sync-tags', async (c) => {
   return Response.json({ ok: true, ...await fn() });
 });
 
-// ── Cron ─────────────────────────────────────────────────────────────────
+// Cron
 
 // The scheduled handler is separate from Hono (Workers API requirement)
 async function scheduled(env: Env): Promise<void> {
@@ -354,33 +356,33 @@ async function scheduled(env: Env): Promise<void> {
       case "IDLE": break;
       case "BACKFILL_TRADES": {
         const r = await backfillTrades(env.DB, env.CP_API_BASE, 20);
-        console.log(`Cron: backfill trades — ${r.inserted} inserted, ${r.progress}% done`);
+        console.log(`Cron: backfill trades - ${r.inserted} inserted, ${r.progress}% done`);
         break;
       }
       case "BACKFILL_DISPENSES": {
         const r = await backfillDispenses(env.DB, env.CP_API_BASE, 20);
-        console.log(`Cron: backfill dispenses — ${r.inserted} inserted, ${r.progress}% done`);
+        console.log(`Cron: backfill dispenses - ${r.inserted} inserted, ${r.progress}% done`);
         break;
       }
       case "BACKFILL_DISPENSERS": {
         const r = await backfillDispensers(env.DB, env.CP_API_BASE, 20);
-        console.log(`Cron: backfill dispensers — ${r.inserted} inserted, ${r.progress}% done`);
+        console.log(`Cron: backfill dispensers - ${r.inserted} inserted, ${r.progress}% done`);
         break;
       }
       case "SNAPSHOT_SYNC": {
         const r = await runSnapshotStep(env.DB, env.CP_API_BASE);
-        console.log(`Cron: snapshot sync — phase=${r.phase}, done=${r.done}`);
+        console.log(`Cron: snapshot sync - phase=${r.phase}, done=${r.done}`);
         break;
       }
       case "BUILD_AGGREGATES": {
         const r = await runCatchupAggregation(env.DB);
-        console.log(`Cron: aggregation — done=${r.done}`);
+        console.log(`Cron: aggregation - done=${r.done}`);
         break;
       }
       case "REFRESH_STATS": {
         const statResult = await runCatchupStats(env.DB);
         const dispResult = await runCatchupDispenserStats(env.DB);
-        console.log(`Cron: stats refresh — pairs=${statResult.processed}, dispensers=${dispResult.processed}`);
+        console.log(`Cron: stats refresh - pairs=${statResult.processed}, dispensers=${dispResult.processed}`);
         if (statResult.done && dispResult.done) {
           await setMode(env.DB, "FOLLOWING");
         }

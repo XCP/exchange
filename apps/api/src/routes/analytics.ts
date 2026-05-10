@@ -47,7 +47,7 @@ export async function handleAnalytics(
   const dispCountCol = tf === "all" ? "total_dispense_count" : `dispense_count_${tf}`;
   const dispPctCol = tf === "all" ? "0" : `price_change_${tf}`;
 
-  // For "all" timeframe without tag, SQL returns 0 — overridden by Counterparty API result_count
+  // For "all" timeframe without tag, SQL returns 0; overridden by Counterparty API result_count.
   // When tag is set, always compute from DB (scoped count is fast enough)
   const tfOrdersExpr = tf === "all" && !tag
     ? "0"
@@ -72,7 +72,7 @@ export async function handleAnalytics(
   let topBtcBuyersResults: unknown[] = [];
   let topBtcSellersResults: unknown[] = [];
 
-  // Section: summary — counter cards + leaderboards (all from pre-computed stats tables, fast)
+  // Section: summary: counter cards + leaderboards (all from pre-computed stats tables, fast).
   if (!section || section === "summary") {
     // Compute tag bind params for summary queries (order must match ? placeholders in SQL)
     const tradeTagBinds: string[] = [];
@@ -216,7 +216,7 @@ export async function handleAnalytics(
     topDispensedCollResults = topDispensedColl.results;
   }
 
-  // Section: charts — volume timeseries from raw tables
+  // Section: charts: volume timeseries from raw tables.
   if (!section || section === "charts") {
     const [dailyTradeVolume, dailyDispenseVolume, dailyBtcTradeVolume] = await db.batch([
       db.prepare(

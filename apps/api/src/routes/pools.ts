@@ -81,6 +81,7 @@ function withPoolDisplay<T extends { asset_a: string; asset_b: string; reserve_a
   display_base_asset: string;
   display_quote_asset: string;
   display_pair: string;
+  display_pair_slug: string;
   display_price: number | null;
   display_base_reserve: number;
   display_quote_reserve: number;
@@ -205,8 +206,12 @@ export async function handlePools(request: Request, db: D1Database): Promise<Res
         const quoteFees30d = displayPool.display_quote_asset === pool.asset_a ? pool.fees_30d_a : pool.fees_30d_b;
         return {
           ...displayPool,
+          fees_30d_a: pool.fees_30d_a,
+          fees_30d_b: pool.fees_30d_b,
           implied_fees_30d_a: pool.fees_30d_a,
           implied_fees_30d_b: pool.fees_30d_b,
+          display_fees_30d_base: baseFees30d,
+          display_fees_30d_quote: quoteFees30d,
           display_implied_fees_30d_base: baseFees30d,
           display_implied_fees_30d_quote: quoteFees30d,
           implied_fee_apr_30d: pool.implied_fee_apr_30d,
@@ -369,12 +374,24 @@ export async function handlePool(
 
   const poolWithApr = {
     ...displayPool,
+    fees_24h_a: feeWindows?.fees_24h_a ?? 0,
+    fees_24h_b: feeWindows?.fees_24h_b ?? 0,
+    fees_7d_a: feeWindows?.fees_7d_a ?? 0,
+    fees_7d_b: feeWindows?.fees_7d_b ?? 0,
+    fees_30d_a: feeWindows?.fees_30d_a ?? 0,
+    fees_30d_b: feeWindows?.fees_30d_b ?? 0,
     implied_fees_24h_a: feeWindows?.fees_24h_a ?? 0,
     implied_fees_24h_b: feeWindows?.fees_24h_b ?? 0,
     implied_fees_7d_a: feeWindows?.fees_7d_a ?? 0,
     implied_fees_7d_b: feeWindows?.fees_7d_b ?? 0,
     implied_fees_30d_a: feeWindows?.fees_30d_a ?? 0,
     implied_fees_30d_b: feeWindows?.fees_30d_b ?? 0,
+    display_fees_24h_base: baseFees24h,
+    display_fees_24h_quote: quoteFees24h,
+    display_fees_7d_base: baseFees7d,
+    display_fees_7d_quote: quoteFees7d,
+    display_fees_30d_base: baseFees30d,
+    display_fees_30d_quote: quoteFees30d,
     display_implied_fees_24h_base: baseFees24h,
     display_implied_fees_24h_quote: quoteFees24h,
     display_implied_fees_7d_base: baseFees7d,
