@@ -15,6 +15,12 @@ jobs:
           node-version: 22
       - run: npm ci
         working-directory: apps/api
+      # Apply DB migrations before deploying so schema is never behind the code.
+      - run: npx wrangler d1 migrations apply xcpdex --remote
+        working-directory: apps/api
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       - run: npx wrangler deploy
         working-directory: apps/api
         env:
