@@ -1,4 +1,13 @@
+import Link from 'next/link'
+import { formatPrice } from '@/utils/format-price'
 import type { OrderBookEntry } from '@/types/trading'
+
+interface PoolBandData {
+  /** Pool spot price in the trade pair's quote-per-base terms. */
+  price: number | null
+  lpAsset: string
+  depthLabel?: string
+}
 
 interface CompactBookStripProps {
   bids: OrderBookEntry[]
@@ -6,12 +15,22 @@ interface CompactBookStripProps {
   spread: string
   spreadPct: string
   onRowClick?: (entry: OrderBookEntry, side: 'buy' | 'sell') => void
+  pool?: PoolBandData | null
 }
 
 /** Height for 5 rows: ~18px per row = 90px */
 const ROW_HEIGHT = 90
 
-export function CompactBookStrip({ bids, asks, spread, spreadPct, onRowClick }: CompactBookStripProps) {
+export function CompactBookStrip({ bids, asks, spread, spreadPct, onRowClick, pool }: CompactBookStripProps) {
+  // Is the pool price inside the current spread (i.e. the best available liquidity)?
+  const bestBid = bids[0] ? parseFloat(bids[0].price.replace(/,/g, '')) : null
+  const bestAsk = asks[0] ? parseFloat(asks[0].price.replace(/,/g, '')) : null
+  const poolInside =
+    pool?.price != null &&
+    bestBid != null &&
+    bestAsk != null &&
+    pool.price > bestBid &&
+    pool.price < bestAsk
   // Cumulative totals for depth bars
   const bidCumulative = bids.reduce<number[]>((acc, bid, i) => {
     const val = parseFloat(bid.total.replace(/,/g, ''))
@@ -36,6 +55,30 @@ export function CompactBookStrip({ bids, asks, spread, spreadPct, onRowClick }: 
           <span className="text-[11px] text-zinc-500">({spreadPct}%)</span>
         </div>
       </div>
+
+      {/* Pool band — shows the AMM's price right in the book when a pool exists */}
+      {pool && pool.price != null && (
+        <Link
+          href={`/pool/${pool.lpAsset}`}
+          className={`flex items-center justify-between gap-2 border-y px-3 py-1 text-[11px] transition-colors ${
+            poolInside
+              ? 'border-green-500/30 bg-green-500/10 text-green-300 hover:bg-green-500/15'
+              : 'border-zinc-800 bg-zinc-900/40 text-zinc-400 hover:bg-zinc-900'
+          }`}
+          title={poolInside ? 'Pool is the best price right now' : 'AMM pool for this pair'}
+        >
+          <span className="flex items-center gap-1.5">
+            <span aria-hidden>◇</span>
+            <span className="font-semibold uppercase tracking-wider">Pool</span>
+            {poolInside && <span className="text-[10px] uppercase tracking-wider">best</span>}
+          </span>
+          <span className="flex items-center gap-2 font-mono">
+            <span>{formatPrice(pool.price)}</span>
+            {pool.depthLabel && <span className="text-zinc-500">· {pool.depthLabel}</span>}
+            <span aria-hidden>&rarr;</span>
+          </span>
+        </Link>
+      )}
 
       <div className="grid grid-cols-2 divide-x divide-zinc-800">
         {/* Bids (left) — highest first, bars grow from right, columns reversed so price is near spread */}

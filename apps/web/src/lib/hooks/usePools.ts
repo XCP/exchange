@@ -344,6 +344,53 @@ export function usePools(
   }
 }
 
+/** Find the AMM pool for a trading pair (either asset ordering), or null if none exists. */
+export function usePoolByPair(baseAsset: string | null, quoteAsset: string | null) {
+  const params = new URLSearchParams({ limit: '100' })
+  if (baseAsset) params.set('asset', baseAsset)
+  const { data, error, isLoading } = useDexSWR<PoolsResponse>(
+    baseAsset && quoteAsset ? dexUrl(`/pools?${params.toString()}`) : null
+  )
+  const pool =
+    data?.pools?.find(
+      (p) =>
+        (p.asset_a === baseAsset && p.asset_b === quoteAsset) ||
+        (p.asset_a === quoteAsset && p.asset_b === baseAsset)
+    ) ?? null
+  return { pool, error, isLoading }
+}
+
+export interface PoolSwapQuote {
+  estimated_output: number
+  pool_output: number
+  book_output: number
+  book_orders_matched: number
+  give_remaining: number
+  effective_price: number
+  price_impact: number
+  pool_exists: boolean
+}
+
+/**
+ * Best-execution quote for selling `sellQuantityRaw` of `sellAsset` to receive `receiveAsset`,
+ * routed across the order book AND the pool (Counterparty's native /quote endpoint).
+ */
+export function usePoolSwapQuote(
+  sellAsset: string | null,
+  receiveAsset: string | null,
+  sellQuantityRaw: number
+) {
+  const enabled = !!sellAsset && !!receiveAsset && sellQuantityRaw > 0
+  const { data, error, isLoading } = useSWR<{ result: PoolSwapQuote }>(
+    enabled
+      ? counterpartyUrl(`/pools/${sellAsset}/${receiveAsset}/quote?quantity=${sellQuantityRaw}&verbose=true`)
+      : null,
+    fetcher,
+    { keepPreviousData: true, dedupingInterval: 5000 }
+  )
+  return { quote: data?.result ?? null, isLoading, error }
+}
+
 export interface PoolDisplayAmounts {
   base_asset: string
   quote_asset: string

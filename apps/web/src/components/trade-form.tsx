@@ -1,11 +1,13 @@
 'use client'
 
-import { useState as useLocalState } from 'react'
+import { useState as useLocalState, useEffect } from 'react'
 import { useWallet } from '@/lib/wallet/wallet-context'
 import { useCompose } from '@/lib/wallet/useCompose'
 import { useBalance } from '@/lib/hooks/useBalance'
 import { useFeeRate } from '@/lib/hooks/useNetworkInfo'
+import { usePoolSwapQuote } from '@/lib/hooks/usePools'
 import { COMPOSE_STATUS_LABELS } from '@/utils/constants'
+import { formatAmount } from '@/utils/format-amount'
 import { WalletInstallModal } from '@/components/wallet-install-modal'
 
 interface TradeFormProps {
@@ -81,6 +83,42 @@ export function TradeForm({
   const price = parseFloat(priceInput)
   const amount = parseFloat(amountInput?.replace(/,/g, '') || '0')
   const isValid = price > 0 && amount > 0
+
+  // ── Best-execution preview: quote this order against the book + pool ──
+  const [debAmount, setDebAmount] = useLocalState(amountInput)
+  const [debPrice, setDebPrice] = useLocalState(priceInput)
+  useEffect(() => {
+    const t = setTimeout(() => setDebAmount(amountInput), 300)
+    return () => clearTimeout(t)
+  }, [amountInput])
+  useEffect(() => {
+    const t = setTimeout(() => setDebPrice(priceInput), 300)
+    return () => clearTimeout(t)
+  }, [priceInput])
+
+  const dAmount = parseFloat(debAmount?.replace(/,/g, '') || '0')
+  const dPrice = parseFloat(debPrice || '0')
+  const receiveAsset = tradeTab === 'buy' ? baseSymbol : quoteSymbol
+  const receiveDivisible = tradeTab === 'buy' ? baseDivisible : quoteDivisible
+  const sellDivisible = tradeTab === 'buy' ? quoteDivisible : baseDivisible
+  // What you'd sell to execute this order at market now (a buy spends price×amount of quote).
+  const sellHuman = tradeTab === 'buy' ? dPrice * dAmount : dAmount
+  const sellQtyRaw =
+    sellHuman > 0 && sellDivisible !== undefined ? toRawQuantity(sellHuman, sellDivisible) : 0
+  const { quote: swapQuote } = usePoolSwapQuote(sellQtyRaw > 0 ? spendAsset : null, receiveAsset, sellQtyRaw)
+
+  const fromRaw = (raw: number, divisible: boolean) => raw / (divisible ? 1e8 : 1)
+  let preview: { received: number; viaPool: boolean; orders: number; fillablePct: number } | null = null
+  if (swapQuote && sellQtyRaw > 0 && receiveDivisible !== undefined && sellDivisible !== undefined) {
+    const remainingHuman = fromRaw(swapQuote.give_remaining, sellDivisible)
+    const fillable = sellHuman > 0 ? Math.max(0, Math.min(1, (sellHuman - remainingHuman) / sellHuman)) : 0
+    preview = {
+      received: fromRaw(swapQuote.estimated_output, receiveDivisible),
+      viaPool: swapQuote.pool_output > 0,
+      orders: swapQuote.book_orders_matched,
+      fillablePct: Math.round(fillable * 100),
+    }
+  }
 
   return (
     <div className="p-3 border-b border-zinc-800">
@@ -162,6 +200,35 @@ export function TradeForm({
             {totalValue}
           </div>
         </div>
+
+        {/* Best-execution preview against book + pool */}
+        {preview && (
+          <div className="space-y-0.5 rounded-sm border border-zinc-800 bg-zinc-900/40 px-3 py-1.5 text-[11px]">
+            <div className="flex items-center justify-between">
+              <span className="text-zinc-500">At market now</span>
+              <span className="font-mono text-zinc-300">&asymp; {formatAmount(preview.received)} {receiveAsset}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-zinc-500">
+                {preview.viaPool
+                  ? preview.orders > 0
+                    ? `pool + ${preview.orders} order${preview.orders > 1 ? 's' : ''}`
+                    : 'via pool'
+                  : preview.orders > 0
+                    ? `${preview.orders} order${preview.orders > 1 ? 's' : ''}`
+                    : 'no liquidity'}
+              </span>
+              {preview.fillablePct >= 100 ? (
+                <span className="text-green-400">fully fillable</span>
+              ) : (
+                <span className="text-amber-400">&#9888; {preview.fillablePct}% fillable</span>
+              )}
+            </div>
+            {preview.fillablePct < 100 && (
+              <div className="text-zinc-600">The rest would rest on the book.</div>
+            )}
+          </div>
+        )}
 
         {/* Fee */}
         <div className="flex items-center justify-between pt-1 text-xs">

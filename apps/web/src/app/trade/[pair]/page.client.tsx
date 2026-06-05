@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { useTradingPair } from '@/lib/hooks/useTradingPair'
 import { useOrderBook } from '@/lib/hooks/useOrderBook'
+import { usePoolByPair } from '@/lib/hooks/usePools'
 import { MarketHeader } from '@/components/market-header'
 import { Chart } from '@/components/chart'
 import { CompactBookStrip } from '@/components/compact-book-strip'
@@ -12,6 +13,7 @@ import { DataTabs } from '@/components/data-tabs'
 import { TradeForm } from '@/components/trade-form'
 import { QuickStats } from '@/components/quick-stats'
 import { AssetInfo } from '@/components/asset-info'
+import { PoolInfo } from '@/components/pool-info'
 import { TradesList } from '@/components/trades-list'
 import { HoldersTable } from '@/components/holders-table'
 import { MarketsTable } from '@/components/markets-table'
@@ -38,6 +40,20 @@ export default function PairOrdersPage({ params }: { params: Promise<{ pair: str
 
   const { data: pairData, isLoading: pairLoading } = useTradingPair(pairSlug)
   const { bids, asks, spread, spreadPct } = useOrderBook(market)
+  const { pool } = usePoolByPair(baseSymbol, quoteSymbol)
+  // Pool price in this pair's quote-per-base terms (match by asset name, not the
+  // pool's own display orientation, so it lines up with the order book).
+  const poolBand = pool
+    ? (() => {
+        const baseRes = pool.asset_a === baseSymbol ? pool.reserve_a : pool.reserve_b
+        const quoteRes = pool.asset_a === quoteSymbol ? pool.reserve_a : pool.reserve_b
+        return {
+          price: baseRes > 0 ? quoteRes / baseRes : null,
+          lpAsset: pool.lp_asset,
+          depthLabel: `${formatAmount(quoteRes)} ${quoteSymbol}`,
+        }
+      })()
+    : null
 
   // Asset divisibility for quantity normalization
   const baseDivisible = pairData?.asset_info?.divisible
@@ -125,9 +141,10 @@ export default function PairOrdersPage({ params }: { params: Promise<{ pair: str
             {pairData && <QuickStats pairData={pairData} />}
           </div>
 
-          {/* Row 3: Asset Info */}
+          {/* Row 3: Asset Info + Pool Info (when a pool exists for this pair) */}
           <div className="bg-zinc-950 overflow-y-auto">
             {pairData && <AssetInfo pairData={pairData} />}
+            {pool && <PoolInfo pool={pool} quoteSymbol={quoteSymbol} bookPrice={pairData?.last_price} />}
           </div>
         </div>
 
@@ -158,7 +175,7 @@ export default function PairOrdersPage({ params }: { params: Promise<{ pair: str
 
           {/* Row 2: Order Book strip */}
           <div className="bg-zinc-950">
-            <CompactBookStrip bids={bids} asks={asks} spread={spread} spreadPct={spreadPct} onRowClick={handleBookRowClick} />
+            <CompactBookStrip bids={bids} asks={asks} spread={spread} spreadPct={spreadPct} onRowClick={handleBookRowClick} pool={poolBand} />
           </div>
 
           {/* Row 3: Tabs */}
