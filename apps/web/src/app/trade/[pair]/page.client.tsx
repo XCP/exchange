@@ -145,6 +145,13 @@ export default function PairOrdersPage({ params }: { params: Promise<{ pair: str
           <div className="bg-zinc-950 overflow-y-auto">
             {pairData && <AssetInfo pairData={pairData} />}
             {pool && <PoolInfo pool={pool} quoteSymbol={quoteSymbol} bookPrice={pairData?.last_price} />}
+            {pairData && !pool && (
+              <Link href="/pool/create" className="block border-t border-zinc-800 p-3 hover:bg-zinc-900/40 transition-colors">
+                <div className="text-xs font-semibold uppercase tracking-wider text-zinc-400">Pool</div>
+                <div className="mt-1 text-xs text-zinc-500">No AMM pool for {baseSymbol}/{quoteSymbol} yet.</div>
+                <div className="mt-1 text-xs text-green-400">Create one &rarr;</div>
+              </Link>
+            )}
           </div>
         </div>
 

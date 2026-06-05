@@ -70,6 +70,12 @@ function PoolPageInner() {
             <p className="text-xs text-zinc-500">AMM liquidity pools indexed from Counterparty events</p>
           </div>
           <div className="flex items-center gap-3">
+            <Link
+              href="/pool/create"
+              className="rounded-sm bg-green-500 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-zinc-950 hover:bg-green-400 transition-colors"
+            >
+              + Create pool
+            </Link>
             <label className="flex items-center gap-1.5 cursor-pointer select-none">
               <input
                 type="checkbox"
