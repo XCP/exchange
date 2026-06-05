@@ -1,5 +1,6 @@
 import { Suspense } from 'react'
 import type { Metadata } from 'next'
+import { permanentRedirect } from 'next/navigation'
 import { fetchPairStats } from '@/lib/api/server'
 import { buildTradePairMetadata } from '@/lib/metadata'
 import { XCP_IMG_BASE } from '@/utils/constants'
@@ -44,6 +45,10 @@ export async function generateMetadata({ params, searchParams }: Props): Promise
   return { ...meta, icons }
 }
 
-export default function Page({ params }: Props) {
+export default async function Page({ params }: Props) {
+  // Canonicalize to uppercase slug (was handled by proxy.ts, unsupported on Cloudflare).
+  const { pair } = await params
+  const upper = pair.toUpperCase()
+  if (pair !== upper) permanentRedirect(`/trade/${upper}`)
   return <Suspense><PairOrdersPage params={params} /></Suspense>
 }

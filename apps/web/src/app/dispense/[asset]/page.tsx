@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import { permanentRedirect } from 'next/navigation'
 import { fetchDispenserStats, fetchAssetInfo } from '@/lib/api/server'
 import { buildDispenseMetadata } from '@/lib/metadata'
 import { XCP_IMG_BASE } from '@/utils/constants'
@@ -32,6 +33,10 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   }
 }
 
-export default function Page({ params }: Props) {
+export default async function Page({ params }: Props) {
+  // Canonicalize to uppercase slug (was handled by proxy.ts, unsupported on Cloudflare).
+  const { asset } = await params
+  const upper = asset.toUpperCase()
+  if (asset !== upper) permanentRedirect(`/dispense/${upper}`)
   return <AssetDispensersPage params={params} />
 }
