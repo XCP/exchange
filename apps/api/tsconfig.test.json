@@ -1,0 +1,16 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "CommonJS",
+    "moduleResolution": "node",
+    "types": ["@cloudflare/workers-types"],
+    "noEmit": false,
+    "outDir": ".test-dist",
+    "rootDir": "."
+  },
+  "include": [
+    "src/lib/pool-math.ts",
+    "tests/node-test.d.ts",
+    "tests/**/*.test.ts"
+  ]
+}

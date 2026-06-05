@@ -4,8 +4,8 @@ import { useState } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
-import type { ReactNode } from 'react'
-import { CounterCard } from '@/components/home/counter-card'
+import { Chart } from '@/components/chart'
+import { TogglePills } from '@/components/home/toggle-pills'
 import { WalletInstallModal } from '@/components/wallet-install-modal'
 import { useBalance } from '@/lib/hooks/useBalance'
 import { usePool, usePoolAddressPosition, usePoolAssetInfo, usePoolDepositQuote, usePoolWithdrawQuote, type PoolAddressPosition, type PoolDeposit, type PoolDisplayAmounts, type PoolHolder, type PoolMatch, type PoolSummary, type PoolWithdrawal } from '@/lib/hooks/usePools'
@@ -16,6 +16,14 @@ import { formatAmount } from '@/utils/format-amount'
 import { formatTimeAgo } from '@/utils/format-time-ago'
 import { COMPOSE_STATUS_LABELS, XCP_IMG_BASE } from '@/utils/constants'
 
+type PoolDataTab = 'trades' | 'holders' | 'deposits' | 'withdrawals'
+const POOL_DATA_TABS: [PoolDataTab, string][] = [
+  ['trades', 'Trades'],
+  ['holders', 'Holders'],
+  ['deposits', 'Deposits'],
+  ['withdrawals', 'Withdrawals'],
+]
+
 export default function PoolDetailPage() {
   const params = useParams<{ lp_asset: string }>()
   const lpAsset = decodeURIComponent(params.lp_asset ?? '').toUpperCase()
@@ -23,6 +31,7 @@ export default function PoolDetailPage() {
   const { status: walletStatus, address, connect, connecting } = useWallet()
   const { position, isLoading: positionLoading, error: positionError } = usePoolAddressPosition(lpAsset, address)
   const [showInstall, setShowInstall] = useState(false)
+  const [mobileDataTab, setMobileDataTab] = useState<PoolDataTab>('trades')
   const displayBase = pool?.display_base_asset ?? pool?.asset_a
   const displayQuote = pool?.display_quote_asset ?? pool?.asset_b
   const tradePair = pool?.display_pair_slug ?? (displayBase && displayQuote ? `${displayBase}_${displayQuote}` : pool?.pair)
@@ -56,108 +65,325 @@ export default function PoolDetailPage() {
   }
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100">
-      <div className="px-4 py-8">
-        <Link href="/pool" className="text-xs text-zinc-500 hover:text-zinc-300">&larr; Pools</Link>
+    <div className="min-h-screen bg-zinc-950 text-zinc-100 font-sans">
+      <PoolHeader pool={pool} lpAsset={lpAsset} tradePair={tradePair} isLoading={isLoading} />
 
-        <div className="flex items-start justify-between gap-4 mt-4 mb-6 flex-wrap">
-          <div>
-            <div className="flex items-center gap-2 mb-2">
-              {pool && (
-                <>
-                  <Image src={`${XCP_IMG_BASE}/icon/${displayBase}`} alt="" width={24} height={24} className="rounded-sm" unoptimized />
-                  <Image src={`${XCP_IMG_BASE}/icon/${displayQuote}`} alt="" width={24} height={24} className="rounded-sm" unoptimized />
-                </>
-              )}
-              <h1 className="text-lg font-semibold text-zinc-100">{pool ? pool.display_pair ?? `${pool.asset_a}/${pool.asset_b}` : lpAsset}</h1>
-            </div>
-            <p className="text-xs text-zinc-500 font-mono">LP {lpAsset}</p>
-          </div>
+      <div className="grid grid-cols-1 lg:grid-cols-12 lg:min-h-[calc(100vh-37px)] gap-px bg-zinc-800">
+        <div className="hidden lg:flex lg:order-1 col-span-1 lg:col-span-3 bg-zinc-950 flex-col">
           {pool && (
-            <div className="flex items-center gap-2">
-              <Link href={`/trade/${tradePair}`} className="px-2 py-1 text-xs rounded-sm border border-zinc-700 text-zinc-300 hover:border-zinc-500 hover:text-zinc-100 transition-colors">
-                Trade Pair
-              </Link>
-              <Link href={`/${pool.lp_asset}`} className="px-2 py-1 text-xs rounded-sm border border-zinc-700 text-zinc-300 hover:border-zinc-500 hover:text-zinc-100 transition-colors">
-                LP Asset
-              </Link>
-            </div>
+            <PoolManagePanel
+              pool={pool}
+              position={position}
+              walletStatus={walletStatus}
+              address={address}
+              connecting={connecting}
+              onConnect={async () => {
+                if (walletStatus === 'disconnected') {
+                  await connect()
+                } else {
+                  setShowInstall(true)
+                }
+              }}
+            />
+          )}
+          {pool && <PoolKeyDetails pool={pool} totalLpSupplyRaw={totalLpSupplyRaw} />}
+          {pool && (
+            <YourPositionPanel
+              pool={pool}
+              position={position}
+              loading={positionLoading}
+              error={positionError}
+              walletStatus={walletStatus}
+              address={address}
+            />
           )}
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-2 mb-6">
-          <CounterCard label="Base Reserve" loading={isLoading} value={pool ? formatAmount(pool.display_base_reserve ?? pool.reserve_a) : '-'} sub={displayBase} />
-          <CounterCard label="Quote Reserve" loading={isLoading} value={pool ? formatAmount(pool.display_quote_reserve ?? pool.reserve_b) : '-'} sub={displayQuote} />
-          <CounterCard label="Pool Matches" loading={isLoading} value={pool ? pool.match_count.toLocaleString() : '-'} />
-          <CounterCard label="Pool Fees" loading={isLoading} value={pool ? formatDisplayFees(pool) : '-'} sub={displayBase && displayQuote ? `${displayBase} / ${displayQuote}` : undefined} />
-          <CounterCard label="30D Implied APR" loading={isLoading} value={pool ? formatApr(pool.implied_fee_apr_30d) : '-'} />
+        <div className="order-1 lg:order-2 col-span-1 lg:col-span-9 bg-zinc-950 flex flex-col">
+          <div className="lg:hidden flex items-center gap-3 border-b border-zinc-800 px-3 py-2">
+            <div className="flex items-center -space-x-1">
+              {pool && (
+                <>
+                  <Image src={`${XCP_IMG_BASE}/icon/${displayBase}`} alt="" width={24} height={24} className="rounded-sm border border-zinc-900" unoptimized />
+                  <Image src={`${XCP_IMG_BASE}/icon/${displayQuote}`} alt="" width={24} height={24} className="rounded-sm border border-zinc-900" unoptimized />
+                </>
+              )}
+            </div>
+            <span className="text-xs font-semibold text-zinc-100">{pool ? pool.display_pair ?? `${pool.asset_a}/${pool.asset_b}` : lpAsset}</span>
+            <span className="text-sm font-semibold text-zinc-100 font-mono ml-auto">
+              {pool?.display_price != null ? formatAmount(pool.display_price) : '-'}
+            </span>
+          </div>
+
+          {pool && tradePair ? (
+            <Chart pairSlug={tradePair} pairLabel={pool.display_pair ?? `${pool.asset_a}/${pool.asset_b}`} />
+          ) : (
+            <div className="h-[340px] flex items-center justify-center text-xs text-zinc-500">Loading chart...</div>
+          )}
+
+          {pool && pool.restart_count > 0 && (
+            <div className="border-t border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+              This pool has restarted after LP supply reached zero. Earlier reserves may affect position deltas.
+            </div>
+          )}
+
+          <div className="hidden lg:block">
+            <PoolDataTabs
+              holders={holders}
+              pool={pool}
+              totalLpSupplyRaw={totalLpSupplyRaw}
+              matches={matches}
+              deposits={deposits}
+              withdrawals={withdrawals}
+              loading={isLoading}
+            />
+          </div>
         </div>
 
-        {pool && pool.restart_count > 0 && (
-          <div className="mb-6 border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200 rounded-sm">
-            This pool has restarted after LP supply reached zero. Earlier reserves may affect position deltas.
+        <div className="order-3 lg:hidden bg-zinc-950 p-4 border-b border-zinc-800">
+          {pool && (
+            <PoolManagePanel
+              pool={pool}
+              position={position}
+              walletStatus={walletStatus}
+              address={address}
+              connecting={connecting}
+              onConnect={async () => {
+                if (walletStatus === 'disconnected') {
+                  await connect()
+                } else {
+                  setShowInstall(true)
+                }
+              }}
+            />
+          )}
+        </div>
+
+        <div className="order-4 lg:hidden bg-zinc-950 flex border-b border-zinc-800">
+          {POOL_DATA_TABS.map(([tab, label]) => (
+            <button
+              key={tab}
+              onClick={() => setMobileDataTab(tab)}
+              className={`flex-1 py-2.5 text-xs font-semibold uppercase tracking-wider transition-colors ${
+                mobileDataTab === tab
+                  ? 'text-zinc-100 border-b-2 border-green-500'
+                  : 'text-zinc-500 border-b-2 border-transparent'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        <div className="order-5 lg:hidden bg-zinc-950 h-[340px] overflow-y-auto">
+          <PoolTabContent
+            activeTab={mobileDataTab}
+            holders={holders}
+            pool={pool}
+            totalLpSupplyRaw={totalLpSupplyRaw}
+            matches={matches}
+            deposits={deposits}
+            withdrawals={withdrawals}
+            loading={isLoading}
+          />
+        </div>
+      </div>
+
+      {showInstall && <WalletInstallModal onClose={() => setShowInstall(false)} />}
+    </div>
+  )
+}
+
+function PoolHeader({
+  pool,
+  lpAsset,
+  tradePair,
+  isLoading,
+}: {
+  pool: PoolSummary | null
+  lpAsset: string
+  tradePair: string | undefined
+  isLoading: boolean
+}) {
+  const baseAsset = pool?.display_base_asset ?? pool?.asset_a
+  const quoteAsset = pool?.display_quote_asset ?? pool?.asset_b
+  const pairLabel = pool ? pool.display_pair ?? `${pool.asset_a}/${pool.asset_b}` : lpAsset
+
+  return (
+    <div className="border-b border-zinc-800 bg-zinc-950 px-4 py-3">
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+        <Link href="/pool" className="text-xs text-zinc-500 hover:text-zinc-300">Pools</Link>
+
+        <div className="flex items-center gap-3">
+          <div className="flex items-center -space-x-1">
+            {pool && (
+              <>
+                <Image src={`${XCP_IMG_BASE}/icon/${baseAsset}`} alt="" width={32} height={32} className="rounded-sm border border-zinc-950" unoptimized />
+                <Image src={`${XCP_IMG_BASE}/icon/${quoteAsset}`} alt="" width={32} height={32} className="rounded-sm border border-zinc-950" unoptimized />
+              </>
+            )}
           </div>
-        )}
+          <div>
+            <h1 className="text-sm font-semibold text-zinc-100">{pairLabel}</h1>
+            <span className="text-xs text-zinc-500 font-mono">LP {lpAsset}</span>
+          </div>
+        </div>
 
-        {pool && (
-          <YourPositionPanel
-            pool={pool}
-            position={position}
-            loading={positionLoading}
-            error={positionError}
-            walletStatus={walletStatus}
-            address={address}
-            connecting={connecting}
-            onConnect={async () => {
-              if (walletStatus === 'disconnected') {
-                await connect()
-              } else {
-                setShowInstall(true)
-              }
-            }}
-          />
-        )}
-        {showInstall && <WalletInstallModal onClose={() => setShowInstall(false)} />}
+        <div className="h-8 w-px bg-zinc-800 max-sm:hidden" />
 
-        {pool && (
-          <PoolManagePanel
-            pool={pool}
-            position={position}
-            walletStatus={walletStatus}
-            address={address}
-            connecting={connecting}
-            onConnect={async () => {
-              if (walletStatus === 'disconnected') {
-                await connect()
-              } else {
-                setShowInstall(true)
-              }
-            }}
-          />
-        )}
+        <div className="flex items-baseline gap-2">
+          <span className="text-lg font-semibold text-zinc-100 font-mono max-sm:text-base">
+            {isLoading ? '-' : pool?.display_price != null ? formatAmount(pool.display_price) : '-'}
+          </span>
+          <span className="text-xs text-zinc-500">{quoteAsset}</span>
+        </div>
 
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-          <ActivityPanel title="LP Holders">
-            <PoolHoldersTable holders={holders} pool={pool} totalLpSupplyRaw={totalLpSupplyRaw} loading={isLoading} />
-          </ActivityPanel>
-          <ActivityPanel title="Pool Matches">
-            <MatchesTable matches={matches} loading={isLoading} />
-          </ActivityPanel>
-          <ActivityPanel title="Deposits">
-            <DepositsTable deposits={deposits} pool={pool} loading={isLoading} />
-          </ActivityPanel>
-          <ActivityPanel title="Withdrawals">
-            <WithdrawalsTable withdrawals={withdrawals} pool={pool} loading={isLoading} />
-          </ActivityPanel>
+        <div className="hidden md:flex gap-5 items-end">
+          <HeaderStat label="Trades" value={pool ? pool.match_count.toLocaleString() : '-'} />
+          <HeaderStat label="Fees" value={pool ? formatDisplayFees(pool) : '-'} />
+          <HeaderStat label="Fee APY (30D)" value={pool ? formatApy(pool.implied_fee_apy_30d) : '-'} />
+        </div>
+
+        <div className="ml-auto flex items-center gap-2">
+          {pool && tradePair && (
+            <Link href={`/trade/${tradePair}`} className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors">
+              Trade Pair
+            </Link>
+          )}
+          {pool && (
+            <Link href={`/${pool.lp_asset}`} className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors">
+              LP Asset
+            </Link>
+          )}
         </div>
       </div>
     </div>
   )
 }
 
-function formatApr(apr: number | null | undefined) {
-  if (apr == null || !Number.isFinite(apr)) return '-'
-  return `${(apr * 100).toFixed(2)}%`
+function HeaderStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <div className="text-xs text-zinc-500">{label}</div>
+      <div className="text-xs text-zinc-300 font-mono">{value}</div>
+    </div>
+  )
+}
+
+function PoolKeyDetails({ pool, totalLpSupplyRaw }: { pool: PoolSummary; totalLpSupplyRaw: number }) {
+  const baseAsset = pool.display_base_asset ?? pool.asset_a
+  const quoteAsset = pool.display_quote_asset ?? pool.asset_b
+  const totalSupply = totalLpSupplyRaw / 1e8
+
+  return (
+    <section className="border-b border-zinc-800">
+      <div className="px-3 py-2 border-b border-zinc-800 text-xs font-medium text-zinc-300">Pool Details</div>
+      <div className="p-3 space-y-2">
+        <SidebarMetric label="Base Liquidity" value={`${formatAmount(pool.display_base_reserve ?? pool.reserve_a)} ${baseAsset}`} />
+        <SidebarMetric label="Quote Liquidity" value={`${formatAmount(pool.display_quote_reserve ?? pool.reserve_b)} ${quoteAsset}`} />
+        <SidebarMetric label="LP Supply" value={formatAmount(totalSupply)} />
+        <SidebarMetric label="Fees" value={`${formatDisplayFees(pool)} ${baseAsset}/${quoteAsset}`} />
+        <SidebarMetric label="Fee APY (30D)" value={formatApy(pool.implied_fee_apy_30d)} />
+      </div>
+    </section>
+  )
+}
+
+function SidebarMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <span className="text-xs text-zinc-500">{label}</span>
+      <span className="text-xs text-zinc-300 font-mono text-right">{value}</span>
+    </div>
+  )
+}
+
+function PoolDataTabs({
+  holders,
+  pool,
+  totalLpSupplyRaw,
+  matches,
+  deposits,
+  withdrawals,
+  loading,
+}: {
+  holders: PoolHolder[]
+  pool: PoolSummary | null
+  totalLpSupplyRaw: number
+  matches: PoolMatch[]
+  deposits: PoolDeposit[]
+  withdrawals: PoolWithdrawal[]
+  loading: boolean
+}) {
+  const [activeTab, setActiveTab] = useState<PoolDataTab>('trades')
+
+  return (
+    <>
+      <div className="flex border-b border-zinc-800">
+        {POOL_DATA_TABS.map(([tab, label]) => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className={`flex-1 py-2.5 text-xs font-semibold uppercase tracking-wider transition-colors ${
+              activeTab === tab
+                ? 'text-zinc-100 border-b-2 border-green-500'
+                : 'text-zinc-500 border-b-2 border-transparent hover:text-zinc-300'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      <div className="h-[340px] overflow-y-auto">
+        <PoolTabContent
+          activeTab={activeTab}
+          holders={holders}
+          pool={pool}
+          totalLpSupplyRaw={totalLpSupplyRaw}
+          matches={matches}
+          deposits={deposits}
+          withdrawals={withdrawals}
+          loading={loading}
+        />
+      </div>
+    </>
+  )
+}
+
+function PoolTabContent({
+  activeTab,
+  holders,
+  pool,
+  totalLpSupplyRaw,
+  matches,
+  deposits,
+  withdrawals,
+  loading,
+}: {
+  activeTab: PoolDataTab
+  holders: PoolHolder[]
+  pool: PoolSummary | null
+  totalLpSupplyRaw: number
+  matches: PoolMatch[]
+  deposits: PoolDeposit[]
+  withdrawals: PoolWithdrawal[]
+  loading: boolean
+}) {
+  if (activeTab === 'holders') {
+    return <PoolHoldersTable holders={holders} pool={pool} totalLpSupplyRaw={totalLpSupplyRaw} loading={loading} />
+  }
+  if (activeTab === 'deposits') {
+    return <DepositsTable deposits={deposits} pool={pool} loading={loading} />
+  }
+  if (activeTab === 'withdrawals') {
+    return <WithdrawalsTable withdrawals={withdrawals} pool={pool} loading={loading} />
+  }
+  return <MatchesTable matches={matches} loading={loading} />
+}
+
+function formatApy(apy: number | null | undefined) {
+  if (apy == null || !Number.isFinite(apy)) return '-'
+  return `${(apy * 100).toFixed(2)}%`
 }
 
 function formatDisplayFees(pool: PoolSummary) {
@@ -190,7 +416,7 @@ function caveatLabel(caveat: string) {
   return caveat
 }
 
-const DEFAULT_SLIPPAGE_PERCENT = 2.5
+const SLIPPAGE_OPTIONS = [0.5, 1, 2.5] as const
 
 function toRawAmount(value: string, divisible = true) {
   const parsed = parseFloat(value.replace(/,/g, ''))
@@ -203,9 +429,9 @@ function fromRawAmount(value: number | null | undefined, divisible = true) {
   return String(value / (divisible ? 1e8 : 1)).replace(/\.?0+$/, '')
 }
 
-function applySlippage(raw: number | null | undefined) {
+function applySlippage(raw: number | null | undefined, slippagePercent: number) {
   if (raw == null || raw <= 0) return 0
-  return Math.floor(raw * (1 - DEFAULT_SLIPPAGE_PERCENT / 100))
+  return Math.floor(raw * (1 - slippagePercent / 100))
 }
 
 function PoolManagePanel({
@@ -223,7 +449,8 @@ function PoolManagePanel({
   connecting: boolean
   onConnect: () => void | Promise<void>
 }) {
-  const [tab, setTab] = useState<'deposit' | 'withdraw'>('deposit')
+  const [tab, setTab] = useState<'deposit' | 'withdraw' | 'swap'>('deposit')
+  const [slippagePercent, setSlippagePercent] = useState<(typeof SLIPPAGE_OPTIONS)[number]>(1)
   const [depositA, setDepositA] = useState('')
   const [depositB, setDepositB] = useState('')
   const [withdrawAmount, setWithdrawAmount] = useState('')
@@ -247,9 +474,9 @@ function PoolManagePanel({
   const withdrawRaw = toRawAmount(withdrawAmount, true)
   const { quote: depositQuote, isLoading: depositQuoteLoading } = usePoolDepositQuote(pool.asset_a, pool.asset_b, depositARaw)
   const { quote: withdrawQuote, isLoading: withdrawQuoteLoading } = usePoolWithdrawQuote(pool.asset_a, pool.asset_b, withdrawRaw)
-  const minLpQuantity = applySlippage(depositQuote?.quantity_minted_estimate)
-  const minQuantityA = applySlippage(withdrawQuote?.quantity_a_estimate)
-  const minQuantityB = applySlippage(withdrawQuote?.quantity_b_estimate)
+  const minLpQuantity = applySlippage(depositQuote?.quantity_minted_estimate, slippagePercent)
+  const minQuantityA = applySlippage(withdrawQuote?.quantity_a_estimate, slippagePercent)
+  const minQuantityB = applySlippage(withdrawQuote?.quantity_b_estimate, slippagePercent)
   const isBusy = status === 'composing' || status === 'signing' || status === 'broadcasting'
 
   const quotedB = depositQuote?.quantity_b_required != null
@@ -311,11 +538,11 @@ function PoolManagePanel({
   }
 
   return (
-    <section className="mb-6 bg-zinc-900/50 border border-zinc-800 rounded-sm">
+    <section className="border-b border-zinc-800">
       <div className="flex items-center justify-between gap-3 px-3 py-2 border-b border-zinc-800">
         <div>
-          <div className="text-xs font-medium text-zinc-300">Manage Pool</div>
-          <div className="text-[11px] text-zinc-500">Deposit or withdraw with XCP Wallet approval.</div>
+          <div className="text-xs font-medium text-zinc-300">Liquidity</div>
+          <div className="text-[11px] text-zinc-500">Deposit, withdraw, or swap with XCP Wallet approval.</div>
         </div>
         <div className="flex rounded-sm overflow-hidden border border-zinc-800">
           <button
@@ -330,10 +557,26 @@ function PoolManagePanel({
           >
             Withdraw
           </button>
+          <button
+            onClick={() => { setTab('swap'); reset() }}
+            className={`px-3 py-1.5 text-xs border-l border-zinc-800 ${tab === 'swap' ? 'bg-green-500/15 text-green-400' : 'text-zinc-500 hover:text-zinc-300'}`}
+          >
+            Swap
+          </button>
         </div>
       </div>
 
       <div className="p-3 space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-xs text-zinc-500">Slippage</span>
+          <TogglePills
+            options={SLIPPAGE_OPTIONS}
+            value={slippagePercent}
+            onChange={setSlippagePercent}
+            label={(value) => `${value}%`}
+          />
+        </div>
+
         {tab === 'deposit' ? (
           <>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
@@ -363,8 +606,7 @@ function PoolManagePanel({
                 <>
                   Quoted partner: <span className="font-mono text-zinc-300">{quotedB || '-'} {pool.asset_b}</span>
                   <span className="mx-2 text-zinc-700">/</span>
-                  Minimum LP: <span className="font-mono text-zinc-300">{formatAmount(fromRawAmount(minLpQuantity, true) || 0)}</span>
-                  <span className="ml-2 text-zinc-600">({DEFAULT_SLIPPAGE_PERCENT}% slippage)</span>
+                  Minimum LP minted: <span className="font-mono text-zinc-300">{formatAmount(fromRawAmount(minLpQuantity, true) || 0)}</span>
                 </>
               ) : (
                 'Enter an amount to fetch the current pool ratio.'
@@ -373,7 +615,7 @@ function PoolManagePanel({
 
             {actionButton('Deposit Liquidity', !depositValid, submitDeposit)}
           </>
-        ) : (
+        ) : tab === 'withdraw' ? (
           <>
             <PoolAmountInput
               label={pool.lp_asset}
@@ -389,10 +631,9 @@ function PoolManagePanel({
                 'Loading withdraw quote...'
               ) : withdrawQuote?.pool_exists && withdrawQuote.quantity_a_estimate != null && withdrawQuote.quantity_b_estimate != null ? (
                 <>
-                  Minimum receive: <span className="font-mono text-zinc-300">{formatAmount(fromRawAmount(minQuantityA, assetADivisible) || 0)} {pool.asset_a}</span>
+                  Minimum received: <span className="font-mono text-zinc-300">{formatAmount(fromRawAmount(minQuantityA, assetADivisible) || 0)} {pool.asset_a}</span>
                   <span className="mx-2 text-zinc-700">/</span>
                   <span className="font-mono text-zinc-300">{formatAmount(fromRawAmount(minQuantityB, assetBDivisible) || 0)} {pool.asset_b}</span>
-                  <span className="ml-2 text-zinc-600">({DEFAULT_SLIPPAGE_PERCENT}% slippage)</span>
                 </>
               ) : withdrawQuote?.message ? (
                 withdrawQuote.message
@@ -402,6 +643,18 @@ function PoolManagePanel({
             </div>
 
             {actionButton('Withdraw Liquidity', !withdrawValid, submitWithdraw)}
+          </>
+        ) : (
+          <>
+            <div className="rounded-sm border border-zinc-800 bg-zinc-950/40 px-3 py-3 text-xs text-zinc-500">
+              Pool swap composition is not available in this view yet.
+            </div>
+            <button
+              disabled
+              className="w-full rounded-sm bg-zinc-800 px-3 py-2 text-xs font-semibold uppercase tracking-wider text-zinc-500 disabled:opacity-70"
+            >
+              Swap Unavailable
+            </button>
           </>
         )}
 
@@ -468,8 +721,6 @@ function YourPositionPanel({
   error,
   walletStatus,
   address,
-  connecting,
-  onConnect,
 }: {
   pool: PoolSummary
   position: PoolAddressPosition | null
@@ -477,8 +728,6 @@ function YourPositionPanel({
   error: unknown
   walletStatus: 'not_detected' | 'disconnected' | 'connected'
   address: string | null
-  connecting: boolean
-  onConnect: () => void | Promise<void>
 }) {
   const baseAsset = pool.display_base_asset ?? pool.asset_a
   const quoteAsset = pool.display_quote_asset ?? pool.asset_b
@@ -491,22 +740,13 @@ function YourPositionPanel({
     <section className="mb-6 bg-zinc-900/50 border border-zinc-800 rounded-sm">
       <div className="flex items-center justify-between gap-3 px-3 py-2 border-b border-zinc-800">
         <div>
-          <div className="text-xs font-medium text-zinc-300">Your Position</div>
+          <div className="text-xs font-medium text-zinc-300">Your LP Position</div>
           <div className="text-[11px] text-zinc-500 font-mono">{address ? formatAddress(address) : 'Wallet not connected'}</div>
         </div>
-        {walletStatus !== 'connected' && (
-          <button
-            onClick={onConnect}
-            disabled={connecting}
-            className="rounded-sm bg-green-500 px-3 py-1.5 text-xs font-semibold text-zinc-950 hover:bg-green-400 transition-colors disabled:opacity-50"
-          >
-            {connecting ? 'Connecting...' : 'Connect Wallet'}
-          </button>
-        )}
       </div>
 
       {walletStatus !== 'connected' ? (
-        <div className="px-3 py-4 text-xs text-zinc-500">Connect to see your LP balance, reserve claim, and deposit-basis estimate.</div>
+        <div className="px-3 py-4 text-xs text-zinc-500">Connect from the wallet menu to see LP balance, reserve claim, and deposit-basis estimate.</div>
       ) : error ? (
         <div className="px-3 py-4 text-xs text-zinc-500">Could not load your pool position.</div>
       ) : loading ? (
@@ -617,15 +857,6 @@ function PoolHoldersTable({
         })}
       </tbody>
     </table>
-  )
-}
-
-function ActivityPanel({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <section className="bg-zinc-900/50 border border-zinc-800 rounded-sm">
-      <div className="px-3 py-2 border-b border-zinc-800 text-xs font-medium text-zinc-300">{title}</div>
-      <div className="overflow-x-auto">{children}</div>
-    </section>
   )
 }
 

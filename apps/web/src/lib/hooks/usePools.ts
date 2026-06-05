@@ -38,21 +38,37 @@ export interface PoolSummary {
   fees_7d_b?: number
   fees_30d_a?: number
   fees_30d_b?: number
+  volume_a?: number
+  volume_b?: number
+  volume_24h_a?: number
+  volume_24h_b?: number
+  volume_7d_a?: number
+  volume_7d_b?: number
+  volume_30d_a?: number
+  volume_30d_b?: number
   implied_fees_24h_a?: number
   implied_fees_24h_b?: number
   implied_fees_7d_a?: number
   implied_fees_7d_b?: number
   implied_fees_30d_a?: number
   implied_fees_30d_b?: number
-  implied_fee_apr_24h?: number | null
-  implied_fee_apr_7d?: number | null
-  implied_fee_apr_30d?: number | null
+  implied_fee_apy_24h?: number | null
+  implied_fee_apy_7d?: number | null
+  implied_fee_apy_30d?: number | null
   display_fees_24h_base?: number
   display_fees_24h_quote?: number
   display_fees_7d_base?: number
   display_fees_7d_quote?: number
   display_fees_30d_base?: number
   display_fees_30d_quote?: number
+  display_volume_base?: number
+  display_volume_quote?: number
+  display_volume_24h_base?: number
+  display_volume_24h_quote?: number
+  display_volume_7d_base?: number
+  display_volume_7d_quote?: number
+  display_volume_30d_base?: number
+  display_volume_30d_quote?: number
   display_implied_fees_24h_base?: number
   display_implied_fees_24h_quote?: number
   display_implied_fees_7d_base?: number
@@ -223,8 +239,26 @@ export interface PoolWithdrawQuote {
 interface PoolsResponse {
   pools: PoolSummary[]
   total: number
+  summary: PoolListSummary
   limit: number
   offset: number
+}
+
+export interface PoolListSummary {
+  total_pools: number
+  active_pools: number
+  tf_active_pools: number
+  new_pools: number
+  tf_volume_xcp: number
+  total_trades: number
+  tf_trades: number
+  tf_non_xcp_trades: number
+  total_deposits: number
+  tf_deposits: number
+  total_withdrawals: number
+  tf_withdrawals: number
+  xcp_liquidity: number
+  xcp_pool_count: number
 }
 
 interface PoolResponse {
@@ -243,13 +277,31 @@ export type PoolSortKey =
   | 'withdrawal_count'
   | 'last_block_time'
   | 'opened_block_time'
-  | 'implied_fee_apr_30d'
+  | 'total_fees_value'
+  | 'fees_24h_value'
+  | 'fees_7d_value'
+  | 'fees_30d_value'
+  | 'total_volume_value'
+  | 'volume_24h_value'
+  | 'volume_7d_value'
+  | 'volume_30d_value'
+  | 'implied_fee_apy_24h'
+  | 'implied_fee_apy_7d'
+  | 'implied_fee_apy_30d'
+
+export type PoolStatusFilter = 'all' | 'active' | 'inactive'
 
 export function usePools(
   offset = 0,
   limit = 50,
   sort: PoolSortKey = 'match_count',
-  order: 'asc' | 'desc' = 'desc'
+  order: 'asc' | 'desc' = 'desc',
+  filters?: {
+    status?: PoolStatusFilter
+    includeHidden?: boolean
+    tag?: string | null
+    timeframe?: '24h' | '7d' | '30d' | 'all'
+  }
 ) {
   const params = new URLSearchParams({
     limit: String(limit),
@@ -257,6 +309,10 @@ export function usePools(
     sort,
     order,
   })
+  if (filters?.status && filters.status !== 'all') params.set('status', filters.status)
+  if (filters?.includeHidden) params.set('include_hidden', '1')
+  if (filters?.tag) params.set('tag', filters.tag)
+  if (filters?.timeframe) params.set('timeframe', filters.timeframe)
 
   const { data, error, isLoading } = useDexSWR<PoolsResponse>(
     dexUrl(`/pools?${params.toString()}`)
@@ -265,6 +321,22 @@ export function usePools(
   return {
     pools: data?.pools ?? [],
     total: data?.total ?? 0,
+    summary: data?.summary ?? {
+      total_pools: 0,
+      active_pools: 0,
+      tf_active_pools: 0,
+      new_pools: 0,
+      tf_volume_xcp: 0,
+      total_trades: 0,
+      tf_trades: 0,
+      tf_non_xcp_trades: 0,
+      total_deposits: 0,
+      tf_deposits: 0,
+      total_withdrawals: 0,
+      tf_withdrawals: 0,
+      xcp_liquidity: 0,
+      xcp_pool_count: 0,
+    },
     limit: data?.limit ?? limit,
     offset: data?.offset ?? offset,
     error,

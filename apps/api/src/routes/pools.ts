@@ -1,5 +1,6 @@
 import { cacheControl } from "../utils/cache";
 import { orientPoolDisplay } from "../lib/pools";
+import { calculateFeeApy, calculatePoolFeePeriodReturnInQuote } from "../lib/pool-math";
 
 const VALID_POOL_SORTS = new Set([
   "match_count",
@@ -7,8 +8,20 @@ const VALID_POOL_SORTS = new Set([
   "withdrawal_count",
   "last_block_time",
   "opened_block_time",
-  "implied_fee_apr_30d",
+  "total_fees_value",
+  "fees_24h_value",
+  "fees_7d_value",
+  "fees_30d_value",
+  "total_volume_value",
+  "volume_24h_value",
+  "volume_7d_value",
+  "volume_30d_value",
+  "implied_fee_apy_24h",
+  "implied_fee_apy_7d",
+  "implied_fee_apy_30d",
 ]);
+
+const VALID_POOL_STATUSES = new Set(["active", "inactive"]);
 
 const POOL_SORT_SQL: Record<string, string> = {
   match_count: "p.match_count",
@@ -16,10 +29,18 @@ const POOL_SORT_SQL: Record<string, string> = {
   withdrawal_count: "p.withdrawal_count",
   last_block_time: "p.last_block_time",
   opened_block_time: "p.opened_block_time",
-  implied_fee_apr_30d: "implied_fee_apr_30d",
+  total_fees_value: "total_fees_value",
+  fees_24h_value: "fees_24h_value",
+  fees_7d_value: "fees_7d_value",
+  fees_30d_value: "fees_30d_value",
+  total_volume_value: "total_volume_value",
+  volume_24h_value: "volume_24h_value",
+  volume_7d_value: "volume_7d_value",
+  volume_30d_value: "volume_30d_value",
+  implied_fee_apy_24h: "implied_fee_period_return_24h",
+  implied_fee_apy_7d: "implied_fee_period_return_7d",
+  implied_fee_apy_30d: "implied_fee_period_return_30d",
 };
-
-const YEAR_SECONDS = 365 * 24 * 60 * 60;
 
 interface PoolRow {
   lp_asset: string;
@@ -48,9 +69,40 @@ interface PoolRow {
 }
 
 interface PoolListRow extends PoolRow {
+  fees_24h_a: number;
+  fees_24h_b: number;
+  fees_7d_a: number;
+  fees_7d_b: number;
   fees_30d_a: number;
   fees_30d_b: number;
-  implied_fee_apr_30d: number | null;
+  volume_a: number;
+  volume_b: number;
+  volume_24h_a: number;
+  volume_24h_b: number;
+  volume_7d_a: number;
+  volume_7d_b: number;
+  volume_30d_a: number;
+  volume_30d_b: number;
+  implied_fee_period_return_24h: number | null;
+  implied_fee_period_return_7d: number | null;
+  implied_fee_period_return_30d: number | null;
+}
+
+interface PoolListSummaryRow {
+  total_pools: number;
+  active_pools: number;
+  tf_active_pools: number;
+  new_pools: number;
+  tf_volume_xcp: number;
+  total_trades: number;
+  tf_trades: number;
+  tf_non_xcp_trades: number;
+  total_deposits: number;
+  tf_deposits: number;
+  total_withdrawals: number;
+  tf_withdrawals: number;
+  xcp_liquidity: number;
+  xcp_pool_count: number;
 }
 
 interface AddressPoolRow {
@@ -99,21 +151,6 @@ function withPoolDisplay<T extends { asset_a: string; asset_b: string; reserve_a
   };
 }
 
-function calculatePoolFeeAprInQuote(
-  baseReserve: number,
-  quoteReserve: number,
-  baseFees: number,
-  quoteFees: number,
-  windowSeconds: number
-): number | null {
-  if (baseReserve <= 0 || quoteReserve <= 0 || windowSeconds <= 0) return null;
-  const price = quoteReserve / baseReserve;
-  const feeValueInQuote = quoteFees + baseFees * price;
-  const poolValueInQuote = quoteReserve + baseReserve * price;
-  const periodReturn = poolValueInQuote > 0 ? feeValueInQuote / poolValueInQuote : 0;
-  return periodReturn * (YEAR_SECONDS / windowSeconds);
-}
-
 function displayAmounts(
   pool: ReturnType<typeof withPoolDisplay>,
   quantityA: number,
@@ -142,6 +179,11 @@ export async function handlePools(request: Request, db: D1Database): Promise<Res
     : "match_count";
   const order = url.searchParams.get("order") === "asc" ? "ASC" : "DESC";
   const asset = url.searchParams.get("asset")?.toUpperCase();
+  const tag = url.searchParams.get("tag");
+  const status = VALID_POOL_STATUSES.has(url.searchParams.get("status") ?? "")
+    ? url.searchParams.get("status")!
+    : null;
+  const includeHidden = url.searchParams.get("include_hidden") === "1";
   const limit = Math.min(
     parseInt(url.searchParams.get("limit") ?? "50", 10) || 50,
     500
@@ -151,7 +193,17 @@ export async function handlePools(request: Request, db: D1Database): Promise<Res
     0
   );
   const now = Math.floor(Date.now() / 1000);
+  const dayAgo = now - 24 * 60 * 60;
+  const weekAgo = now - 7 * 24 * 60 * 60;
   const monthAgo = now - 30 * 24 * 60 * 60;
+  const timeframe = url.searchParams.get("timeframe");
+  const timeframeCutoff = timeframe === "24h"
+    ? dayAgo
+    : timeframe === "7d"
+      ? weekAgo
+      : timeframe === "30d"
+        ? monthAgo
+        : 0;
 
   let query = `SELECT
     p.lp_asset, p.pair, p.asset_a, p.asset_b,
@@ -161,41 +213,231 @@ export async function handlePools(request: Request, db: D1Database): Promise<Res
     p.deposit_count, p.withdrawal_count, p.match_count, p.restart_count,
     p.total_fees_a, p.total_fees_b, p.total_fees_a_raw, p.total_fees_b_raw,
     p.updated_at,
+    COALESCE(f.fees_24h_a, 0) AS fees_24h_a,
+    COALESCE(f.fees_24h_b, 0) AS fees_24h_b,
+    COALESCE(f.fees_7d_a, 0) AS fees_7d_a,
+    COALESCE(f.fees_7d_b, 0) AS fees_7d_b,
     COALESCE(f.fees_30d_a, 0) AS fees_30d_a,
     COALESCE(f.fees_30d_b, 0) AS fees_30d_b,
+    COALESCE(f.volume_a, 0) AS volume_a,
+    COALESCE(f.volume_b, 0) AS volume_b,
+    COALESCE(f.volume_24h_a, 0) AS volume_24h_a,
+    COALESCE(f.volume_24h_b, 0) AS volume_24h_b,
+    COALESCE(f.volume_7d_a, 0) AS volume_7d_a,
+    COALESCE(f.volume_7d_b, 0) AS volume_7d_b,
+    COALESCE(f.volume_30d_a, 0) AS volume_30d_a,
+    COALESCE(f.volume_30d_b, 0) AS volume_30d_b,
+    CASE
+      WHEN p.reserve_a > 0 AND p.reserve_b > 0
+      THEN COALESCE(f.fees_24h_b, 0) + COALESCE(f.fees_24h_a, 0) * (p.reserve_b / p.reserve_a)
+      ELSE 0
+    END AS fees_24h_value,
+    CASE
+      WHEN p.reserve_a > 0 AND p.reserve_b > 0
+      THEN COALESCE(f.fees_7d_b, 0) + COALESCE(f.fees_7d_a, 0) * (p.reserve_b / p.reserve_a)
+      ELSE 0
+    END AS fees_7d_value,
+    CASE
+      WHEN p.reserve_a > 0 AND p.reserve_b > 0
+      THEN COALESCE(f.fees_30d_b, 0) + COALESCE(f.fees_30d_a, 0) * (p.reserve_b / p.reserve_a)
+      ELSE 0
+    END AS fees_30d_value,
+    CASE
+      WHEN p.reserve_a > 0 AND p.reserve_b > 0
+      THEN p.total_fees_b + p.total_fees_a * (p.reserve_b / p.reserve_a)
+      ELSE 0
+    END AS total_fees_value,
+    CASE
+      WHEN p.reserve_a > 0 AND p.reserve_b > 0
+      THEN COALESCE(f.volume_b, 0) + COALESCE(f.volume_a, 0) * (p.reserve_b / p.reserve_a)
+      ELSE 0
+    END AS total_volume_value,
+    CASE
+      WHEN p.reserve_a > 0 AND p.reserve_b > 0
+      THEN COALESCE(f.volume_24h_b, 0) + COALESCE(f.volume_24h_a, 0) * (p.reserve_b / p.reserve_a)
+      ELSE 0
+    END AS volume_24h_value,
+    CASE
+      WHEN p.reserve_a > 0 AND p.reserve_b > 0
+      THEN COALESCE(f.volume_7d_b, 0) + COALESCE(f.volume_7d_a, 0) * (p.reserve_b / p.reserve_a)
+      ELSE 0
+    END AS volume_7d_value,
+    CASE
+      WHEN p.reserve_a > 0 AND p.reserve_b > 0
+      THEN COALESCE(f.volume_30d_b, 0) + COALESCE(f.volume_30d_a, 0) * (p.reserve_b / p.reserve_a)
+      ELSE 0
+    END AS volume_30d_value,
+    CASE
+      WHEN p.reserve_a > 0 AND p.reserve_b > 0
+      THEN (
+        (COALESCE(f.fees_24h_b, 0) + COALESCE(f.fees_24h_a, 0) * (p.reserve_b / p.reserve_a))
+        / (p.reserve_b + p.reserve_a * (p.reserve_b / p.reserve_a))
+      )
+      ELSE NULL
+    END AS implied_fee_period_return_24h,
+    CASE
+      WHEN p.reserve_a > 0 AND p.reserve_b > 0
+      THEN (
+        (COALESCE(f.fees_7d_b, 0) + COALESCE(f.fees_7d_a, 0) * (p.reserve_b / p.reserve_a))
+        / (p.reserve_b + p.reserve_a * (p.reserve_b / p.reserve_a))
+      )
+      ELSE NULL
+    END AS implied_fee_period_return_7d,
     CASE
       WHEN p.reserve_a > 0 AND p.reserve_b > 0
       THEN (
         (COALESCE(f.fees_30d_b, 0) + COALESCE(f.fees_30d_a, 0) * (p.reserve_b / p.reserve_a))
         / (p.reserve_b + p.reserve_a * (p.reserve_b / p.reserve_a))
-      ) * ?
+      )
       ELSE NULL
-    END AS implied_fee_apr_30d
+    END AS implied_fee_period_return_30d
   FROM pools p
   LEFT JOIN (
     SELECT lp_asset,
-           SUM(CASE WHEN fee_asset = asset_a THEN fee_quantity ELSE 0 END) AS fees_30d_a,
-           SUM(CASE WHEN fee_asset = asset_b THEN fee_quantity ELSE 0 END) AS fees_30d_b
+           SUM(CASE WHEN fee_asset = asset_a AND block_time >= ? THEN fee_quantity ELSE 0 END) AS fees_24h_a,
+           SUM(CASE WHEN fee_asset = asset_b AND block_time >= ? THEN fee_quantity ELSE 0 END) AS fees_24h_b,
+           SUM(CASE WHEN fee_asset = asset_a AND block_time >= ? THEN fee_quantity ELSE 0 END) AS fees_7d_a,
+           SUM(CASE WHEN fee_asset = asset_b AND block_time >= ? THEN fee_quantity ELSE 0 END) AS fees_7d_b,
+           SUM(CASE WHEN fee_asset = asset_a AND block_time >= ? THEN fee_quantity ELSE 0 END) AS fees_30d_a,
+           SUM(CASE WHEN fee_asset = asset_b AND block_time >= ? THEN fee_quantity ELSE 0 END) AS fees_30d_b,
+           SUM(CASE WHEN forward_asset = asset_a THEN forward_quantity WHEN backward_asset = asset_a THEN backward_quantity ELSE 0 END) AS volume_a,
+           SUM(CASE WHEN forward_asset = asset_b THEN forward_quantity WHEN backward_asset = asset_b THEN backward_quantity ELSE 0 END) AS volume_b,
+           SUM(CASE WHEN block_time >= ? THEN CASE WHEN forward_asset = asset_a THEN forward_quantity WHEN backward_asset = asset_a THEN backward_quantity ELSE 0 END ELSE 0 END) AS volume_24h_a,
+           SUM(CASE WHEN block_time >= ? THEN CASE WHEN forward_asset = asset_b THEN forward_quantity WHEN backward_asset = asset_b THEN backward_quantity ELSE 0 END ELSE 0 END) AS volume_24h_b,
+           SUM(CASE WHEN block_time >= ? THEN CASE WHEN forward_asset = asset_a THEN forward_quantity WHEN backward_asset = asset_a THEN backward_quantity ELSE 0 END ELSE 0 END) AS volume_7d_a,
+           SUM(CASE WHEN block_time >= ? THEN CASE WHEN forward_asset = asset_b THEN forward_quantity WHEN backward_asset = asset_b THEN backward_quantity ELSE 0 END ELSE 0 END) AS volume_7d_b,
+           SUM(CASE WHEN block_time >= ? THEN CASE WHEN forward_asset = asset_a THEN forward_quantity WHEN backward_asset = asset_a THEN backward_quantity ELSE 0 END ELSE 0 END) AS volume_30d_a,
+           SUM(CASE WHEN block_time >= ? THEN CASE WHEN forward_asset = asset_b THEN forward_quantity WHEN backward_asset = asset_b THEN backward_quantity ELSE 0 END ELSE 0 END) AS volume_30d_b
     FROM pool_matches
-    WHERE status IN ('valid', 'completed') AND block_time >= ?
+    WHERE status IN ('valid', 'completed')
     GROUP BY lp_asset
   ) f ON f.lp_asset = p.lp_asset`;
   let countQuery = `SELECT COUNT(*) AS total FROM pools`;
-  const binds: (string | number)[] = [YEAR_SECONDS / (30 * 24 * 60 * 60), monthAgo];
+  let summaryQuery = `SELECT
+    COUNT(*) AS total_pools,
+    SUM(CASE WHEN reserve_a_raw > 0 AND reserve_b_raw > 0 THEN 1 ELSE 0 END) AS active_pools,
+    SUM(CASE WHEN EXISTS (
+      SELECT 1 FROM pool_matches pm
+      WHERE pm.lp_asset = pools.lp_asset
+        AND pm.status IN ('valid', 'completed')
+        ${timeframeCutoff > 0 ? `AND pm.block_time >= ${timeframeCutoff}` : ""}
+    ) THEN 1 ELSE 0 END) AS tf_active_pools,
+    SUM(CASE WHEN opened_block_time IS NOT NULL ${timeframeCutoff > 0 ? `AND opened_block_time >= ${timeframeCutoff}` : ""} THEN 1 ELSE 0 END) AS new_pools,
+    COALESCE(SUM((
+      SELECT COALESCE(SUM(CASE
+        WHEN pm.forward_asset = 'XCP' THEN pm.forward_quantity
+        WHEN pm.backward_asset = 'XCP' THEN pm.backward_quantity
+        ELSE 0
+      END), 0)
+      FROM pool_matches pm
+      WHERE pm.lp_asset = pools.lp_asset
+        AND pm.status IN ('valid', 'completed')
+        ${timeframeCutoff > 0 ? `AND pm.block_time >= ${timeframeCutoff}` : ""}
+    )), 0) AS tf_volume_xcp,
+    COALESCE(SUM(match_count), 0) AS total_trades,
+    COALESCE(SUM((
+      SELECT COUNT(*) FROM pool_matches pm
+      WHERE pm.lp_asset = pools.lp_asset
+        AND pm.status IN ('valid', 'completed')
+        ${timeframeCutoff > 0 ? `AND pm.block_time >= ${timeframeCutoff}` : ""}
+    )), 0) AS tf_trades,
+    COALESCE(SUM(CASE WHEN asset_a <> 'XCP' AND asset_b <> 'XCP' THEN (
+      SELECT COUNT(*) FROM pool_matches pm
+      WHERE pm.lp_asset = pools.lp_asset
+        AND pm.status IN ('valid', 'completed')
+        ${timeframeCutoff > 0 ? `AND pm.block_time >= ${timeframeCutoff}` : ""}
+    ) ELSE 0 END), 0) AS tf_non_xcp_trades,
+    COALESCE(SUM(deposit_count), 0) AS total_deposits,
+    COALESCE(SUM((
+      SELECT COUNT(*) FROM pool_deposits pd
+      WHERE pd.lp_asset = pools.lp_asset
+        AND pd.status = 'valid'
+        ${timeframeCutoff > 0 ? `AND pd.block_time >= ${timeframeCutoff}` : ""}
+    )), 0) AS tf_deposits,
+    COALESCE(SUM(withdrawal_count), 0) AS total_withdrawals,
+    COALESCE(SUM((
+      SELECT COUNT(*) FROM pool_withdrawals pw
+      WHERE pw.lp_asset = pools.lp_asset
+        AND pw.status = 'valid'
+        ${timeframeCutoff > 0 ? `AND pw.block_time >= ${timeframeCutoff}` : ""}
+    )), 0) AS tf_withdrawals,
+    COALESCE(SUM(CASE
+      WHEN asset_a = 'XCP' THEN reserve_a
+      WHEN asset_b = 'XCP' THEN reserve_b
+      ELSE 0
+    END), 0) AS xcp_liquidity,
+    SUM(CASE WHEN asset_a = 'XCP' OR asset_b = 'XCP' THEN 1 ELSE 0 END) AS xcp_pool_count
+  FROM pools`;
+  const binds: (string | number)[] = [
+    dayAgo,
+    dayAgo,
+    weekAgo,
+    weekAgo,
+    monthAgo,
+    monthAgo,
+    dayAgo,
+    dayAgo,
+    weekAgo,
+    weekAgo,
+    monthAgo,
+    monthAgo,
+  ];
   const countBinds: (string | number)[] = [];
+  const summaryBinds: (string | number)[] = [];
+  const conditions: string[] = [];
+  const countConditions: string[] = [];
 
   if (asset) {
-    query += ` WHERE p.asset_a = ? OR p.asset_b = ? OR p.lp_asset = ?`;
-    countQuery += ` WHERE asset_a = ? OR asset_b = ? OR lp_asset = ?`;
+    conditions.push(`(p.asset_a = ? OR p.asset_b = ? OR p.lp_asset = ?)`);
+    countConditions.push(`(asset_a = ? OR asset_b = ? OR lp_asset = ?)`);
     binds.push(asset, asset, asset);
     countBinds.push(asset, asset, asset);
+    summaryBinds.push(asset, asset, asset);
+  }
+
+  if (tag) {
+    conditions.push(`(p.asset_a IN (SELECT ta.asset FROM tag_assets ta JOIN tags t ON ta.tag_id = t.id WHERE t.slug = ? AND t.tag_type = 'collection')
+      OR p.asset_b IN (SELECT ta.asset FROM tag_assets ta JOIN tags t ON ta.tag_id = t.id WHERE t.slug = ? AND t.tag_type = 'collection'))`);
+    countConditions.push(`(asset_a IN (SELECT ta.asset FROM tag_assets ta JOIN tags t ON ta.tag_id = t.id WHERE t.slug = ? AND t.tag_type = 'collection')
+      OR asset_b IN (SELECT ta.asset FROM tag_assets ta JOIN tags t ON ta.tag_id = t.id WHERE t.slug = ? AND t.tag_type = 'collection'))`);
+    binds.push(tag, tag);
+    countBinds.push(tag, tag);
+    summaryBinds.push(tag, tag);
+  }
+
+  if (status === "active") {
+    conditions.push(`p.reserve_a_raw > 0 AND p.reserve_b_raw > 0`);
+    countConditions.push(`reserve_a_raw > 0 AND reserve_b_raw > 0`);
+  } else if (status === "inactive") {
+    conditions.push(`(p.reserve_a_raw <= 0 OR p.reserve_b_raw <= 0)`);
+    countConditions.push(`(reserve_a_raw <= 0 OR reserve_b_raw <= 0)`);
+  }
+
+  if (!includeHidden) {
+    conditions.push(`NOT EXISTS (
+      SELECT 1 FROM pair_stats ps
+      WHERE ps.hidden = 1
+        AND (ps.pair = p.pair OR ps.pair = p.asset_b || '_' || p.asset_a)
+    )`);
+    countConditions.push(`NOT EXISTS (
+      SELECT 1 FROM pair_stats ps
+      WHERE ps.hidden = 1
+        AND (ps.pair = pools.pair OR ps.pair = pools.asset_b || '_' || pools.asset_a)
+    )`);
+  }
+
+  if (conditions.length) query += ` WHERE ${conditions.join(" AND ")}`;
+  if (countConditions.length) {
+    countQuery += ` WHERE ${countConditions.join(" AND ")}`;
+    summaryQuery += ` WHERE ${countConditions.join(" AND ")}`;
   }
 
   query += ` ORDER BY ${POOL_SORT_SQL[sort]} ${order}, p.lp_asset ASC LIMIT ? OFFSET ?`;
 
-  const [result, countResult] = await Promise.all([
+  const [result, countResult, summaryResult] = await Promise.all([
     db.prepare(query).bind(...binds, limit, offset).all<PoolListRow>(),
     db.prepare(countQuery).bind(...countBinds).first<{ total: number }>(),
+    db.prepare(summaryQuery).bind(...summaryBinds).first<PoolListSummaryRow>(),
   ]);
 
   return Response.json(
@@ -206,18 +448,68 @@ export async function handlePools(request: Request, db: D1Database): Promise<Res
         const quoteFees30d = displayPool.display_quote_asset === pool.asset_a ? pool.fees_30d_a : pool.fees_30d_b;
         return {
           ...displayPool,
+          fees_24h_a: pool.fees_24h_a,
+          fees_24h_b: pool.fees_24h_b,
+          fees_7d_a: pool.fees_7d_a,
+          fees_7d_b: pool.fees_7d_b,
           fees_30d_a: pool.fees_30d_a,
           fees_30d_b: pool.fees_30d_b,
+          volume_a: pool.volume_a,
+          volume_b: pool.volume_b,
+          volume_24h_a: pool.volume_24h_a,
+          volume_24h_b: pool.volume_24h_b,
+          volume_7d_a: pool.volume_7d_a,
+          volume_7d_b: pool.volume_7d_b,
+          volume_30d_a: pool.volume_30d_a,
+          volume_30d_b: pool.volume_30d_b,
+          implied_fees_24h_a: pool.fees_24h_a,
+          implied_fees_24h_b: pool.fees_24h_b,
+          implied_fees_7d_a: pool.fees_7d_a,
+          implied_fees_7d_b: pool.fees_7d_b,
           implied_fees_30d_a: pool.fees_30d_a,
           implied_fees_30d_b: pool.fees_30d_b,
+          display_fees_24h_base: displayPool.display_base_asset === pool.asset_a ? pool.fees_24h_a : pool.fees_24h_b,
+          display_fees_24h_quote: displayPool.display_quote_asset === pool.asset_a ? pool.fees_24h_a : pool.fees_24h_b,
+          display_fees_7d_base: displayPool.display_base_asset === pool.asset_a ? pool.fees_7d_a : pool.fees_7d_b,
+          display_fees_7d_quote: displayPool.display_quote_asset === pool.asset_a ? pool.fees_7d_a : pool.fees_7d_b,
           display_fees_30d_base: baseFees30d,
           display_fees_30d_quote: quoteFees30d,
+          display_volume_base: displayPool.display_base_asset === pool.asset_a ? pool.volume_a : pool.volume_b,
+          display_volume_quote: displayPool.display_quote_asset === pool.asset_a ? pool.volume_a : pool.volume_b,
+          display_volume_24h_base: displayPool.display_base_asset === pool.asset_a ? pool.volume_24h_a : pool.volume_24h_b,
+          display_volume_24h_quote: displayPool.display_quote_asset === pool.asset_a ? pool.volume_24h_a : pool.volume_24h_b,
+          display_volume_7d_base: displayPool.display_base_asset === pool.asset_a ? pool.volume_7d_a : pool.volume_7d_b,
+          display_volume_7d_quote: displayPool.display_quote_asset === pool.asset_a ? pool.volume_7d_a : pool.volume_7d_b,
+          display_volume_30d_base: displayPool.display_base_asset === pool.asset_a ? pool.volume_30d_a : pool.volume_30d_b,
+          display_volume_30d_quote: displayPool.display_quote_asset === pool.asset_a ? pool.volume_30d_a : pool.volume_30d_b,
+          display_implied_fees_24h_base: displayPool.display_base_asset === pool.asset_a ? pool.fees_24h_a : pool.fees_24h_b,
+          display_implied_fees_24h_quote: displayPool.display_quote_asset === pool.asset_a ? pool.fees_24h_a : pool.fees_24h_b,
+          display_implied_fees_7d_base: displayPool.display_base_asset === pool.asset_a ? pool.fees_7d_a : pool.fees_7d_b,
+          display_implied_fees_7d_quote: displayPool.display_quote_asset === pool.asset_a ? pool.fees_7d_a : pool.fees_7d_b,
           display_implied_fees_30d_base: baseFees30d,
           display_implied_fees_30d_quote: quoteFees30d,
-          implied_fee_apr_30d: pool.implied_fee_apr_30d,
+          implied_fee_apy_24h: calculateFeeApy(pool.implied_fee_period_return_24h, 24 * 60 * 60),
+          implied_fee_apy_7d: calculateFeeApy(pool.implied_fee_period_return_7d, 7 * 24 * 60 * 60),
+          implied_fee_apy_30d: calculateFeeApy(pool.implied_fee_period_return_30d, 30 * 24 * 60 * 60),
         };
       }),
       total: countResult?.total ?? 0,
+      summary: {
+        total_pools: summaryResult?.total_pools ?? 0,
+        active_pools: summaryResult?.active_pools ?? 0,
+        tf_active_pools: summaryResult?.tf_active_pools ?? 0,
+        new_pools: summaryResult?.new_pools ?? 0,
+        tf_volume_xcp: summaryResult?.tf_volume_xcp ?? 0,
+        total_trades: summaryResult?.total_trades ?? 0,
+        tf_trades: summaryResult?.tf_trades ?? 0,
+        tf_non_xcp_trades: summaryResult?.tf_non_xcp_trades ?? 0,
+        total_deposits: summaryResult?.total_deposits ?? 0,
+        tf_deposits: summaryResult?.tf_deposits ?? 0,
+        total_withdrawals: summaryResult?.total_withdrawals ?? 0,
+        tf_withdrawals: summaryResult?.tf_withdrawals ?? 0,
+        xcp_liquidity: summaryResult?.xcp_liquidity ?? 0,
+        xcp_pool_count: summaryResult?.xcp_pool_count ?? 0,
+      },
       limit,
       offset,
     },
@@ -372,7 +664,7 @@ export async function handlePool(
   const baseFees30d = displayPool.display_base_asset === pool.asset_a ? feeWindows?.fees_30d_a ?? 0 : feeWindows?.fees_30d_b ?? 0;
   const quoteFees30d = displayPool.display_quote_asset === pool.asset_a ? feeWindows?.fees_30d_a ?? 0 : feeWindows?.fees_30d_b ?? 0;
 
-  const poolWithApr = {
+  const poolWithApy = {
     ...displayPool,
     fees_24h_a: feeWindows?.fees_24h_a ?? 0,
     fees_24h_b: feeWindows?.fees_24h_b ?? 0,
@@ -398,32 +690,38 @@ export async function handlePool(
     display_implied_fees_7d_quote: quoteFees7d,
     display_implied_fees_30d_base: baseFees30d,
     display_implied_fees_30d_quote: quoteFees30d,
-    implied_fee_apr_24h: calculatePoolFeeAprInQuote(
-      displayPool.display_base_reserve,
-      displayPool.display_quote_reserve,
-      baseFees24h,
-      quoteFees24h,
+    implied_fee_apy_24h: calculateFeeApy(
+      calculatePoolFeePeriodReturnInQuote(
+        displayPool.display_base_reserve,
+        displayPool.display_quote_reserve,
+        baseFees24h,
+        quoteFees24h
+      ),
       24 * 60 * 60
     ),
-    implied_fee_apr_7d: calculatePoolFeeAprInQuote(
-      displayPool.display_base_reserve,
-      displayPool.display_quote_reserve,
-      baseFees7d,
-      quoteFees7d,
+    implied_fee_apy_7d: calculateFeeApy(
+      calculatePoolFeePeriodReturnInQuote(
+        displayPool.display_base_reserve,
+        displayPool.display_quote_reserve,
+        baseFees7d,
+        quoteFees7d
+      ),
       7 * 24 * 60 * 60
     ),
-    implied_fee_apr_30d: calculatePoolFeeAprInQuote(
-      displayPool.display_base_reserve,
-      displayPool.display_quote_reserve,
-      baseFees30d,
-      quoteFees30d,
+    implied_fee_apy_30d: calculateFeeApy(
+      calculatePoolFeePeriodReturnInQuote(
+        displayPool.display_base_reserve,
+        displayPool.display_quote_reserve,
+        baseFees30d,
+        quoteFees30d
+      ),
       30 * 24 * 60 * 60
     ),
   };
 
   return Response.json(
     {
-      pool: poolWithApr,
+      pool: poolWithApy,
       total_lp_supply_raw: supply?.total_lp_supply_raw ?? 0,
       total_lp_supply: supply?.total_lp_supply ?? 0,
       holders: holders.results,
