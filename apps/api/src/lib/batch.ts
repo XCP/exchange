@@ -1,4 +1,4 @@
-/** Max statements per db.batch() call — D1 allows 100 bound params per statement */
+/** Max statements per db.batch() call. D1 allows 100 bound params per statement. */
 export const D1_BATCH_LIMIT = 50;
 
 /** Execute prepared statements in batches to stay within D1 limits */

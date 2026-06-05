@@ -29,7 +29,7 @@ export function WalletButton() {
       <>
         <button
           onClick={() => {
-            // Re-check — extension may have injected after the 2s detection window
+            // Re-check in case the extension injected after the 2s detection window.
             if (window.xcpwallet) {
               connect()
             } else {

@@ -1,6 +1,7 @@
 'use client'
 
-import { useCallback, useRef } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
+import Link from 'next/link'
 import { useTrades } from '@/lib/hooks/useTrades'
 import { formatPrice } from '@/utils/format-price'
 import { formatAddress } from '@/utils/format-address'
@@ -24,8 +25,11 @@ function compactTime(ts: number): string {
 export function TradesList({ market, baseSymbol, quoteSymbol }: TradesListProps) {
   const { trades, isLoading, loadMore, loadingMore, hasMore } = useTrades(market, baseSymbol, quoteSymbol)
   const loadMoreRef = useRef(loadMore)
-  loadMoreRef.current = loadMore
   const observerRef = useRef<IntersectionObserver | null>(null)
+
+  useEffect(() => {
+    loadMoreRef.current = loadMore
+  }, [loadMore])
 
   const sentinelRef = useCallback((node: HTMLDivElement | null) => {
     if (observerRef.current) {
@@ -77,45 +81,53 @@ export function TradesList({ market, baseSymbol, quoteSymbol }: TradesListProps)
           </tr>
         </thead>
         <tbody>
-          {trades.map((trade) => (
-            <tr
-              key={trade.id ?? `${trade.tx0}-${trade.tx1}`}
-              className="hover:bg-zinc-900 cursor-default"
-            >
-              <td className="text-zinc-500 font-mono px-2 py-px">
-                {trade.block_time ? compactTime(trade.block_time) : '—'}
-              </td>
-              <td className={`font-medium px-2 py-px ${trade.side === 'buy' ? 'text-green-400' : 'text-red-400'}`}>
-                {trade.side === 'buy' ? 'Buy' : 'Sell'}
-              </td>
-              <td className="text-right text-zinc-300 font-mono px-2 py-px">
-                {formatPrice(trade.price)}
-              </td>
-              <td className="text-right text-zinc-400 font-mono px-2 py-px">
-                {formatPrice(trade.amount)}
-              </td>
-              <td className="text-right text-zinc-400 font-mono px-2 py-px max-sm:hidden">
-                {formatPrice(trade.volume)}
-              </td>
-              <td className="text-right text-zinc-500 font-mono px-2 py-px max-sm:hidden">
-                {formatAddress(trade.taker)}
-              </td>
-              <td className="text-right text-zinc-500 font-mono px-2 py-px max-sm:hidden">
-                {formatAddress(trade.maker)}
-              </td>
-              <td className="text-center px-2 py-px max-sm:hidden">
-                <a
-                  href={`https://xcp.io/tx/${trade.tx0}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-zinc-500 hover:text-zinc-300 transition-colors"
-                  title="View transaction"
-                >
-                  ↗
-                </a>
-              </td>
-            </tr>
-          ))}
+          {trades.map((trade) => {
+            return (
+              <tr
+                key={trade.id ?? `${trade.tx0}-${trade.tx1}`}
+                className="hover:bg-zinc-900 cursor-default"
+              >
+                <td className="text-zinc-500 font-mono px-2 py-px">
+                  {trade.block_time ? compactTime(trade.block_time) : '-'}
+                </td>
+                <td className={`font-medium px-2 py-px ${trade.side === 'buy' ? 'text-green-400' : 'text-red-400'}`}>
+                  {trade.side === 'buy' ? 'Buy' : 'Sell'}{trade.source_type === 'pool' ? ' Pool' : ''}
+                </td>
+                <td className="text-right text-zinc-300 font-mono px-2 py-px">
+                  {formatPrice(trade.price)}
+                </td>
+                <td className="text-right text-zinc-400 font-mono px-2 py-px">
+                  {formatPrice(trade.amount)}
+                </td>
+                <td className="text-right text-zinc-400 font-mono px-2 py-px max-sm:hidden">
+                  {formatPrice(trade.volume)}
+                </td>
+                <td className="text-right text-zinc-500 font-mono px-2 py-px max-sm:hidden">
+                  {formatAddress(trade.taker)}
+                </td>
+                <td className="text-right text-zinc-500 font-mono px-2 py-px max-sm:hidden">
+                  {trade.source_type === 'pool' && trade.lp_asset ? (
+                    <Link href={`/pool/${trade.lp_asset}`} title={trade.lp_asset} className="hover:text-zinc-300 hover:underline">
+                      Pool {trade.lp_asset}
+                    </Link>
+                  ) : (
+                    <span title={trade.maker}>{formatAddress(trade.maker)}</span>
+                  )}
+                </td>
+                <td className="text-center px-2 py-px max-sm:hidden">
+                  <a
+                    href={`https://xcp.io/tx/${trade.tx0}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-zinc-500 hover:text-zinc-300 transition-colors"
+                    title="View transaction"
+                  >
+                    -&gt;
+                  </a>
+                </td>
+              </tr>
+            )
+          })}
         </tbody>
       </table>
       {loadingMore && (

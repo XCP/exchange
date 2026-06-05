@@ -1,12 +1,12 @@
 import { batchExec } from "../lib/batch";
 
-/** Max items per SQL chunk — constrained by D1's 100 bound params per statement */
+/** Max items per SQL chunk - constrained by D1's 100 bound params per statement */
 const BULK_CHUNK = 95;
 
 /**
  * Bulk-update pair_stats for many pairs at once using set-based SQL.
  * Uses 7 queries per chunk of 95 pairs (6 reads batched + 1 JSON write)
- * instead of 7 queries per individual pair — ~100x fewer D1 queries.
+ * instead of 7 queries per individual pair - ~100x fewer D1 queries.
  */
 export async function bulkUpdatePairStats(
   db: D1Database,
@@ -166,7 +166,7 @@ export async function bulkUpdatePairStats(
       };
     });
 
-    // Single JSON UPDATE...FROM — 1 query for all pairs in the chunk
+    // Single JSON UPDATE...FROM - 1 query for all pairs in the chunk
     await db
       .prepare(
         `UPDATE pair_stats SET
@@ -552,7 +552,7 @@ export async function refreshStalePairStats(
   const t30d = now - 2592000;
 
   // Refresh all pairs that had any trade in the last 30 days or have
-  // non-zero rolling stats — ensures updated_at stays current
+  // non-zero rolling stats - ensures updated_at stays current
   const stalePairs = await db
     .prepare(
       `SELECT pair, base_asset, quote_asset FROM pair_stats
@@ -617,7 +617,7 @@ export async function backfillMissingLongnames(
       ]);
       updated++;
     } catch {
-      // Skip failures — will retry next cron tick
+      // Skip failures - will retry next cron tick
     }
   }
 

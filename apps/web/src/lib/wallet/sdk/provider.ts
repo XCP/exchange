@@ -1,5 +1,5 @@
 import type { XcpProvider, XcpWalletEvents, SignPsbtParams, ConnectionProof, ConnectResult } from './types'
-import { BTC_ADDRESS_REGEX, HEX_REGEX, TXID_REGEX } from './constants'
+import { BTC_ADDRESS_REGEX, HEX_REGEX, TXID_REGEX, DISCONNECTED } from './constants'
 
 /** Per-method timeouts: interactive methods get longer, passive methods are short. */
 const Timeout = {
@@ -28,12 +28,33 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   })
 }
 
+// Transport-death signatures from the extension's MV3 service worker restarting
+// mid-request. User rejection and timeouts are deliberately excluded — those are
+// terminal and must not be retried.
+const TRANSIENT_DISCONNECT = /disconnect|context invalidated|message port closed|receiving end does not exist/i
+function isTransientDisconnect(error: unknown): boolean {
+  if (error && typeof error === 'object' && (error as { code?: unknown }).code === DISCONNECTED) return true
+  return TRANSIENT_DISCONNECT.test(error instanceof Error ? error.message : String(error ?? ''))
+}
+
 /** Typed wrapper around a raw XcpProvider. */
 export class XcpWallet {
   constructor(private readonly provider: XcpProvider) {}
 
   private request(args: { method: string; params?: unknown[] }, timeout: number): Promise<unknown> {
     return withTimeout(this.provider.request(args), timeout)
+  }
+
+  // Sign requests retry once if the service worker drops mid-flight. The wallet
+  // persists each flow by (origin, method, params), so the retry recovers a
+  // result the user already approved or rejoins an open prompt — never a second popup.
+  private async signRequest(args: { method: string; params?: unknown[] }, timeout: number): Promise<unknown> {
+    try {
+      return await this.request(args, timeout)
+    } catch (error) {
+      if (!isTransientDisconnect(error)) throw error
+      return this.request(args, timeout)
+    }
   }
 
   async connect(): Promise<ConnectResult> {
@@ -74,7 +95,7 @@ export class XcpWallet {
   }
 
   async signMessage(message: string): Promise<string> {
-    const result = await this.request({
+    const result = await this.signRequest({
       method: 'xcp_signMessage',
       params: [message],
     }, Timeout.interactive)
@@ -84,7 +105,7 @@ export class XcpWallet {
   }
 
   async signTransaction(hex: string): Promise<string> {
-    const result = await this.request({
+    const result = await this.signRequest({
       method: 'xcp_signTransaction',
       params: [hex],
     }, Timeout.interactive)
@@ -101,7 +122,7 @@ export class XcpWallet {
     const params: SignPsbtParams = { hex: psbtHex }
     if (signInputs) params.signInputs = signInputs
     if (sighashTypes) params.sighashTypes = sighashTypes
-    const result = await this.request({
+    const result = await this.signRequest({
       method: 'xcp_signPsbt',
       params: [params],
     }, Timeout.interactive)

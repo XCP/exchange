@@ -1,9 +1,10 @@
 import type { NextConfig } from "next";
+import path from "node:path";
 
 const nextConfig: NextConfig = {
   reactCompiler: true,
   turbopack: {
-    root: '../..',
+    root: path.resolve(process.cwd(), "../.."),
   },
   images: {
     remotePatterns: [

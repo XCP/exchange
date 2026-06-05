@@ -1,5 +1,5 @@
 /**
- * xcpdex API Worker — Hono on Cloudflare Workers.
+ * xcpdex API Worker - Hono on Cloudflare Workers.
  * Routes: market data, portfolio, swaps, indexer cron.
  */
 
@@ -27,6 +27,7 @@ import { handleSearch } from "./routes/search";
 import { handleBlock } from "./routes/block";
 import { handleTags, handleAssetTags } from "./routes/tags";
 import { handleDeals } from "./routes/deals";
+import { handleAddressPools, handlePool, handlePoolAddress, handlePools } from "./routes/pools";
 import { refreshDealScores } from "./indexer/deal-scores";
 import { indexAllAssets, syncNewAssets } from "./indexer/assets";
 import { handleDispensersLatest, handleDispensesLatest } from "./routes/dispensers-latest";
@@ -34,8 +35,9 @@ import { syncTags, syncTokenscanCollections, syncPepeWtfCollections, syncStampch
 import { handleGetSwaps, handleGetSwap, handleCancelSwap, handlePrepareListingPsbt, handleCompleteListingPsbt, handlePrepareFill, handleCompleteFill, handlePrepareCancelSwap } from "./routes/swaps";
 import { checkPendingFills } from "./lib/swap-monitor";
 import { syncBlocks } from "./indexer/sync-block";
+import { syncPools } from "./indexer/pool-snapshot";
 import { runCatchupAggregation, runCatchupStats, runCatchupDispenserStats, aggregateCandlesForPair } from "./indexer/aggregate";
-import { backfillTrades, backfillDispenses, backfillDispensers } from "./indexer/backfill";
+import { backfillTrades, backfillDispenses, backfillDispensers, backfillPoolTradesFromIndexedMatches } from "./indexer/backfill";
 import { syncOrders, syncDispensers, runSnapshotStep, reindexOrders } from "./indexer/snapshot";
 import { getMode, setMode, deleteState } from "./indexer/state";
 import { updatePairStats, refreshStalePairStats, backfillMissingLongnames } from "./indexer/stats";
@@ -52,11 +54,11 @@ type Bindings = Env;
 
 const app = new Hono<{ Bindings: Bindings }>();
 
-// ── Middleware ───────────────────────────────────────────────────────────
+// Middleware
 
 app.use('*', cors());
 
-// Fix scientific notation in JSON responses (e.g. 7.1e-7 → 0.00000071)
+// Fix scientific notation in JSON responses (e.g. 7.1e-7 -> 0.00000071).
 app.use('*', async (c, next) => {
   await next();
   const ct = c.res.headers.get('Content-Type') || '';
@@ -79,7 +81,7 @@ app.use('/indexer/*', async (c, next) => {
   return auth(c, next);
 });
 
-// ── Public Routes ───────────────────────────────────────────────────────
+// Public Routes
 
 app.get('/ohlc/:pair', (c) => handleOhlc(c.req.raw, c.env.DB, c.req.param('pair')));
 app.get('/trades/:pair', (c) => handleTrades(c.req.raw, c.env.DB, c.req.param('pair')));
@@ -106,8 +108,12 @@ app.get('/block', (c) => handleBlock(c.env.DB));
 app.get('/tags', (c) => handleTags(c.req.raw, c.env.DB));
 app.get('/tags/asset/:asset', (c) => handleAssetTags(c.req.raw, c.env.DB, c.req.param('asset')));
 app.get('/deals', (c) => handleDeals(c.req.raw, c.env.DB));
+app.get('/pools', (c) => handlePools(c.req.raw, c.env.DB));
+app.get('/pools/:lpAsset', (c) => handlePool(new URL(c.req.url), c.env.DB, c.req.param('lpAsset')));
+app.get('/pools/:lpAsset/addresses/:address', (c) => handlePoolAddress(new URL(c.req.url), c.env.DB, c.req.param('lpAsset'), c.req.param('address')));
+app.get('/addresses/:address/pools', (c) => handleAddressPools(new URL(c.req.url), c.env.DB, c.req.param('address')));
 
-// ── Swap Routes ─────────────────────────────────────────────────────────
+// Swap Routes
 
 app.get('/swaps', (c) => handleGetSwaps(c.req.raw, c.env.DB));
 app.get('/swaps/:id', (c) => handleGetSwap(c.env.DB, c.req.param('id')));
@@ -118,19 +124,20 @@ app.post('/swaps/:id/complete-fill', (c) => handleCompleteFill(c.req.raw, c.env.
 app.post('/swaps/:id/prepare-cancel', (c) => handlePrepareCancelSwap(c.env.DB, c.req.param('id')));
 app.post('/swaps/:id/cancel', (c) => handleCancelSwap(c.req.raw, c.env.DB, c.req.param('id')));
 
-// ── Status ──────────────────────────────────────────────────────────────
+// Status
 
 app.get('/status', async (c) => {
   const db = c.env.DB;
   const mode = await getMode(db);
 
-  const [tradeCount, pairCount, openOrderCount, dispenseCount, openDispenserCount, candleCount, state] =
+  const [tradeCount, pairCount, openOrderCount, dispenseCount, openDispenserCount, poolCount, candleCount, state] =
     await db.batch([
       db.prepare(`SELECT COUNT(*) as cnt FROM trades`),
       db.prepare(`SELECT COUNT(*) as cnt FROM pair_stats`),
       db.prepare(`SELECT COUNT(*) as cnt FROM orders WHERE status = 'open'`),
       db.prepare(`SELECT COUNT(*) as cnt FROM dispenses`),
       db.prepare(`SELECT COUNT(*) as cnt FROM dispensers WHERE status < 10`),
+      db.prepare(`SELECT COUNT(*) as cnt FROM pools`),
       db.prepare(`SELECT COUNT(*) as cnt FROM candles`),
       db.prepare(`SELECT key, value FROM indexer_state`),
     ]);
@@ -146,6 +153,7 @@ app.get('/status', async (c) => {
     open_orders: cnt(openOrderCount),
     dispenses: cnt(dispenseCount),
     open_dispensers: cnt(openDispenserCount),
+    pools: cnt(poolCount),
     candles: cnt(candleCount),
     indexer: Object.fromEntries(
       stateRows
@@ -155,7 +163,7 @@ app.get('/status', async (c) => {
   });
 });
 
-// ── Indexer Routes (auth handled by middleware) ─────────────────────────
+// Indexer Routes (auth handled by middleware)
 
 app.post('/indexer/refresh-deals', async (c) => {
   const result = await refreshDealScores(c.env.DB);
@@ -185,6 +193,7 @@ app.post('/indexer/start', async (c) => {
     deleteState(c.env.DB, "dispense_backfill_total"),
     deleteState(c.env.DB, "dispenser_backfill_cursor"),
     deleteState(c.env.DB, "dispenser_backfill_total"),
+    deleteState(c.env.DB, "pool_snapshot_cursor"),
     deleteState(c.env.DB, "aggregation_cursor"),
     deleteState(c.env.DB, "sync_lock"),
   ]);
@@ -236,14 +245,48 @@ app.post('/indexer/sync', async (c) => {
   return Response.json(await syncBlocks(c.env.DB, c.env.CP_API_BASE, maxBlocks));
 });
 
+app.post('/indexer/sync-pools', async (c) => {
+  const url = new URL(c.req.url);
+  const maxPages = Math.min(parseInt(url.searchParams.get("pages") ?? "10", 10), 50);
+  const cursor = url.searchParams.get("cursor");
+  return Response.json(await syncPools(c.env.DB, c.env.CP_API_BASE, maxPages, cursor));
+});
+
+app.post('/indexer/backfill-pool-trades', async (c) => {
+  const limit = Math.min(parseInt(new URL(c.req.url).searchParams.get("limit") ?? "500", 10), 2000);
+  const result = await backfillPoolTradesFromIndexedMatches(c.env.DB, limit);
+
+  if (result.affected_pairs.length > 0) {
+    const placeholders = result.affected_pairs.map(() => "?").join(",");
+    const pairs = await c.env.DB
+      .prepare(
+        `SELECT pair, base_asset, quote_asset, MIN(block_time) AS first_time
+         FROM trades
+         WHERE pair IN (${placeholders})
+         GROUP BY pair, base_asset, quote_asset`
+      )
+      .bind(...result.affected_pairs)
+      .all<{ pair: string; base_asset: string; quote_asset: string; first_time: number }>();
+
+    for (const p of pairs.results) {
+      await aggregateCandlesForPair(c.env.DB, p.pair, p.first_time ?? 0);
+      await updatePairStats(c.env.DB, p.pair, p.base_asset, p.quote_asset);
+    }
+  }
+
+  return Response.json(result);
+});
+
 app.post('/indexer/full-sync', async (c) => {
-  const [orderResult, dispenserResult] = await Promise.allSettled([
+  const [orderResult, dispenserResult, poolResult] = await Promise.allSettled([
     syncOrders(c.env.DB, c.env.CP_API_BASE),
     syncDispensers(c.env.DB, c.env.CP_API_BASE),
+    syncPools(c.env.DB, c.env.CP_API_BASE),
   ]);
   return Response.json({
     orders: orderResult.status === "fulfilled" ? orderResult.value : { error: String(orderResult.reason) },
     dispensers: dispenserResult.status === "fulfilled" ? dispenserResult.value : { error: String(dispenserResult.reason) },
+    pools: poolResult.status === "fulfilled" ? poolResult.value : { error: String(poolResult.reason) },
   });
 });
 
@@ -264,6 +307,7 @@ app.post('/indexer/reset', async (c) => {
     deleteState(c.env.DB, "dispense_backfill_total"),
     deleteState(c.env.DB, "dispenser_backfill_cursor"),
     deleteState(c.env.DB, "dispenser_backfill_total"),
+    deleteState(c.env.DB, "pool_snapshot_cursor"),
     deleteState(c.env.DB, "aggregation_cursor"),
   ]);
   return Response.json({ ok: true, mode: "IDLE" });
@@ -293,7 +337,7 @@ app.post('/indexer/sync-tags', async (c) => {
   return Response.json({ ok: true, ...await fn() });
 });
 
-// ── Cron ─────────────────────────────────────────────────────────────────
+// Cron
 
 // The scheduled handler is separate from Hono (Workers API requirement)
 async function scheduled(env: Env): Promise<void> {
@@ -312,33 +356,33 @@ async function scheduled(env: Env): Promise<void> {
       case "IDLE": break;
       case "BACKFILL_TRADES": {
         const r = await backfillTrades(env.DB, env.CP_API_BASE, 20);
-        console.log(`Cron: backfill trades — ${r.inserted} inserted, ${r.progress}% done`);
+        console.log(`Cron: backfill trades - ${r.inserted} inserted, ${r.progress}% done`);
         break;
       }
       case "BACKFILL_DISPENSES": {
         const r = await backfillDispenses(env.DB, env.CP_API_BASE, 20);
-        console.log(`Cron: backfill dispenses — ${r.inserted} inserted, ${r.progress}% done`);
+        console.log(`Cron: backfill dispenses - ${r.inserted} inserted, ${r.progress}% done`);
         break;
       }
       case "BACKFILL_DISPENSERS": {
         const r = await backfillDispensers(env.DB, env.CP_API_BASE, 20);
-        console.log(`Cron: backfill dispensers — ${r.inserted} inserted, ${r.progress}% done`);
+        console.log(`Cron: backfill dispensers - ${r.inserted} inserted, ${r.progress}% done`);
         break;
       }
       case "SNAPSHOT_SYNC": {
         const r = await runSnapshotStep(env.DB, env.CP_API_BASE);
-        console.log(`Cron: snapshot sync — phase=${r.phase}, done=${r.done}`);
+        console.log(`Cron: snapshot sync - phase=${r.phase}, done=${r.done}`);
         break;
       }
       case "BUILD_AGGREGATES": {
         const r = await runCatchupAggregation(env.DB);
-        console.log(`Cron: aggregation — done=${r.done}`);
+        console.log(`Cron: aggregation - done=${r.done}`);
         break;
       }
       case "REFRESH_STATS": {
         const statResult = await runCatchupStats(env.DB);
         const dispResult = await runCatchupDispenserStats(env.DB);
-        console.log(`Cron: stats refresh — pairs=${statResult.updated}, dispensers=${dispResult.updated}`);
+        console.log(`Cron: stats refresh - pairs=${statResult.processed}, dispensers=${dispResult.processed}`);
         if (statResult.done && dispResult.done) {
           await setMode(env.DB, "FOLLOWING");
         }

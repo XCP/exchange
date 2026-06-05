@@ -18,6 +18,7 @@ export async function handleAnalytics(
   // Efficient hidden filters for raw tables (NOT IN is faster than correlated NOT EXISTS)
   const tradeHidden = includeHidden ? "" : " AND pair NOT IN (SELECT pair FROM pair_stats WHERE hidden = 1)";
   const dispenseHidden = includeHidden ? "" : " AND asset NOT IN (SELECT asset FROM dispenser_stats WHERE hidden = 1)";
+  const orderTradeOnly = " AND source_type = 'order'";
 
   // Collection tag filter subquery (each usage adds 1 bound ? param)
   const tagSub = `(SELECT ta.asset FROM tag_assets ta JOIN tags t ON ta.tag_id = t.id WHERE t.slug = ?)`;
@@ -46,7 +47,7 @@ export async function handleAnalytics(
   const dispCountCol = tf === "all" ? "total_dispense_count" : `dispense_count_${tf}`;
   const dispPctCol = tf === "all" ? "0" : `price_change_${tf}`;
 
-  // For "all" timeframe without tag, SQL returns 0 — overridden by Counterparty API result_count
+  // For "all" timeframe without tag, SQL returns 0; overridden by Counterparty API result_count.
   // When tag is set, always compute from DB (scoped count is fast enough)
   const tfOrdersExpr = tf === "all" && !tag
     ? "0"
@@ -71,7 +72,7 @@ export async function handleAnalytics(
   let topBtcBuyersResults: unknown[] = [];
   let topBtcSellersResults: unknown[] = [];
 
-  // Section: summary — counter cards + leaderboards (all from pre-computed stats tables, fast)
+  // Section: summary: counter cards + leaderboards (all from pre-computed stats tables, fast).
   if (!section || section === "summary") {
     // Compute tag bind params for summary queries (order must match ? placeholders in SQL)
     const tradeTagBinds: string[] = [];
@@ -215,7 +216,7 @@ export async function handleAnalytics(
     topDispensedCollResults = topDispensedColl.results;
   }
 
-  // Section: charts — volume timeseries from raw tables
+  // Section: charts: volume timeseries from raw tables.
   if (!section || section === "charts") {
     const [dailyTradeVolume, dailyDispenseVolume, dailyBtcTradeVolume] = await db.batch([
       db.prepare(
@@ -252,13 +253,14 @@ export async function handleAnalytics(
     dailyBtcTradeVolumeResults = dailyBtcTradeVolume.results;
   }
 
-  // Section: traders — top trader GROUP BY queries from raw tables
+  // Section: traders - maker is an order-book concept. AMM pool fills count
+  // toward taker/trader volume because the source is consuming pool liquidity.
   if (!section || section === "traders") {
     const [topMakers, topTakers, topBtcBuyers, topBtcSellers] = await db.batch([
       db.prepare(
         `SELECT maker AS address, ROUND(SUM(volume), 2) AS volume, COUNT(*) AS trades
          FROM trades
-         WHERE quote_asset = ?${timeFilt}${tradeHidden}
+         WHERE quote_asset = ?${timeFilt}${tradeHidden}${orderTradeOnly}
          GROUP BY maker ORDER BY volume DESC LIMIT 21`
       ).bind(quoteAsset),
       db.prepare(
@@ -281,7 +283,7 @@ export async function handleAnalytics(
       db.prepare(
         `SELECT address, ROUND(SUM(volume), 8) AS volume, SUM(trades) AS trades FROM (
            SELECT maker AS address, SUM(volume) AS volume, COUNT(*) AS trades
-           FROM trades WHERE quote_asset = 'BTC'${timeFilt}${tradeHidden}
+           FROM trades WHERE quote_asset = 'BTC'${timeFilt}${tradeHidden}${orderTradeOnly}
            GROUP BY maker
            UNION ALL
            SELECT source AS address, SUM(btc_amount) AS volume, COUNT(*) AS trades
