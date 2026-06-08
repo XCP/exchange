@@ -128,6 +128,13 @@ export interface PoolMatch {
   backward_asset: string
   forward_quantity: number
   backward_quantity: number
+  reserve_a_before: number | null
+  reserve_b_before: number | null
+  reserve_a_after: number | null
+  reserve_b_after: number | null
+  effective_price: number | null
+  price_before: number | null
+  price_after: number | null
   fee_asset: string
   fee_quantity: number
   fee_bps: number

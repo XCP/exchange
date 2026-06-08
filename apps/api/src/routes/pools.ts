@@ -587,7 +587,10 @@ export async function handlePool(
       .prepare(
         `SELECT event_index, tx_hash, tx_index, block_index, block_time, source, lp_asset, pair,
                 asset_a, asset_b, forward_asset, backward_asset,
-                forward_quantity, backward_quantity, fee_asset, fee_quantity, fee_bps,
+                forward_quantity, backward_quantity,
+                reserve_a_before, reserve_b_before, reserve_a_after, reserve_b_after,
+                effective_price, price_before, price_after,
+                fee_asset, fee_quantity, fee_bps,
                 order_tx_hash, status
          FROM pool_matches
          WHERE lp_asset = ?

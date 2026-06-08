@@ -7,6 +7,16 @@ export interface PoolEventResult {
   pair: string;
 }
 
+export interface PoolMatchExecutionContext {
+  reserveABefore: number | null;
+  reserveBBefore: number | null;
+  reserveAAfter: number | null;
+  reserveBAfter: number | null;
+  effectivePrice: number | null;
+  priceBefore: number | null;
+  priceAfter: number | null;
+}
+
 export async function findPoolLpAsset(
   db: D1Database,
   assetA: string,
@@ -389,7 +399,8 @@ export function processPoolMatch(
   lpAsset: string,
   eventIndex: number,
   blockIndex: number,
-  blockTime: number
+  blockTime: number,
+  executionContext?: PoolMatchExecutionContext
 ): PoolEventResult | null {
   const rawAssetA = params.asset_a as string | undefined;
   const rawAssetB = params.asset_b as string | undefined;
@@ -410,10 +421,13 @@ export function processPoolMatch(
         .prepare(
           `INSERT OR IGNORE INTO pool_matches
            (event_index, tx_hash, tx_index, block_index, block_time, source, lp_asset, pair, asset_a, asset_b,
-            forward_asset, backward_asset, forward_quantity_raw, backward_quantity_raw,
-            forward_quantity, backward_quantity, fee_asset, fee_quantity_raw, fee_quantity,
-            fee_bps, order_tx_hash, status)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+             forward_asset, backward_asset, forward_quantity_raw, backward_quantity_raw,
+             forward_quantity, backward_quantity,
+             reserve_a_before, reserve_b_before, reserve_a_after, reserve_b_after,
+             effective_price, price_before, price_after,
+             fee_asset, fee_quantity_raw, fee_quantity,
+             fee_bps, order_tx_hash, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
         )
         .bind(
           eventIndex,
@@ -432,6 +446,13 @@ export function processPoolMatch(
           parseQuantity(params.backward_quantity),
           eventQuantity(params, "forward_quantity_normalized", "forward_quantity", "forward_asset_info"),
           eventQuantity(params, "backward_quantity_normalized", "backward_quantity", "backward_asset_info"),
+          executionContext?.reserveABefore ?? null,
+          executionContext?.reserveBBefore ?? null,
+          executionContext?.reserveAAfter ?? null,
+          executionContext?.reserveBAfter ?? null,
+          executionContext?.effectivePrice ?? null,
+          executionContext?.priceBefore ?? null,
+          executionContext?.priceAfter ?? null,
           backwardAsset,
           parseQuantity(params.fee_quantity),
           eventQuantity(params, "fee_quantity_normalized", "fee_quantity", "backward_asset_info"),

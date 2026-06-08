@@ -12,6 +12,7 @@ import { eventQuantity, normalizeRawQuantity, parseQuantity } from "../lib/quant
 import {
   findPoolPairByLpAsset,
   findPoolLpAsset,
+  type PoolMatchExecutionContext,
   processOpenPool,
   processPoolDeposit,
   processPoolMatch,
@@ -77,6 +78,78 @@ interface SyncResult {
   pool_withdrawals_inserted: number;
   pool_matches_inserted: number;
   pool_fee_accruals_inserted: number;
+}
+
+interface PoolReserveState {
+  assetA: string;
+  assetB: string;
+  reserveA: number;
+  reserveB: number;
+}
+
+function poolUpdateKey(pair: string, txHash: string | undefined): string | null {
+  return txHash ? `${pair}\u0000${txHash}` : null;
+}
+
+function poolPrice(reserveA: number | null, reserveB: number | null): number | null {
+  if (reserveA == null || reserveB == null || reserveA <= 0 || reserveB <= 0) return null;
+  return reserveB / reserveA;
+}
+
+function getPoolUpdateState(params: Record<string, unknown>): PoolReserveState | null {
+  const assetA = params.asset_a as string | undefined;
+  const assetB = params.asset_b as string | undefined;
+  if (!assetA || !assetB) return null;
+  return {
+    assetA,
+    assetB,
+    reserveA: eventQuantity(params, "reserve_a_normalized", "reserve_a", "asset_a_info"),
+    reserveB: eventQuantity(params, "reserve_b_normalized", "reserve_b", "asset_b_info"),
+  };
+}
+
+function computePoolMatchExecutionContext(
+  params: Record<string, unknown>,
+  afterState: PoolReserveState | null
+): PoolMatchExecutionContext | undefined {
+  if (!afterState) return undefined;
+
+  const forwardAsset = params.forward_asset as string | undefined;
+  const backwardAsset = params.backward_asset as string | undefined;
+  if (!forwardAsset || !backwardAsset) return undefined;
+
+  const forwardQuantity = eventQuantity(params, "forward_quantity_normalized", "forward_quantity", "forward_asset_info");
+  const backwardQuantity = eventQuantity(params, "backward_quantity_normalized", "backward_quantity", "backward_asset_info");
+  if (forwardQuantity <= 0 || backwardQuantity <= 0) return undefined;
+
+  let reserveABefore = afterState.reserveA;
+  let reserveBBefore = afterState.reserveB;
+
+  if (backwardAsset === afterState.assetA && forwardAsset === afterState.assetB) {
+    reserveABefore -= backwardQuantity;
+    reserveBBefore += forwardQuantity;
+  } else if (backwardAsset === afterState.assetB && forwardAsset === afterState.assetA) {
+    reserveBBefore -= backwardQuantity;
+    reserveABefore += forwardQuantity;
+  } else {
+    return undefined;
+  }
+
+  if (reserveABefore < 0 || reserveBBefore < 0) return undefined;
+
+  const effectivePrice = forwardAsset === afterState.assetB
+    ? forwardQuantity / backwardQuantity
+    : backwardQuantity / forwardQuantity;
+
+  return {
+    reserveABefore,
+    reserveBBefore,
+    reserveAAfter: afterState.reserveA,
+    reserveBAfter: afterState.reserveB,
+    effectivePrice,
+    priceBefore: poolPrice(reserveABefore, reserveBBefore),
+    priceAfter: poolPrice(afterState.reserveA, afterState.reserveB),
+  };
 }
 
 async function fetchCurrentBlock(
@@ -775,6 +848,7 @@ export async function syncBlocks(
 
     const stmts: ((db: D1Database) => D1PreparedStatement)[] = [];
     const pendingPoolBalances: PendingPoolBalances = new Map();
+    const poolUpdatesByTxPair = new Map<string, PoolReserveState>();
 
     for (const event of events) {
       try {
@@ -949,6 +1023,11 @@ export async function syncBlocks(
             const pool = processPoolUpdate(params, lpAsset, event.event_index, blockIndex, eventBlockTime);
             if (pool) {
               stmts.push(pool.stmt);
+              const updateState = getPoolUpdateState(params);
+              const updateKey = poolUpdateKey(pool.pair, params.tx_hash as string | undefined);
+              if (updateState && updateKey) {
+                poolUpdatesByTxPair.set(updateKey, updateState);
+              }
               affectedPools.add(pool.lpAsset);
               knownPoolLpByPair.set(pool.pair, pool.lpAsset);
               knownPoolPairByLp.set(pool.lpAsset, pool.pair);
@@ -1021,7 +1100,19 @@ export async function syncBlocks(
             const pair = makePoolPair(assetA, assetB);
             const lpAsset = knownPoolLpByPair.get(pair) ?? await findPoolLpAsset(db, assetA, assetB);
             if (!lpAsset) break;
-            const match = processPoolMatch(params, lpAsset, event.event_index, blockIndex, eventBlockTime);
+            const updateKey = poolUpdateKey(pair, params.tx_hash as string | undefined);
+            const executionContext = computePoolMatchExecutionContext(
+              params,
+              updateKey ? poolUpdatesByTxPair.get(updateKey) ?? null : null
+            );
+            const match = processPoolMatch(
+              params,
+              lpAsset,
+              event.event_index,
+              blockIndex,
+              eventBlockTime,
+              executionContext
+            );
             if (match) {
               stmts.push(match.stmt);
               affectedPools.add(match.lpAsset);
