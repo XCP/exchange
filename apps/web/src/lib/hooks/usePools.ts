@@ -376,6 +376,8 @@ export interface PoolSwapQuote {
   effective_price: number
   price_impact: number
   pool_exists: boolean
+  fee_bps?: number
+  fee_amount?: number
 }
 
 /**

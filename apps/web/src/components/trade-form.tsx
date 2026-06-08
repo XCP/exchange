@@ -3,7 +3,6 @@
 import { useState as useLocalState, useEffect } from 'react'
 import { useWallet } from '@/lib/wallet/wallet-context'
 import { useCompose } from '@/lib/wallet/useCompose'
-import { useBalance } from '@/lib/hooks/useBalance'
 import { useFeeRate } from '@/lib/hooks/useNetworkInfo'
 import { usePoolSwapQuote } from '@/lib/hooks/usePools'
 import { COMPOSE_STATUS_LABELS } from '@/utils/constants'
@@ -43,22 +42,38 @@ export function TradeForm({
   const { status: walletStatus, address, connect, connecting } = useWallet()
   const { status: txStatus, txid, error: txError, composeOrder, reset } = useCompose()
 
-  // Fetch balance of the asset the user is spending
   const spendAsset = tradeTab === 'buy' ? quoteSymbol : baseSymbol
-  const { balance: spendBalance } = useBalance(address, spendAsset)
   const feeRate = useFeeRate()
 
   const [showInstall, setShowInstall] = useLocalState(false)
-
-  const totalValue =
-    priceInput && amountInput
-      ? (parseFloat(priceInput) * parseFloat(amountInput.replace(/,/g, ''))).toFixed(8)
-      : '0.00000000'
+  const [orderType, setOrderType] = useLocalState<'limit' | 'market'>('limit')
 
   const handleSubmit = () => {
     const price = parseFloat(priceInput)
     const amount = parseFloat(amountInput?.replace(/,/g, '') || '0')
-    if (!price || !amount || baseDivisible === undefined || quoteDivisible === undefined) return
+    if (!amount || baseDivisible === undefined || quoteDivisible === undefined) return
+
+    if (orderType === 'market') {
+      if (!preview?.received) return
+      if (tradeTab === 'buy') {
+        composeOrder({
+          give_asset: quoteSymbol,
+          give_quantity: toRawQuantity(amount, quoteDivisible),
+          get_asset: baseSymbol,
+          get_quantity: toRawQuantity(preview.received, baseDivisible),
+        })
+      } else {
+        composeOrder({
+          give_asset: baseSymbol,
+          give_quantity: toRawQuantity(amount, baseDivisible),
+          get_asset: quoteSymbol,
+          get_quantity: toRawQuantity(preview.received, quoteDivisible),
+        })
+      }
+      return
+    }
+
+    if (!price) return
 
     if (tradeTab === 'buy') {
       // Buy BASE: give QUOTE, get BASE
@@ -82,7 +97,7 @@ export function TradeForm({
   const isBusy = txStatus === 'composing' || txStatus === 'signing' || txStatus === 'broadcasting'
   const price = parseFloat(priceInput)
   const amount = parseFloat(amountInput?.replace(/,/g, '') || '0')
-  const isValid = price > 0 && amount > 0
+  const isValid = orderType === 'market' ? amount > 0 : price > 0 && amount > 0
 
   // ── Best-execution preview: quote this order against the book + pool ──
   const [debAmount, setDebAmount] = useLocalState(amountInput)
@@ -102,7 +117,7 @@ export function TradeForm({
   const receiveDivisible = tradeTab === 'buy' ? baseDivisible : quoteDivisible
   const sellDivisible = tradeTab === 'buy' ? quoteDivisible : baseDivisible
   // What you'd sell to execute this order at market now (a buy spends price×amount of quote).
-  const sellHuman = tradeTab === 'buy' ? dPrice * dAmount : dAmount
+  const sellHuman = orderType === 'market' ? dAmount : tradeTab === 'buy' ? dPrice * dAmount : dAmount
   const sellQtyRaw =
     sellHuman > 0 && sellDivisible !== undefined ? toRawQuantity(sellHuman, sellDivisible) : 0
   const { quote: swapQuote } = usePoolSwapQuote(sellQtyRaw > 0 ? spendAsset : null, receiveAsset, sellQtyRaw)
@@ -113,6 +128,8 @@ export function TradeForm({
     viaPool: boolean
     orders: number
     avgPrice: number | null
+    priceImpact: number | null
+    feeBps: number | null
     limitSatisfied: boolean
     status: string
     detail: string | null
@@ -121,12 +138,13 @@ export function TradeForm({
     const received = fromRaw(swapQuote.estimated_output, receiveDivisible)
     const remainingInput = fromRaw(swapQuote.give_remaining, sellDivisible)
     const inputFilled = Math.max(0, sellHuman - remainingInput)
+    const hasOutput = received > 0 && inputFilled > 0
     const avgPrice =
       tradeTab === 'buy'
         ? received > 0 ? inputFilled / received : null
         : inputFilled > 0 ? received / inputFilled : null
     const limitSatisfied =
-      avgPrice != null && (tradeTab === 'buy' ? avgPrice <= dPrice : avgPrice >= dPrice)
+      hasOutput && (orderType === 'market' || (avgPrice != null && (tradeTab === 'buy' ? avgPrice <= dPrice : avgPrice >= dPrice)))
     const desiredReceive = tradeTab === 'buy' ? dAmount : dPrice * dAmount
     const receivedPct =
       desiredReceive > 0 ? Math.max(0, Math.min(100, Math.round((received / desiredReceive) * 100))) : 0
@@ -138,8 +156,14 @@ export function TradeForm({
       viaPool: swapQuote.pool_output > 0,
       orders: swapQuote.book_orders_matched,
       avgPrice,
+      priceImpact: Number.isFinite(swapQuote.price_impact) ? swapQuote.price_impact : null,
+      feeBps: swapQuote.fee_bps ?? null,
       limitSatisfied,
-      status: limitSatisfied
+      status: !hasOutput
+        ? 'no market liquidity'
+        : orderType === 'market'
+        ? 'official market quote'
+        : limitSatisfied
         ? tradeTab === 'buy'
           ? received >= dAmount
             ? 'market quote covers order'
@@ -148,13 +172,26 @@ export function TradeForm({
             ? 'market quote clears limit'
             : `${inputFilledPct}% matched at market`
         : 'market quote misses limit',
-      detail: limitSatisfied
+      detail: !hasOutput
+        ? 'No pool or matching book orders are available for this input.'
+        : orderType === 'market'
+        ? null
+        : limitSatisfied
         ? receivedPct < 100 && tradeTab === 'buy'
           ? 'The rest would need more spend or better liquidity.'
           : null
         : 'Official quote is market-style; partial limit fill is not reported.',
     }
   }
+  const displayedPrice = orderType === 'market' && preview?.avgPrice != null ? formatAmount(preview.avgPrice) : priceInput
+  const amountLabel = orderType === 'market' && tradeTab === 'buy' ? quoteSymbol : baseSymbol
+  const totalValue = orderType === 'market'
+    ? preview?.received != null ? preview.received.toFixed(8) : '0.00000000'
+    : priceInput && amountInput
+      ? (parseFloat(priceInput) * parseFloat(amountInput.replace(/,/g, ''))).toFixed(8)
+      : '0.00000000'
+  const totalLabel = orderType === 'market' ? `Est receive (${receiveAsset})` : `Total (${quoteSymbol})`
+  const canSubmit = orderType === 'market' ? isValid && !!preview?.received : isValid
 
   return (
     <div className="p-3 border-b border-zinc-800">
@@ -185,16 +222,7 @@ export function TradeForm({
       {/* Stacked form inputs */}
       <div className="space-y-2">
         <div>
-          <label className="mb-1 block text-xs text-zinc-500">Price ({quoteSymbol})</label>
-          <input
-            type="text"
-            value={priceInput}
-            onChange={(e) => setPriceInput(e.target.value)}
-            className="w-full rounded-sm border border-zinc-800 bg-zinc-900 px-3 py-1.5 text-xs text-zinc-200 outline-none focus:border-zinc-600 transition-colors font-mono"
-          />
-        </div>
-        <div>
-          <label className="mb-1 block text-xs text-zinc-500">Amount ({baseSymbol})</label>
+          <label className="mb-1 block text-xs text-zinc-500">Amount ({amountLabel})</label>
           <input
             type="text"
             value={amountInput}
@@ -204,34 +232,42 @@ export function TradeForm({
           />
         </div>
 
-        {/* Percentage buttons */}
-        <div className="flex gap-1">
-          {[10, 25, 50, 100].map((pct) => (
+        <div className="flex rounded-sm overflow-hidden">
+          {(['limit', 'market'] as const).map((type) => (
             <button
-              key={pct}
-              onClick={() => {
-                if (!(spendBalance > 0)) return
-                const fraction = pct / 100
-                if (tradeTab === 'sell') {
-                  // Sell: amount is in base asset
-                  setAmountInput((spendBalance * fraction).toFixed(8).replace(/\.?0+$/, ''))
-                } else {
-                  // Buy: amount = quoteBalance / price
-                  const p = parseFloat(priceInput)
-                  if (!p || p <= 0) return
-                  setAmountInput(((spendBalance * fraction) / p).toFixed(8).replace(/\.?0+$/, ''))
-                }
-              }}
-              className="flex-1 rounded-sm border border-zinc-800 bg-zinc-900 py-1 text-xs text-zinc-500 hover:border-zinc-700 hover:text-zinc-300 transition-colors"
+              key={type}
+              onClick={() => setOrderType(type)}
+              className={`flex-1 border py-1.5 text-xs font-semibold uppercase tracking-wider transition-colors ${
+                orderType === type
+                  ? 'border-zinc-600 bg-zinc-800 text-zinc-100'
+                  : 'border-zinc-800 bg-zinc-900 text-zinc-500 hover:text-zinc-300'
+              }`}
             >
-              {pct}%
+              {type}
             </button>
           ))}
         </div>
 
+        <div>
+          <label className="mb-1 block text-xs text-zinc-500">Price ({quoteSymbol})</label>
+          <input
+            type="text"
+            value={displayedPrice}
+            onChange={(e) => {
+              if (orderType === 'limit') setPriceInput(e.target.value)
+            }}
+            disabled={orderType === 'market'}
+            className={`w-full rounded-sm border border-zinc-800 bg-zinc-900 px-3 py-1.5 text-xs outline-none transition-colors font-mono ${
+              orderType === 'market'
+                ? 'text-zinc-500'
+                : 'text-zinc-200 focus:border-zinc-600'
+            }`}
+          />
+        </div>
+
         {/* Total */}
         <div>
-          <label className="mb-1 block text-xs text-zinc-500">Total ({quoteSymbol})</label>
+          <label className="mb-1 block text-xs text-zinc-500">{totalLabel}</label>
           <div className="w-full rounded-sm border border-zinc-800 bg-zinc-900/50 px-3 py-1.5 text-xs text-zinc-400 font-mono">
             {totalValue}
           </div>
@@ -240,26 +276,44 @@ export function TradeForm({
         {/* Best-execution preview against book + pool */}
         {preview && (
           <div className="space-y-0.5 rounded-sm border border-zinc-800 bg-zinc-900/40 px-3 py-1.5 text-[11px]">
-            <div className="flex items-center justify-between">
-              <span className="text-zinc-500">At market now</span>
-              <span className="font-mono text-zinc-300">&asymp; {formatAmount(preview.received)} {receiveAsset}</span>
-            </div>
-            {preview.avgPrice != null && (
+            {orderType === 'limit' && (
               <div className="flex items-center justify-between">
-                <span className="text-zinc-500">Avg price</span>
+                <span className="text-zinc-500">Full market quote</span>
+                <span className="font-mono text-zinc-300">&asymp; {formatAmount(preview.received)} {receiveAsset}</span>
+              </div>
+            )}
+            {orderType === 'limit' && preview.avgPrice != null && (
+              <div className="flex items-center justify-between">
+                <span className="text-zinc-500">Avg market price</span>
                 <span className="font-mono text-zinc-300">{formatAmount(preview.avgPrice)} {quoteSymbol}</span>
               </div>
             )}
             <div className="flex items-center justify-between">
-              <span className="text-zinc-500">
-                {preview.viaPool
-                  ? preview.orders > 0
-                    ? `pool + ${preview.orders} order${preview.orders > 1 ? 's' : ''}`
-                    : 'via pool'
-                  : preview.orders > 0
-                    ? `${preview.orders} order${preview.orders > 1 ? 's' : ''}`
-                    : 'no liquidity'}
+              <span className="text-zinc-500">Route</span>
+              <span className="text-zinc-300">
+                {preview.viaPool && preview.orders > 0
+                  ? `pool + ${preview.orders} order${preview.orders > 1 ? 's' : ''}`
+                  : preview.viaPool
+                    ? 'pool'
+                    : preview.orders > 0
+                      ? `${preview.orders} order${preview.orders > 1 ? 's' : ''}`
+                      : 'no liquidity'}
               </span>
+            </div>
+            {preview.priceImpact != null && (
+              <div className="flex items-center justify-between">
+                <span className="text-zinc-500">Price impact</span>
+                <span className="font-mono text-zinc-300">{preview.priceImpact.toFixed(2)}%</span>
+              </div>
+            )}
+            {preview.feeBps != null && preview.viaPool && (
+              <div className="flex items-center justify-between">
+                <span className="text-zinc-500">Pool fee</span>
+                <span className="font-mono text-zinc-300">{(preview.feeBps / 100).toFixed(2)}%</span>
+              </div>
+            )}
+            <div className="flex items-center justify-between">
+              <span className="text-zinc-500">Quote</span>
               {preview.limitSatisfied ? (
                 <span className="text-green-400">{preview.status}</span>
               ) : (
@@ -299,7 +353,7 @@ export function TradeForm({
         ) : (
           <button
             onClick={txStatus === 'confirmed' || txStatus === 'error' ? reset : handleSubmit}
-            disabled={isBusy || (txStatus === 'idle' && !isValid)}
+            disabled={isBusy || (txStatus === 'idle' && !canSubmit)}
             className={`w-full rounded-sm py-2.5 text-xs font-semibold uppercase tracking-wider transition-colors ${
               tradeTab === 'buy'
                 ? 'bg-green-500 text-zinc-950 hover:bg-green-400'
