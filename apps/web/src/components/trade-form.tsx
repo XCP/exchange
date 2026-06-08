@@ -108,15 +108,51 @@ export function TradeForm({
   const { quote: swapQuote } = usePoolSwapQuote(sellQtyRaw > 0 ? spendAsset : null, receiveAsset, sellQtyRaw)
 
   const fromRaw = (raw: number, divisible: boolean) => raw / (divisible ? 1e8 : 1)
-  let preview: { received: number; viaPool: boolean; orders: number; fillablePct: number } | null = null
+  let preview: {
+    received: number
+    viaPool: boolean
+    orders: number
+    avgPrice: number | null
+    limitSatisfied: boolean
+    status: string
+    detail: string | null
+  } | null = null
   if (swapQuote && sellQtyRaw > 0 && receiveDivisible !== undefined && sellDivisible !== undefined) {
-    const remainingHuman = fromRaw(swapQuote.give_remaining, sellDivisible)
-    const fillable = sellHuman > 0 ? Math.max(0, Math.min(1, (sellHuman - remainingHuman) / sellHuman)) : 0
+    const received = fromRaw(swapQuote.estimated_output, receiveDivisible)
+    const remainingInput = fromRaw(swapQuote.give_remaining, sellDivisible)
+    const inputFilled = Math.max(0, sellHuman - remainingInput)
+    const avgPrice =
+      tradeTab === 'buy'
+        ? received > 0 ? inputFilled / received : null
+        : inputFilled > 0 ? received / inputFilled : null
+    const limitSatisfied =
+      avgPrice != null && (tradeTab === 'buy' ? avgPrice <= dPrice : avgPrice >= dPrice)
+    const desiredReceive = tradeTab === 'buy' ? dAmount : dPrice * dAmount
+    const receivedPct =
+      desiredReceive > 0 ? Math.max(0, Math.min(100, Math.round((received / desiredReceive) * 100))) : 0
+    const inputFilledPct =
+      sellHuman > 0 ? Math.max(0, Math.min(100, Math.round((inputFilled / sellHuman) * 100))) : 0
+
     preview = {
-      received: fromRaw(swapQuote.estimated_output, receiveDivisible),
+      received,
       viaPool: swapQuote.pool_output > 0,
       orders: swapQuote.book_orders_matched,
-      fillablePct: Math.round(fillable * 100),
+      avgPrice,
+      limitSatisfied,
+      status: limitSatisfied
+        ? tradeTab === 'buy'
+          ? received >= dAmount
+            ? 'market quote covers order'
+            : `${receivedPct}% of target at market`
+          : inputFilledPct >= 100
+            ? 'market quote clears limit'
+            : `${inputFilledPct}% matched at market`
+        : 'market quote misses limit',
+      detail: limitSatisfied
+        ? receivedPct < 100 && tradeTab === 'buy'
+          ? 'The rest would need more spend or better liquidity.'
+          : null
+        : 'Official quote is market-style; partial limit fill is not reported.',
     }
   }
 
@@ -208,6 +244,12 @@ export function TradeForm({
               <span className="text-zinc-500">At market now</span>
               <span className="font-mono text-zinc-300">&asymp; {formatAmount(preview.received)} {receiveAsset}</span>
             </div>
+            {preview.avgPrice != null && (
+              <div className="flex items-center justify-between">
+                <span className="text-zinc-500">Avg price</span>
+                <span className="font-mono text-zinc-300">{formatAmount(preview.avgPrice)} {quoteSymbol}</span>
+              </div>
+            )}
             <div className="flex items-center justify-between">
               <span className="text-zinc-500">
                 {preview.viaPool
@@ -218,14 +260,14 @@ export function TradeForm({
                     ? `${preview.orders} order${preview.orders > 1 ? 's' : ''}`
                     : 'no liquidity'}
               </span>
-              {preview.fillablePct >= 100 ? (
-                <span className="text-green-400">fully fillable</span>
+              {preview.limitSatisfied ? (
+                <span className="text-green-400">{preview.status}</span>
               ) : (
-                <span className="text-amber-400">&#9888; {preview.fillablePct}% fillable</span>
+                <span className="text-amber-400">&#9888; {preview.status}</span>
               )}
             </div>
-            {preview.fillablePct < 100 && (
-              <div className="text-zinc-600">The rest would rest on the book.</div>
+            {preview.detail && (
+              <div className="text-zinc-600">{preview.detail}</div>
             )}
           </div>
         )}
