@@ -166,7 +166,7 @@ export function TradeForm({
         : limitSatisfied
         ? tradeTab === 'buy'
           ? received >= dAmount
-            ? 'market quote covers order'
+            ? 'max spend clears limit'
             : `${receivedPct}% of target at market`
           : inputFilledPct >= 100
             ? 'market quote clears limit'
@@ -278,8 +278,14 @@ export function TradeForm({
           <div className="space-y-0.5 rounded-sm border border-zinc-800 bg-zinc-900/40 px-3 py-1.5 text-[11px]">
             {orderType === 'limit' && (
               <div className="flex items-center justify-between">
-                <span className="text-zinc-500">Full market quote</span>
+                <span className="text-zinc-500">{tradeTab === 'buy' ? 'Max-spend quote' : 'Full sell quote'}</span>
                 <span className="font-mono text-zinc-300">&asymp; {formatAmount(preview.received)} {receiveAsset}</span>
+              </div>
+            )}
+            {orderType === 'limit' && tradeTab === 'buy' && (
+              <div className="flex items-center justify-between">
+                <span className="text-zinc-500">Target amount</span>
+                <span className="font-mono text-zinc-300">{formatAmount(dAmount)} {baseSymbol}</span>
               </div>
             )}
             {orderType === 'limit' && preview.avgPrice != null && (
