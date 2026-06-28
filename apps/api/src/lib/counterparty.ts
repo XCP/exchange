@@ -44,7 +44,7 @@ export interface Order {
   get_quantity: number;
   get_remaining: number;
   expiration: number;
-  expire_index: number;
+  expire_index: number | null;
   block_index: number;
   block_time: number;
   status: string;

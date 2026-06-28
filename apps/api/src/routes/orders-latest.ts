@@ -125,9 +125,9 @@ export async function handleOrdersLatest(
 
   const whereClause = conditions.length > 0 ? ` WHERE ${conditions.join(" AND ")}` : "";
   const orderBy = sort === "expire_index:asc"
-    ? ` ORDER BY o.expire_index ASC`
+    ? ` ORDER BY o.expire_index IS NULL ASC, o.expire_index ASC`
     : sort === "expire_index:desc"
-      ? ` ORDER BY o.expire_index DESC`
+      ? ` ORDER BY o.expire_index IS NULL ASC, o.expire_index DESC`
       : sort === "price:asc"
         ? ` ORDER BY o.price ASC`
         : sort === "price:desc"

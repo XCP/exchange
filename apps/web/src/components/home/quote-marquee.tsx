@@ -27,6 +27,7 @@ export function QuoteMarquee({ quoteVolumes }: { quoteVolumes: QuoteVolume[] }) 
             <Image
               src={`${XCP_IMG_BASE}/icon/${q.quote_asset}`}
               alt=""
+              unoptimized
               width={14}
               height={14}
               className="rounded-sm"

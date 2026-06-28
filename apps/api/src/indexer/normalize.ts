@@ -153,7 +153,7 @@ export interface NormalizedOrder {
   get_remaining: number;
   remaining: number;
   expiration: number;
-  expire_index: number;
+  expire_index: number | null;
   block_index: number;
   block_time: number;
 }
@@ -174,6 +174,17 @@ export function normalizeOrder(order: Order): NormalizedOrder {
   const giveRemaining = parseFloat(order.give_remaining_normalized);
   const getRemaining = parseFloat(order.get_remaining_normalized);
 
+  if (
+    !Number.isFinite(giveQty) ||
+    !Number.isFinite(getQty) ||
+    !Number.isFinite(giveRemaining) ||
+    !Number.isFinite(getRemaining) ||
+    giveQty <= 0 ||
+    getQty <= 0
+  ) {
+    throw new Error(`Invalid order quantities for ${order.tx_hash}`);
+  }
+
   let price: number;
   let amount: number;
   let side: "bid" | "ask";
@@ -190,10 +201,13 @@ export function normalizeOrder(order: Order): NormalizedOrder {
     price = giveQty > 0 ? getQty / giveQty : 0;
   }
 
-  price = parseFloat(price.toFixed(8));
-  amount = parseFloat(amount.toFixed(8));
-
   const remaining = Math.max(0, side === "bid" ? getRemaining : giveRemaining);
+  const expireIndex =
+    Number.isFinite(order.expire_index)
+      ? order.expire_index
+      : order.expiration > 0
+        ? order.block_index + order.expiration
+        : null;
 
   return {
     tx_hash: order.tx_hash,
@@ -211,7 +225,7 @@ export function normalizeOrder(order: Order): NormalizedOrder {
     get_remaining: getRemaining,
     remaining,
     expiration: order.expiration,
-    expire_index: order.expire_index,
+    expire_index: expireIndex,
     block_index: order.block_index,
     block_time: order.block_time,
   };

@@ -94,6 +94,7 @@ export function LeaderboardTable({
                       <Image
                         src={`${XCP_IMG_BASE}/icon/${row.icon}`}
                         alt=""
+                        unoptimized
                         width={14}
                         height={14}
                         className="rounded-sm"

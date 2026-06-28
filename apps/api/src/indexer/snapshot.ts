@@ -44,7 +44,7 @@ export async function syncOrders(
   const openHashes = new Set(allOrders.map((o) => o.tx_hash));
   const dbOpen = await db
     .prepare(`SELECT tx_hash, expire_index FROM orders WHERE status = 'open'`)
-    .all<{ tx_hash: string; expire_index: number }>();
+    .all<{ tx_hash: string; expire_index: number | null }>();
 
   const lastBlockRow = await db
     .prepare(`SELECT value FROM indexer_state WHERE key = 'last_block_index'`)
@@ -55,7 +55,7 @@ export async function syncOrders(
   const closeStmts: D1PreparedStatement[] = [];
 
   for (const r of toClose) {
-    if (r.expire_index <= lastBlock) {
+    if (r.expire_index != null && r.expire_index <= lastBlock) {
       // Clearly expired — no need to hit the API
       closeStmts.push(
         db

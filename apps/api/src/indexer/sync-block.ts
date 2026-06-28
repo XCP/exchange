@@ -662,7 +662,16 @@ export async function syncBlocks(
     // Gather context BEFORE deleting any rows
 
     // Affected pairs/assets for stats recalculation
-    const [affectedReorgPairs, affectedReorgAssets, affectedReorgPools] = await Promise.all([
+    const [
+      affectedReorgPairs,
+      affectedReorgAssets,
+      affectedPoolUpdates,
+      affectedPoolDeposits,
+      affectedPoolWithdrawals,
+      affectedPoolMatches,
+      affectedPoolBalanceEvents,
+      affectedPoolFeeAccruals,
+    ] = await Promise.all([
       db
         .prepare(
           `SELECT DISTINCT pair, base_asset, quote_asset FROM trades WHERE block_index > ?`
@@ -674,21 +683,37 @@ export async function syncBlocks(
         .bind(rollbackTo)
         .all<{ asset: string }>(),
       db
-        .prepare(
-          `SELECT DISTINCT lp_asset FROM pool_updates WHERE block_index > ?
-           UNION
-           SELECT DISTINCT lp_asset FROM pool_deposits WHERE block_index > ?
-           UNION
-           SELECT DISTINCT lp_asset FROM pool_withdrawals WHERE block_index > ?
-           UNION
-           SELECT DISTINCT lp_asset FROM pool_matches WHERE block_index > ?
-           UNION
-           SELECT DISTINCT lp_asset FROM pool_lp_balance_events WHERE block_index > ?
-           UNION
-           SELECT DISTINCT lp_asset FROM pool_fee_accruals WHERE block_index > ?`
-        )
-        .bind(rollbackTo, rollbackTo, rollbackTo, rollbackTo, rollbackTo, rollbackTo)
+        .prepare(`SELECT DISTINCT lp_asset FROM pool_updates WHERE block_index > ?`)
+        .bind(rollbackTo)
         .all<{ lp_asset: string }>(),
+      db
+        .prepare(`SELECT DISTINCT lp_asset FROM pool_deposits WHERE block_index > ?`)
+        .bind(rollbackTo)
+        .all<{ lp_asset: string }>(),
+      db
+        .prepare(`SELECT DISTINCT lp_asset FROM pool_withdrawals WHERE block_index > ?`)
+        .bind(rollbackTo)
+        .all<{ lp_asset: string }>(),
+      db
+        .prepare(`SELECT DISTINCT lp_asset FROM pool_matches WHERE block_index > ?`)
+        .bind(rollbackTo)
+        .all<{ lp_asset: string }>(),
+      db
+        .prepare(`SELECT DISTINCT lp_asset FROM pool_lp_balance_events WHERE block_index > ?`)
+        .bind(rollbackTo)
+        .all<{ lp_asset: string }>(),
+      db
+        .prepare(`SELECT DISTINCT lp_asset FROM pool_fee_accruals WHERE block_index > ?`)
+        .bind(rollbackTo)
+        .all<{ lp_asset: string }>(),
+    ]);
+    const affectedReorgPools = new Set<string>([
+      ...affectedPoolUpdates.results.map((r) => r.lp_asset),
+      ...affectedPoolDeposits.results.map((r) => r.lp_asset),
+      ...affectedPoolWithdrawals.results.map((r) => r.lp_asset),
+      ...affectedPoolMatches.results.map((r) => r.lp_asset),
+      ...affectedPoolBalanceEvents.results.map((r) => r.lp_asset),
+      ...affectedPoolFeeAccruals.results.map((r) => r.lp_asset),
     ]);
 
     // Earliest block_time in invalidated blocks - used for candle cleanup
@@ -759,9 +784,9 @@ export async function syncBlocks(
     for (const a of affectedReorgAssets.results) {
       await updateDispenserStats(db, a.asset);
     }
-    for (const p of affectedReorgPools.results) {
-      await rebuildPoolFromHistory(db, p.lp_asset);
-      await rebuildPoolAccountingFromHistory(db, p.lp_asset);
+    for (const lpAsset of affectedReorgPools) {
+      await rebuildPoolFromHistory(db, lpAsset);
+      await rebuildPoolAccountingFromHistory(db, lpAsset);
     }
     // Recalculate order book stats after reorg
     await updateOrderBookStats(db, now);

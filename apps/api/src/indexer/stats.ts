@@ -443,7 +443,7 @@ export async function closeExpiredOrders(
   const result = await db
     .prepare(
       `UPDATE orders SET status = 'expired', closed_at = ?
-       WHERE status = 'open' AND expire_index <= ?`
+       WHERE status = 'open' AND expire_index IS NOT NULL AND expire_index <= ?`
     )
     .bind(now, lastBlock)
     .run();

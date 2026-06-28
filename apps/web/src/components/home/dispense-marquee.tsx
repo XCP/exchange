@@ -26,6 +26,7 @@ export function DispenseMarquee({ topDispensers, satsMode }: { topDispensers: An
             <Image
               src={`${XCP_IMG_BASE}/icon/${d.asset}`}
               alt=""
+              unoptimized
               width={14}
               height={14}
               className="rounded-sm"
