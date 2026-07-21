@@ -2,7 +2,7 @@ import useSWR from 'swr'
 
 const MEMPOOL_BASE = 'https://mempool.space/api'
 const COINGECKO_BASE = 'https://api.coingecko.com/api/v3'
-const XCPIO_BASE = 'https://app.xcp.io/api/v1'
+const XCPIO_PRICE_TICKER = 'https://api.xcp.io/v2/price/ticker'
 
 async function jsonFetcher<T>(url: string): Promise<T> {
   const res = await fetch(url)
@@ -29,9 +29,11 @@ interface CoinGeckoXcp {
   counterparty: { btc: number; usd: number }
 }
 
-interface XcpIoAsset {
-  last_trade_price_btc: number
-  last_trade_price_usd: number
+interface XcpIoPriceTicker {
+  result: {
+    xcp: { usd: number } | null
+    btc: { usd: number } | null
+  }
 }
 
 /** BTC/USD price — globally cached via SWR key */
@@ -46,11 +48,20 @@ export function useBtcPrice() {
 
 async function xcpPriceFetcher(): Promise<{ btc: number; usd: number }> {
   try {
-    const res = await fetch(`${XCPIO_BASE}/asset/XCP`)
+    const res = await fetch(XCPIO_PRICE_TICKER)
     if (res.ok) {
-      const data: XcpIoAsset = await res.json()
-      if (data.last_trade_price_btc && data.last_trade_price_usd) {
-        return { btc: data.last_trade_price_btc, usd: data.last_trade_price_usd }
+      const data: XcpIoPriceTicker = await res.json()
+      const xcpUsd = data.result.xcp?.usd
+      const btcUsd = data.result.btc?.usd
+      if (
+        Number.isFinite(xcpUsd) &&
+        Number.isFinite(btcUsd) &&
+        xcpUsd != null &&
+        btcUsd != null &&
+        xcpUsd > 0 &&
+        btcUsd > 0
+      ) {
+        return { btc: xcpUsd / btcUsd, usd: xcpUsd }
       }
     }
   } catch {}

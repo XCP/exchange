@@ -399,7 +399,7 @@ export default function AssetPage({ params }: { params: Promise<{ asset: string 
           {info?.owner && <span>Owner: <span className="font-mono">{formatAddress(info.owner)}</span></span>}
           {info?.issuer && info.issuer !== info.owner && <span>Issuer: <span className="font-mono">{formatAddress(info.issuer)}</span></span>}
           {info?.first_issuance_block_index && <span>Block #{info.first_issuance_block_index.toLocaleString()}</span>}
-          <a href={`https://app.xcp.io/asset/${asset}`} target="_blank" rel="noopener noreferrer" className="hover:text-zinc-400 transition-colors">xcp.io</a>
+          <a href={`https://xcp.io/asset/${asset}`} target="_blank" rel="noopener noreferrer" className="hover:text-zinc-400 transition-colors">xcp.io</a>
           <a href={`https://xchain.io/asset/${asset}`} target="_blank" rel="noopener noreferrer" className="hover:text-zinc-400 transition-colors">xchain.io</a>
         </div>
 

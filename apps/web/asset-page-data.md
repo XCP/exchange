@@ -17,8 +17,8 @@ Using PEPECASH as the reference. Sources: our D1 database, Counterparty API, xcp
 | JSON metadata (if desc is URL) | Fetched client-side | `{ name: "Pepe Cash", image, image_large, attributes... }` |
 | Collection membership | `tags` + `tag_assets` tables | Rare Pepe |
 | Other tag memberships | `tags` table (tokenscan, pepewtf, stampchain, scannable, kaleidoscope) | — |
-| Image (icon 14px) | `app.xcp.io/img/icon/{ASSET}` | small icon |
-| Image (full ~400x560) | `app.xcp.io/img/full/{ASSET}` | card art |
+| Image (icon 14px) | `cdn.xcp.io/img/icon/{ASSET}` | small icon |
+| Image (full ~400x560) | `cdn.xcp.io/img/full/{ASSET}` | card art |
 
 ## 2. ISSUANCE & SUPPLY
 

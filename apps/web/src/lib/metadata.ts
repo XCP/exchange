@@ -99,7 +99,7 @@ export function buildAssetMetadata(
   return {
     title,
     description: desc,
-    ...ogFields(title, desc, `/${asset}`, `https://app.xcp.io/img/full/${asset}`),
+    ...ogFields(title, desc, `/${asset}`, `https://cdn.xcp.io/img/full/${asset}`),
   }
 }
 
