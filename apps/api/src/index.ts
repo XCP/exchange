@@ -390,9 +390,24 @@ async function scheduled(env: Env): Promise<void> {
       }
       case "FOLLOWING": {
         await syncBlocks(env.DB, env.CP_API_BASE, 10);
-        await refreshStalePairStats(env.DB);
-        await refreshStaleDispenserStats(env.DB);
-        await refreshDealScores(env.DB);
+        const sweepGate = async (key: string, seconds: number, run: () => Promise<unknown>) => {
+          const row = await env.DB.prepare(`SELECT value FROM indexer_state WHERE key = ?`)
+            .bind(key).first<{ value: string }>();
+          if (now - Number(row?.value ?? 0) < seconds) return;
+          await run();
+          await env.DB.prepare(
+            `INSERT INTO indexer_state (key, value) VALUES (?, ?)
+             ON CONFLICT (key) DO UPDATE SET value = excluded.value`
+          ).bind(key, String(now)).run();
+        };
+        // Rolling-window stats drift with TIME, not per block; pairs with fresh trades are already
+        // updated inside syncBlocks. Sweeping every tick rewrote every active pair each 2 minutes
+        // (~4.2M D1 rows/day billed); the windows only move meaningfully on the half hour.
+        await sweepGate("pair_stats_swept_at", 1800, () => refreshStalePairStats(env.DB));
+        await sweepGate("dispenser_stats_swept_at", 1800, () => refreshStaleDispenserStats(env.DB));
+        // The full deal re-score exists for time decay; block-driven changes score incrementally in
+        // syncBlocks. The unconditional call wiped and rebuilt the whole table every tick.
+        await sweepGate("deal_scores_refreshed_at", 86400, () => refreshDealScores(env.DB));
         await checkPendingFills(env.DB);
         await syncNewAssets(env.DB, 2);
         await backfillMissingLongnames(env.DB, 10);
