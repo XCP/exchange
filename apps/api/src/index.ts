@@ -402,9 +402,11 @@ async function scheduled(env: Env): Promise<void> {
         };
         // Rolling-window stats drift with TIME, not per block; pairs with fresh trades are already
         // updated inside syncBlocks. Sweeping every tick rewrote every active pair each 2 minutes
-        // (~4.2M D1 rows/day billed); the windows only move meaningfully on the half hour.
-        await sweepGate("pair_stats_swept_at", 1800, () => refreshStalePairStats(env.DB));
-        await sweepGate("dispenser_stats_swept_at", 1800, () => refreshStaleDispenserStats(env.DB));
+        // (~4.2M D1 rows/day billed), and half-hourly still repriced every windowed pair whether or
+        // not a trade crossed a window boundary (~1M rows/day). Hourly keeps the stale sweeps a
+        // rounding error; live pairs never wait on it.
+        await sweepGate("pair_stats_swept_at", 3600, () => refreshStalePairStats(env.DB));
+        await sweepGate("dispenser_stats_swept_at", 3600, () => refreshStaleDispenserStats(env.DB));
         // The full deal re-score exists for time decay; block-driven changes score incrementally in
         // syncBlocks. The unconditional call wiped and rebuilt the whole table every tick.
         await sweepGate("deal_scores_refreshed_at", 86400, () => refreshDealScores(env.DB));
