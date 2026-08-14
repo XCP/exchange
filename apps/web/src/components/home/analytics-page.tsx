@@ -19,6 +19,7 @@ import { LeaderboardTable, type LeaderboardRow } from './leaderboard-table'
 import { TopTradersTable } from './top-traders-table'
 import { QuoteMarquee } from './quote-marquee'
 import { DispenseMarquee } from './dispense-marquee'
+import { MarketInfoTable } from './market-info-table'
 import { RecentActivity } from './recent-activity'
 import {
   LeaderboardSkeleton,
@@ -336,6 +337,8 @@ function SummarySection({ timeframe, includeHidden, isLoading, mobileMode, quote
           </div>
         </>
       )}
+
+      <MarketInfoTable />
 
       {/* Leaderboards */}
       <h2 className="text-sm uppercase tracking-wider text-zinc-400 mb-2">Leaderboards</h2>
