@@ -33,13 +33,14 @@ async function getJson(path) {
 
 const near = (a, b, eps = EPS) => Math.abs(Number(a) - Number(b)) <= eps;
 
-async function fullWindow(tickerId, startMs, endMs) {
+// start/end and trade_timestamp are unix SECONDS, per CoinGecko's spec.
+async function fullWindow(tickerId, startSec, endSec) {
   const trades = [];
   const seen = new Set();
-  let cursor = endMs;
+  let cursor = endSec;
   for (let page = 0; page < 50; page++) {
     const data = await getJson(
-      `/coingecko/historical_trades?ticker_id=${tickerId}&limit=${PAGE_LIMIT}&start_time=${startMs}&end_time=${cursor}`,
+      `/coingecko/historical_trades?ticker_id=${tickerId}&limit=${PAGE_LIMIT}&start_time=${startSec}&end_time=${cursor}`,
     );
     const batch = [...(data.buy ?? []), ...(data.sell ?? [])];
     let added = 0;
@@ -94,7 +95,7 @@ async function reconcilePair(cg, cmcByPair, nowMs) {
   }
 
   // --- full rolling-24h historical window vs ticker ---
-  const trades = await fullWindow(pair, nowMs - 86400_000, nowMs);
+  const trades = await fullWindow(pair, Math.floor(nowMs / 1000) - 86400, Math.ceil(nowMs / 1000));
   const ids = trades.map((t) => t.trade_id);
   if (new Set(ids).size !== ids.length) fail(pair, "dup-trade-id", "duplicate trade_id in window");
   for (const t of trades) {
@@ -107,10 +108,11 @@ async function reconcilePair(cg, cmcByPair, nowMs) {
   if (!near(cg.target_volume, sumQuote)) fail(pair, "quote-vol-sum", `${cg.target_volume} != ${sumQuote.toFixed(8)}`);
 
   if (trades.length > 0) {
+    // trade_timestamp is seconds; the ticker's last_trade_timestamp is ms.
     const newestTs = Math.max(...trades.map((t) => t.trade_timestamp));
     const newest = trades.filter((t) => t.trade_timestamp === newestTs);
-    if (cg.last_trade_timestamp !== newestTs) {
-      fail(pair, "last-ts", `${cg.last_trade_timestamp} != ${newestTs}`);
+    if (cg.last_trade_timestamp !== newestTs * 1000) {
+      fail(pair, "last-ts", `${cg.last_trade_timestamp} != ${newestTs * 1000}`);
     } else if (!newest.some((t) => t.price === cg.last_price)) {
       // several settlements can share the newest block; the ticker's price
       // must be one of them

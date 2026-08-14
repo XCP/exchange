@@ -100,18 +100,19 @@
           {
             "name": "limit",
             "in": "query",
+            "description": "0 = full history, capped at 1000 rows per response.",
             "schema": { "type": "integer", "default": 200, "maximum": 1000 }
           },
           {
             "name": "start_time",
             "in": "query",
-            "description": "Inclusive lower bound, UTC milliseconds.",
+            "description": "Inclusive lower bound, unix SECONDS (per CoinGecko's spec); millisecond values are also accepted and detected automatically.",
             "schema": { "type": "integer" }
           },
           {
             "name": "end_time",
             "in": "query",
-            "description": "Inclusive upper bound, UTC milliseconds.",
+            "description": "Inclusive upper bound, unix SECONDS; millisecond values are also accepted and detected automatically.",
             "schema": { "type": "integer" }
           }
         ],
@@ -221,6 +222,10 @@
           "ticker_id": { "$ref": "#/components/schemas/TickerId" },
           "base_currency": { "type": "string" },
           "target_currency": { "type": "string" },
+          "pool_id": {
+            "type": "string",
+            "description": "Unique market identifier (same as ticker_id). Counterparty is a non-EVM orderbook venue: assets are not contracts, so there is no pool/contract address."
+          },
           "last_price": { "$ref": "#/components/schemas/PriceString" },
           "base_volume": { "$ref": "#/components/schemas/QuantityString" },
           "target_volume": { "$ref": "#/components/schemas/QuantityString" },
@@ -253,7 +258,11 @@
             "allOf": [{ "$ref": "#/components/schemas/QuantityString" }],
             "description": "For dispenser executions this is protocol-priced notional (quantity x dispenser unit price), never the gross Bitcoin payment."
           },
-          "trade_timestamp": { "$ref": "#/components/schemas/TimestampMs" },
+          "trade_timestamp": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Unix SECONDS (per CoinGecko's spec for historical trades) - the Bitcoin block time of the settling block. Note the orderbook timestamp and ticker last_trade_timestamp are milliseconds."
+          },
           "type": { "type": "string", "enum": ["buy", "sell"] },
           "source": {
             "type": "string",

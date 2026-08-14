@@ -52,6 +52,10 @@ export async function handleCgTickers(request: Request, db: D1Database): Promise
       ticker_id: s.pair,
       base_currency: s.base,
       target_currency: s.quote,
+      // CoinGecko marks pool_id mandatory for DEXs ("pool/pair address or
+      // unique ID"). Counterparty is a non-EVM orderbook venue with no
+      // contract addresses; the pair string is the market's unique ID.
+      pool_id: s.pair,
       last_price: decPrice(s.lastPrice),
       base_volume: dec(s.baseVolume24h),
       target_volume: dec(s.quoteVolume24h),
@@ -176,12 +180,18 @@ export async function handleCgHistoricalTrades(request: Request, db: D1Database)
   }
 
   const typeFilter = url.searchParams.get("type"); // "buy" | "sell" | null
-  const limit = Math.min(parseInt(url.searchParams.get("limit") ?? "200", 10) || 200, 1000);
-  // CG sends start_time/end_time in UTC milliseconds; our rows are unix seconds.
-  const startMs = parseInt(url.searchParams.get("start_time") ?? "", 10);
-  const endMs = parseInt(url.searchParams.get("end_time") ?? "", 10);
-  const startSec = Number.isFinite(startMs) ? Math.floor(startMs / 1000) : null;
-  const endSec = Number.isFinite(endMs) ? Math.ceil(endMs / 1000) : null;
+  // CoinGecko's spec: limit 0 = full history; we cap at 1000 either way.
+  const limitParam = parseInt(url.searchParams.get("limit") ?? "200", 10);
+  const limit = !Number.isFinite(limitParam) || limitParam < 0 ? 200 : limitParam === 0 ? 1000 : Math.min(limitParam, 1000);
+  // CoinGecko's spec sends start_time/end_time as unix SECONDS; tolerate
+  // millisecond callers too (values past ~year 33658 in seconds are ms).
+  const toSeconds = (raw: string | null): number | null => {
+    const value = parseInt(raw ?? "", 10);
+    if (!Number.isFinite(value)) return null;
+    return value >= 1e12 ? Math.round(value / 1000) : value;
+  };
+  const startSec = toSeconds(url.searchParams.get("start_time"));
+  const endSec = toSeconds(url.searchParams.get("end_time"));
 
   const isBtcPair = parsed.quote === "BTC";
 
@@ -242,7 +252,7 @@ export async function handleCgHistoricalTrades(request: Request, db: D1Database)
         price: decPrice(t.price),
         base_volume: dec(t.amount),
         target_volume: dec(t.volume),
-        trade_timestamp: t.block_time * 1000,
+        trade_timestamp: t.block_time,
         type: t.side === "sell" ? "sell" : "buy",
         source,
         settlement_txid: t.tx1_hash,
@@ -257,7 +267,7 @@ export async function handleCgHistoricalTrades(request: Request, db: D1Database)
       price: decPrice(d.price),
       base_volume: dec(d.dispense_quantity),
       target_volume: dec(d.dispense_quantity * d.price),
-      trade_timestamp: d.block_time * 1000,
+      trade_timestamp: d.block_time,
       type: "buy",
       source: "dispenser",
       settlement_txid: d.tx_hash,
