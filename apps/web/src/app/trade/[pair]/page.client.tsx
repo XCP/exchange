@@ -12,6 +12,7 @@ import { CompactBookStrip } from '@/components/compact-book-strip'
 import { DataTabs } from '@/components/data-tabs'
 import { TradeForm } from '@/components/trade-form'
 import { QuickStats } from '@/components/quick-stats'
+import { TrackedMarketData } from '@/components/tracked-market-data'
 import { AssetInfo } from '@/components/asset-info'
 import { PoolInfo } from '@/components/pool-info'
 import { TradesList } from '@/components/trades-list'
@@ -143,6 +144,7 @@ export default function PairOrdersPage({ params }: { params: Promise<{ pair: str
 
           {/* Row 3: Asset Info + Pool Info (when a pool exists for this pair) */}
           <div className="bg-zinc-950 overflow-y-auto">
+            <TrackedMarketData pair={pairSlug} baseSymbol={baseSymbol} quoteSymbol={quoteSymbol} />
             {pairData && <AssetInfo pairData={pairData} />}
             {pool && <PoolInfo pool={pool} quoteSymbol={quoteSymbol} bookPrice={pairData?.last_price} />}
             {pairData && !pool && (
@@ -235,6 +237,10 @@ export default function PairOrdersPage({ params }: { params: Promise<{ pair: str
           {mobileDataTab === 'holders' && <HoldersTable asset={baseAsset} totalSupply={totalSupply} />}
           {mobileDataTab === 'markets' && <MarketsTable asset={baseAsset} currentPair={`${baseSymbol}/${quoteSymbol}`} />}
           {mobileDataTab === 'orders' && <OrdersEmpty />}
+        </div>
+
+        <div className="order-6 lg:hidden bg-zinc-950 border-b border-zinc-800">
+          <TrackedMarketData pair={pairSlug} baseSymbol={baseSymbol} quoteSymbol={quoteSymbol} />
         </div>
       </div>
     </div>

@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "wrangler dev",
-    "test": "tsc -p tsconfig.test.json && node --test .test-dist/tests/pool-math.test.js",
+    "test": "tsc -p tsconfig.test.json && node --test \".test-dist/tests/*.test.js\"",
+    "reconcile": "node scripts/reconcile.mjs",
     "deploy": "wrangler deploy",
     "migrate:local": "wrangler d1 migrations apply xcpdex --local",
     "migrate:remote": "wrangler d1 migrations apply xcpdex --remote"

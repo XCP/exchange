@@ -28,6 +28,10 @@ import { handleBlock } from "./routes/block";
 import { handleTags, handleAssetTags } from "./routes/tags";
 import { handleDeals } from "./routes/deals";
 import { handleAddressPools, handlePool, handlePoolAddress, handlePools } from "./routes/pools";
+import { handleCgPairs, handleCgTickers, handleCgOrderbook, handleCgHistoricalTrades } from "./routes/coingecko";
+import { handleCmcSummary } from "./routes/coinmarketcap";
+import { handleCatalogPairs } from "./routes/catalog";
+import openapi from "./openapi.json";
 import { refreshDealScores } from "./indexer/deal-scores";
 import { indexAllAssets, syncNewAssets } from "./indexer/assets";
 import { handleDispensersLatest, handleDispensesLatest } from "./routes/dispensers-latest";
@@ -112,6 +116,17 @@ app.get('/pools', (c) => handlePools(c.req.raw, c.env.DB));
 app.get('/pools/:lpAsset', (c) => handlePool(new URL(c.req.url), c.env.DB, c.req.param('lpAsset')));
 app.get('/pools/:lpAsset/addresses/:address', (c) => handlePoolAddress(new URL(c.req.url), c.env.DB, c.req.param('lpAsset'), c.req.param('address')));
 app.get('/addresses/:address/pools', (c) => handleAddressPools(new URL(c.req.url), c.env.DB, c.req.param('address')));
+
+// Aggregator Integration Routes (CoinGecko / CoinMarketCap ideal API specs)
+
+app.get('/coingecko/pairs', (c) => handleCgPairs(c.req.raw, c.env.DB));
+app.get('/coingecko/tickers', (c) => handleCgTickers(c.req.raw, c.env.DB));
+app.get('/coingecko/orderbook', (c) => handleCgOrderbook(c.req.raw, c.env.DB));
+app.get('/coingecko/historical_trades', (c) => handleCgHistoricalTrades(c.req.raw, c.env.DB));
+app.get('/coinmarketcap/summary', (c) => handleCmcSummary(c.req.raw, c.env.DB));
+app.get('/catalog/pairs', (c) => handleCatalogPairs(c.req.raw, c.env.DB));
+app.get('/openapi.json', () =>
+  Response.json(openapi, { headers: { 'Cache-Control': 'public, max-age=3600' } }));
 
 // Swap Routes
 

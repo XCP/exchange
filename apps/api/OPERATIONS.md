@@ -210,6 +210,32 @@ Bitcoin reorgs are rare (1-2 blocks) and this handles them automatically.
 | `GET /portfolio/:address/orders` | Open orders for an address |
 | `GET /portfolio/:address/dispensers` | Active dispensers for an address |
 
+### Aggregator integration (no auth)
+
+Endpoints shaped to CoinGecko's "Integration Ideal API Endpoints" spec and CoinMarketCap's Ideal API summary. One dataset, two presentations: completed order-book trades (incl. pool fills), plus dispenser fills for BTC-quoted pairs.
+
+Accounting rules:
+
+- **Dispenser volume is protocol-priced notional** (`dispense_quantity × dispenser rate`, joined via `dispenser_tx_hash`), never the gross BTC recorded on the dispense row. One BTC payment can trigger dispensers for several assets at one address and Counterparty stamps the FULL payment on every resulting row (audited in prod: 7,303 payments produced 35,232 multi-asset rows), so summing `btc_amount` double-counts and the stored per-row price is inflated. Overpayment beyond the rate is likewise excluded.
+- Quantities/volumes are fixed 8-decimal strings. **Unit prices are full-precision decimal strings** (`decPrice`) — 8dp would zero out sub-satoshi unit prices (1 sat per 1,000 units = 1e-11).
+- Timestamps are UTC milliseconds. Tickers carry `last_trade_timestamp` + `is_stale` (no completed fill in 90 days) so decade-old last prices are labeled, not hidden.
+- `trade_id` = `source_id × 8 + code` (0 = order-book, 1 = AMM pool, 2 = dispenser, 3 reserved for PSBT swaps). Rows only ever append under protocol-derived UNIQUE keys, so IDs are permanent unless a table is dropped. Each historical trade also carries `source` and `settlement_txid` for independent audit.
+
+The feed is an **explicit allowlist** — edit `INTEGRATION_PAIRS` in `src/lib/market-summary.ts` to add/remove markets (currently XCP_BTC + top-10 all-time currency assets × both quotes). Every query is a per-pair indexed lookup, so a request costs tens of D1 rows read regardless of table sizes; unknown tickers return 404. Pairs with no price history self-prune from tickers.
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /coingecko/pairs` | Active markets as `{ticker_id, base, target}` |
+| `GET /coingecko/tickers` | 24h rolling price/volume/bid/ask per pair |
+| `GET /coingecko/orderbook?ticker_id=XCP_BTC&depth=100` | Price-level aggregated book; open dispensers merged into asks on BTC pairs |
+| `GET /coingecko/historical_trades?ticker_id=XCP_BTC&type=buy&limit=200` | Completed fills split into `buy`/`sell`; dispenses are always buys |
+| `GET /coinmarketcap/summary` | CMC summary: all pairs with `last_price`, 24h volumes, `type: "spot"` |
+| `GET /catalog/pairs` | Market catalog: per-asset protocol/divisibility/longname/explorer URL, data-driven `execution_sources`, `status` (active/stale/inactive) |
+
+Aggregator-facing base URL: **`https://api.xcpdex.com`** (custom domain on this worker; workers.dev remains for existing consumers). Historical trades drop-and-log `PRICE_QUANTIZATION_LOSS` if a nonzero execution ever carries a zero stored price.
+
+**`npm run reconcile`** verifies the live integration surface end to end: CMC == CG field-for-field, ticker bid/ask == orderbook tops, ticker volumes/high/low/last == the full paged rolling-24h historical window, no duplicate trade IDs, no nonpositive prices, sorted books, stale flags consistent with the 90-day rule. Pairs whose ticker changes mid-run are reported UNSTABLE and skipped (rerun). Run before any aggregator submission and after any accounting change.
+
 ### Internal (requires `Authorization: Bearer TOKEN`)
 
 | Endpoint | Description |

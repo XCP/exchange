@@ -174,23 +174,27 @@ export async function syncNewAssets(
     const data = await fetchAssetsPage(cursor);
     if (data.result.length === 0) break;
 
-    // Check how many we already know
+    // Check which of this page we already know
     const assetNames = data.result.map((a) => a.asset);
     const placeholders = assetNames.map((_, i) => `?${i + 1}`).join(",");
     const known = await db
-      .prepare(`SELECT COUNT(*) as cnt FROM assets WHERE asset IN (${placeholders})`)
+      .prepare(`SELECT asset FROM assets WHERE asset IN (${placeholders})`)
       .bind(...assetNames)
-      .first<{ cnt: number }>();
+      .all<{ asset: string }>();
+    const knownSet = new Set(known.results.map((r) => r.asset));
+    const knownCount = knownSet.size;
 
-    const knownCount = known?.cnt ?? 0;
-
-    // Upsert all (updates supply etc. for known ones)
-    const stmts = upsertBatch(db, data.result, now);
+    // Upsert only unknown assets. Re-upserting known rows rewrote a full page
+    // (~1000 rows) every cron tick for nothing — and it never actually tracked
+    // supply: reissued assets don't reappear on the first page, so only the
+    // newest page ever got refreshed. Supply refresh belongs to a full re-index.
+    const newAssets = data.result.filter((a) => !knownSet.has(a.asset));
+    const stmts = upsertBatch(db, newAssets, now);
     for (let i = 0; i < stmts.length; i += 50) {
       await db.batch(stmts.slice(i, i + 50));
     }
 
-    totalIndexed += data.result.length;
+    totalIndexed += newAssets.length;
     pages++;
 
     // If most of this page was known, we've caught up

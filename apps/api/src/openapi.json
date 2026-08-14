@@ -1,0 +1,335 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "XCP DEX Market Data API",
+    "version": "1.0.0",
+    "description": "Aggregator-facing market data for the Counterparty DEX (XCP DEX). One dataset, two presentations: the CoinGecko endpoints follow CoinGecko's Integration Ideal API Endpoints spec for spot DEXs; /coinmarketcap/summary follows CoinMarketCap's Ideal API summary. Venue definition: completed Counterparty order-book settlements (status=completed only; pending BTC order matches are never counted), AMM pool fills, and BTC-denominated dispenser executions on BTC-quoted pairs. Dispenser quote volume and prices are protocol-priced notional (dispensed quantity x the dispenser's satoshirate-derived unit price) - never the gross Bitcoin payment, which can be shared across multiple dispensers and can include overpayment. PSBT/UTXO swaps are excluded. Markets are an explicit allowlist; see /catalog/pairs. Methodology: https://xcpdex.com/methodology",
+    "contact": { "name": "XCP DEX", "url": "https://xcpdex.com", "email": "data@xcpdex.com" }
+  },
+  "servers": [{ "url": "https://api.xcpdex.com" }],
+  "paths": {
+    "/coingecko/pairs": {
+      "get": {
+        "summary": "Active markets",
+        "description": "Markets currently surfaced by the feed. The universe is a fixed allowlist; allowlisted pairs with no completed settlement ever are omitted here and from tickers (see /catalog/pairs for the full allowlist with status). Cache-Control: 300s.",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "ticker_id": { "$ref": "#/components/schemas/TickerId" },
+                      "base": { "type": "string" },
+                      "target": { "type": "string" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/coingecko/tickers": {
+      "get": {
+        "summary": "Rolling 24h market summaries",
+        "description": "The 24h window is rolling (request time minus 24 hours through request time), not a UTC calendar day. Inclusion is governed by the Bitcoin block time of the completed settlement. high/low are calculated from completed settlements only; when no settlement occurred in the window they fall back to last_price and volumes are \"0.00000000\". bid/ask are the best currently executable levels (order-book bids; order-book asks merged with open dispenser offers on BTC-quoted pairs); null when that side has no executable level. An open bid or ask is never promoted into last_price. Cache-Control: 60s.",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Ticker" } }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/coingecko/orderbook": {
+      "get": {
+        "summary": "Price-level aggregated order book",
+        "description": "Bids sorted descending, asks ascending, aggregated by price level, executable remaining quantities only. On BTC-quoted pairs, open dispensers (escrow remaining, protocol price) are merged into the ask side - dispensers contribute asks, never bids. Cache-Control: 60s.",
+        "parameters": [
+          { "$ref": "#/components/parameters/tickerId" },
+          {
+            "name": "depth",
+            "in": "query",
+            "description": "Total entries across both sides. 0 or absent = full depth, capped at 500 levels per side.",
+            "schema": { "type": "integer", "minimum": 0, "default": 0 }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ticker_id": { "$ref": "#/components/schemas/TickerId" },
+                    "timestamp": { "$ref": "#/components/schemas/TimestampMs" },
+                    "bids": { "$ref": "#/components/schemas/BookSide" },
+                    "asks": { "$ref": "#/components/schemas/BookSide" }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "404": { "$ref": "#/components/responses/UnknownTicker" }
+        }
+      }
+    },
+    "/coingecko/historical_trades": {
+      "get": {
+        "summary": "Completed settlements",
+        "description": "Newest first. No cursor: page a window by narrowing end_time below the oldest trade_timestamp already received and de-duplicating on trade_id. Dispenser executions always report type=buy (the payer acquires the base asset). A nonzero execution is never published with a zero price; such rows are dropped and logged (PRICE_QUANTIZATION_LOSS).",
+        "parameters": [
+          { "$ref": "#/components/parameters/tickerId" },
+          {
+            "name": "type",
+            "in": "query",
+            "description": "Return only one side. Response contains only the requested key when set.",
+            "schema": { "type": "string", "enum": ["buy", "sell"] }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": { "type": "integer", "default": 200, "maximum": 1000 }
+          },
+          {
+            "name": "start_time",
+            "in": "query",
+            "description": "Inclusive lower bound, UTC milliseconds.",
+            "schema": { "type": "integer" }
+          },
+          {
+            "name": "end_time",
+            "in": "query",
+            "description": "Inclusive upper bound, UTC milliseconds.",
+            "schema": { "type": "integer" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "buy": { "type": "array", "items": { "$ref": "#/components/schemas/Trade" } },
+                    "sell": { "type": "array", "items": { "$ref": "#/components/schemas/Trade" } }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "404": { "$ref": "#/components/responses/UnknownTicker" }
+        }
+      }
+    },
+    "/coinmarketcap/summary": {
+      "get": {
+        "summary": "CoinMarketCap Ideal API summary",
+        "description": "Identical underlying dataset to /coingecko/tickers (the production reconciliation gate enforces field-level equality). type is always \"spot\". Cache-Control: 60s.",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": { "type": "array", "items": { "$ref": "#/components/schemas/CmcSummaryRow" } }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/catalog/pairs": {
+      "get": {
+        "summary": "Market catalog",
+        "description": "The complete market allowlist with per-asset disambiguation (protocol, divisibility, longname, canonical explorer URL) and data-driven execution_sources: \"pool\" appears only on pairs with a live AMM pool, \"dispenser\" only on BTC-quoted pairs. status: active (completed fill within 90 days), stale (priced, no recent fill), inactive (never priced; omitted from tickers). Cache-Control: 300s.",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": { "type": "array", "items": { "$ref": "#/components/schemas/CatalogEntry" } }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "parameters": {
+      "tickerId": {
+        "name": "ticker_id",
+        "in": "query",
+        "required": true,
+        "description": "BASE_QUOTE, e.g. XCP_BTC. Valid values are the allowlist in /catalog/pairs.",
+        "schema": { "$ref": "#/components/schemas/TickerId" }
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "Missing or malformed ticker_id.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "UnknownTicker": {
+        "description": "Syntactically valid ticker_id that is not in the market allowlist.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      }
+    },
+    "schemas": {
+      "TickerId": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9.]+_[A-Za-z0-9.]+$",
+        "description": "BASE_QUOTE. Counterparty asset names never contain underscores, so the split is unambiguous.",
+        "examples": ["XCP_BTC"]
+      },
+      "QuantityString": {
+        "type": "string",
+        "description": "Asset quantity or volume as a fixed 8-decimal string (Counterparty divisible-asset precision).",
+        "examples": ["131.00000000"]
+      },
+      "PriceString": {
+        "type": "string",
+        "description": "Unit price as a full-precision, non-scientific decimal string. Sub-satoshi unit prices are real on this venue (1 satoshi for 1,000 units = 0.00000000001), so prices are NOT truncated to 8 decimals. Trailing zeros are trimmed.",
+        "examples": ["0.0000344", "0.0000109051254089"]
+      },
+      "TimestampMs": {
+        "type": "integer",
+        "format": "int64",
+        "description": "UTC milliseconds since epoch. Settlement timestamps are the Bitcoin block time of the confirming block."
+      },
+      "TradeId": {
+        "type": "integer",
+        "format": "int64",
+        "description": "Permanent unique integer, namespaced by settlement source: source_id x 8 + code, where code 0 = order-book settlement, 1 = AMM pool fill, 2 = dispenser execution, 3 = reserved for PSBT/UTXO swaps. Rows only ever append under protocol-derived unique keys, so an ID never changes or repeats."
+      },
+      "Ticker": {
+        "type": "object",
+        "properties": {
+          "ticker_id": { "$ref": "#/components/schemas/TickerId" },
+          "base_currency": { "type": "string" },
+          "target_currency": { "type": "string" },
+          "last_price": { "$ref": "#/components/schemas/PriceString" },
+          "base_volume": { "$ref": "#/components/schemas/QuantityString" },
+          "target_volume": { "$ref": "#/components/schemas/QuantityString" },
+          "bid": {
+            "oneOf": [{ "$ref": "#/components/schemas/PriceString" }, { "type": "null" }],
+            "description": "Best executable bid; null when no open bid exists."
+          },
+          "ask": {
+            "oneOf": [{ "$ref": "#/components/schemas/PriceString" }, { "type": "null" }],
+            "description": "Best executable ask (order book merged with open dispensers on BTC pairs); null when none."
+          },
+          "high": { "$ref": "#/components/schemas/PriceString" },
+          "low": { "$ref": "#/components/schemas/PriceString" },
+          "last_trade_timestamp": {
+            "oneOf": [{ "$ref": "#/components/schemas/TimestampMs" }, { "type": "null" }]
+          },
+          "is_stale": {
+            "type": "boolean",
+            "description": "True when no completed settlement occurred within the last 90 days. Stale last prices remain visible and labeled; they are never replaced by open quotes."
+          }
+        }
+      },
+      "Trade": {
+        "type": "object",
+        "properties": {
+          "trade_id": { "$ref": "#/components/schemas/TradeId" },
+          "price": { "$ref": "#/components/schemas/PriceString" },
+          "base_volume": { "$ref": "#/components/schemas/QuantityString" },
+          "target_volume": {
+            "allOf": [{ "$ref": "#/components/schemas/QuantityString" }],
+            "description": "For dispenser executions this is protocol-priced notional (quantity x dispenser unit price), never the gross Bitcoin payment."
+          },
+          "trade_timestamp": { "$ref": "#/components/schemas/TimestampMs" },
+          "type": { "type": "string", "enum": ["buy", "sell"] },
+          "source": {
+            "type": "string",
+            "enum": ["order", "pool", "dispenser"],
+            "description": "Audit field: which settlement mechanism produced this fill."
+          },
+          "settlement_txid": {
+            "type": "string",
+            "description": "Audit field: the Bitcoin transaction that settled this fill, independently verifiable on-chain."
+          }
+        }
+      },
+      "BookSide": {
+        "type": "array",
+        "items": {
+          "type": "array",
+          "prefixItems": [
+            { "$ref": "#/components/schemas/PriceString" },
+            { "$ref": "#/components/schemas/QuantityString" }
+          ],
+          "description": "[price, base amount]"
+        }
+      },
+      "CmcSummaryRow": {
+        "type": "object",
+        "properties": {
+          "trading_pairs": { "$ref": "#/components/schemas/TickerId" },
+          "base_currency": { "type": "string" },
+          "quote_currency": { "type": "string" },
+          "last_price": { "$ref": "#/components/schemas/PriceString" },
+          "lowest_ask": { "oneOf": [{ "$ref": "#/components/schemas/PriceString" }, { "type": "null" }] },
+          "highest_bid": { "oneOf": [{ "$ref": "#/components/schemas/PriceString" }, { "type": "null" }] },
+          "base_volume": { "$ref": "#/components/schemas/QuantityString" },
+          "quote_volume": { "$ref": "#/components/schemas/QuantityString" },
+          "price_change_percent_24h": {
+            "type": "string",
+            "description": "Percent, two decimals, versus the earliest completed fill inside the rolling window. \"0.00\" when the window is empty."
+          },
+          "highest_price_24h": { "$ref": "#/components/schemas/PriceString" },
+          "lowest_price_24h": { "$ref": "#/components/schemas/PriceString" },
+          "last_trade_timestamp": { "oneOf": [{ "$ref": "#/components/schemas/TimestampMs" }, { "type": "null" }] },
+          "is_stale": { "type": "boolean" },
+          "type": { "type": "string", "const": "spot" }
+        }
+      },
+      "CatalogAsset": {
+        "type": "object",
+        "properties": {
+          "symbol": { "type": "string" },
+          "name": { "type": "string" },
+          "protocol": { "type": "string", "enum": ["counterparty", "bitcoin"] },
+          "divisible": { "type": "boolean" },
+          "asset_longname": { "oneOf": [{ "type": "string" }, { "type": "null" }] },
+          "asset_url": { "type": "string", "description": "Canonical explorer page; resolves symbol ambiguity." }
+        }
+      },
+      "CatalogEntry": {
+        "type": "object",
+        "properties": {
+          "ticker_id": { "$ref": "#/components/schemas/TickerId" },
+          "base": { "$ref": "#/components/schemas/CatalogAsset" },
+          "target": { "$ref": "#/components/schemas/CatalogAsset" },
+          "market_url": { "type": "string" },
+          "execution_sources": {
+            "type": "array",
+            "items": { "type": "string", "enum": ["order_book", "pool", "dispenser"] }
+          },
+          "status": { "type": "string", "enum": ["active", "stale", "inactive"] },
+          "last_trade_timestamp": { "oneOf": [{ "$ref": "#/components/schemas/TimestampMs" }, { "type": "null" }] },
+          "is_stale": { "type": "boolean" }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "properties": { "error": { "type": "string" } }
+      }
+    }
+  }
+}
