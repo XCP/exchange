@@ -224,7 +224,7 @@
           "target_currency": { "type": "string" },
           "pool_id": {
             "type": "string",
-            "description": "Unique market identifier (same as ticker_id). Counterparty is a non-EVM orderbook venue: assets are not contracts, so there is no pool/contract address."
+            "description": "Counterparty LP asset name for markets with an AMM pool. Orderbook-only markets have no LP asset and use their unique ticker_id instead."
           },
           "last_price": { "$ref": "#/components/schemas/PriceString" },
           "base_volume": { "$ref": "#/components/schemas/QuantityString" },

@@ -7,6 +7,7 @@ import {
   parseTickerId,
   STALE_AFTER_SECONDS,
 } from "../lib/market-summary";
+import { makePoolPair } from "../lib/pools";
 
 /**
  * CoinGecko integration endpoints, per CoinGecko's "Integration Ideal API
@@ -18,7 +19,8 @@ import {
  *
  * Quantities/volumes are fixed 8-decimal strings; unit prices are
  * full-precision decimal strings (sub-satoshi unit prices are real here);
- * timestamps are UTC ms.
+ * ticker/orderbook timestamps are UTC ms; historical trade timestamps and
+ * historical start_time/end_time query bounds are unix seconds.
  *
  * trade_id is a permanent unique integer namespaced by settlement source:
  *   source_id * 8 + code, code 0 = order-book, 1 = AMM pool, 2 = dispenser,
@@ -47,15 +49,21 @@ export async function handleCgTickers(request: Request, db: D1Database): Promise
   const url = new URL(request.url);
   const now = Math.floor(Date.now() / 1000);
   const summaries = await getMarketSummaries(db);
+  const poolPairs = [...new Set(summaries.map((s) => makePoolPair(s.base, s.quote)))];
+  const poolResult = poolPairs.length > 0
+    ? await db.prepare(
+        `SELECT pair, lp_asset FROM pools WHERE pair IN (${poolPairs.map(() => "?").join(",")})`
+      ).bind(...poolPairs).all<{ pair: string; lp_asset: string }>()
+    : { results: [] as { pair: string; lp_asset: string }[] };
+  const lpAssetByPair = new Map(poolResult.results.map((row) => [row.pair, row.lp_asset]));
   return Response.json(
     summaries.map((s) => ({
       ticker_id: s.pair,
       base_currency: s.base,
       target_currency: s.quote,
-      // CoinGecko marks pool_id mandatory for DEXs ("pool/pair address or
-      // unique ID"). Counterparty is a non-EVM orderbook venue with no
-      // contract addresses; the pair string is the market's unique ID.
-      pool_id: s.pair,
+      // The protocol LP asset is the canonical pool ID. Orderbook-only
+      // markets have no LP asset, so retain their unique market identifier.
+      pool_id: lpAssetByPair.get(makePoolPair(s.base, s.quote)) ?? s.pair,
       last_price: decPrice(s.lastPrice),
       base_volume: dec(s.baseVolume24h),
       target_volume: dec(s.quoteVolume24h),
