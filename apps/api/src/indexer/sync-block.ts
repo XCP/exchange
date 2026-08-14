@@ -1331,11 +1331,20 @@ export async function syncBlocks(
     }
   }
 
-  // Save run time
-  await db.prepare(
-    `INSERT INTO indexer_state (key, value) VALUES ('last_run_time', ?)
-     ON CONFLICT (key) DO UPDATE SET value = excluded.value`
-  ).bind(String(now)).run();
+  // Save run time plus a transition-only caught-up flag. last_run_time already
+  // existed; indexer_caught_up changes only when lag state changes, not on
+  // every cron, event, trade, or pair.
+  await db.batch([
+    db.prepare(
+      `INSERT INTO indexer_state (key, value) VALUES ('last_run_time', ?)
+       ON CONFLICT (key) DO UPDATE SET value = excluded.value`
+    ).bind(String(now)),
+    db.prepare(
+      `INSERT INTO indexer_state (key, value) VALUES ('indexer_caught_up', ?)
+       ON CONFLICT (key) DO UPDATE SET value = excluded.value
+       WHERE value != excluded.value`
+    ).bind(lastBlock === currentBlock.block_index ? "1" : "0"),
+  ]);
 
   // Store block hash for same-height reorg detection on next run
   if (result.blocks_processed > 0) {

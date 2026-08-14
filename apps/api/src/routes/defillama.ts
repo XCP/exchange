@@ -1,6 +1,7 @@
 import { dec } from "../lib/market-summary";
 
 const MAX_WINDOW_SECONDS = 31 * 86400;
+const MAX_INDEXER_AGE_SECONDS = 10 * 60;
 
 export const DEFILLAMA_TRADE_VOLUME_SQL = `
   SELECT quote_asset, source_type AS source,
@@ -43,6 +44,7 @@ export async function handleDefiLlamaVolume(
   executionCtx?: ExecutionContext
 ): Promise<Response> {
   const url = new URL(request.url);
+  const now = Math.floor(Date.now() / 1000);
   const startTimestamp = requiredTimestamp(url, "start_timestamp");
   const endTimestamp = requiredTimestamp(url, "end_timestamp");
 
@@ -58,6 +60,9 @@ export async function handleDefiLlamaVolume(
   if (endTimestamp - startTimestamp > MAX_WINDOW_SECONDS) {
     return Response.json({ error: "time window cannot exceed 31 days" }, { status: 400 });
   }
+  if (endTimestamp > now + 60) {
+    return Response.json({ error: "end_timestamp cannot be in the future" }, { status: 400 });
+  }
 
   // Normalize away unrelated query parameters so every caller requesting the
   // same immutable window shares one cache entry and one D1 aggregation.
@@ -68,15 +73,24 @@ export async function handleDefiLlamaVolume(
   const cached = await caches.default.match(cacheKey);
   if (cached) return cached;
 
-  const indexedTime = await db.prepare(
-    `SELECT value FROM indexer_state WHERE key = 'last_block_time'`
-  ).first<{ value: string }>();
-  const indexedThrough = Number(indexedTime?.value);
-  if (!Number.isFinite(indexedThrough) || indexedThrough < endTimestamp) {
+  const stateResult = await db.prepare(
+    `SELECT key, value FROM indexer_state
+     WHERE key IN ('last_block_time', 'last_run_time', 'indexer_caught_up')`
+  ).all<{ key: string; value: string }>();
+  const state = Object.fromEntries(stateResult.results.map((row) => [row.key, row.value]));
+  const indexedThrough = Number(state.last_block_time);
+  const lastRunTime = Number(state.last_run_time);
+  const isFreshAndCaughtUp = state.indexer_caught_up === "1"
+    && Number.isFinite(lastRunTime)
+    && now - lastRunTime <= MAX_INDEXER_AGE_SECONDS;
+  const isHistoricalWindowComplete = Number.isFinite(indexedThrough)
+    && indexedThrough >= endTimestamp;
+  if (!isHistoricalWindowComplete && !isFreshAndCaughtUp) {
     return Response.json(
       {
-        error: "requested window is not finalized by the indexer",
+        error: "requested window is not complete in the indexer",
         indexed_through: Number.isFinite(indexedThrough) ? indexedThrough : null,
+        last_run_time: Number.isFinite(lastRunTime) ? lastRunTime : null,
       },
       { status: 503, headers: { "Retry-After": "600" } }
     );
@@ -101,10 +115,9 @@ export async function handleDefiLlamaVolume(
   }
 
   const serialize = (value: { BTC: number; XCP: number }) => ({ BTC: dec(value.BTC), XCP: dec(value.XCP) });
-  const now = Math.floor(Date.now() / 1000);
   const cache = endTimestamp <= now - 86400
     ? "public, max-age=3600, s-maxage=604800, stale-while-revalidate=86400"
-    : "public, max-age=300, s-maxage=3600";
+    : "public, max-age=60, s-maxage=120, stale-while-revalidate=60";
   const response = Response.json(
     {
       start_timestamp: startTimestamp,
