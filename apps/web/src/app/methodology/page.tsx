@@ -105,6 +105,23 @@ export default function MethodologyPage() {
         </ul>
       </Section>
 
+      <Section title="DefiLlama volume feed">
+        <P>
+          The DefiLlama endpoint is venue-wide and does not use the fixed CoinGecko/CoinMarketCap
+          market allowlist. It includes every non-hidden Counterparty market whose executed quote
+          asset is BTC or XCP, so long-tail base assets are included without assigning them
+          speculative prices. The endpoint returns native BTC and XCP quote balances; DefiLlama
+          applies its historical BTC and XCP prices for each requested period.
+        </P>
+        <P>
+          <Code>/defillama/volume</Code> accepts an exact half-open historical window in Unix seconds:
+          <Code>start_timestamp</Code> is inclusive and <Code>end_timestamp</Code> is exclusive. A
+          window that the indexer has not completed returns <Code>503</Code> instead of partial data or
+          a placeholder zero. Finalized historical responses are cached at the edge and the endpoint
+          performs no database writes.
+        </P>
+      </Section>
+
       <Section title="The 24-hour window">
         <P>
           All 24-hour figures use a rolling window — request time minus 24 hours through request time — not a

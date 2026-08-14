@@ -26,6 +26,17 @@ execution definition.
 Markets are an explicit allowlist (`/catalog/pairs`), not everything the protocol has ever
 traded. Each entry declares which execution sources actually feed it.
 
+That allowlist applies to the CoinGecko and CoinMarketCap feeds. The DefiLlama volume endpoint
+is venue-wide: it includes every non-hidden Counterparty market whose executed quote asset is
+BTC or XCP. This includes long-tail base assets without assigning them speculative prices;
+the endpoint returns native BTC and XCP quote balances for DefiLlama to price historically.
+
+`/defillama/volume` accepts an exact half-open Unix-second window: `start_timestamp` is
+inclusive and `end_timestamp` is exclusive. If the indexer has not completed the requested
+window, the endpoint returns HTTP 503 rather than partial data or a placeholder zero.
+Finalized historical responses are cached at the edge, and the endpoint performs no database
+writes.
+
 ## Dispenser accounting
 
 This is the unusual part of the venue, so it is stated precisely:
