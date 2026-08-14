@@ -155,7 +155,7 @@
     "/defillama/volume": {
       "get": {
         "summary": "DefiLlama venue-wide spot volume",
-        "description": "Executed spot volume for an arbitrary [start, end) window, grouped by BTC/XCP quote asset and settlement source. Includes every non-hidden base asset traded against BTC or XCP; this endpoint does not use the CoinGecko/CMC pair allowlist. BTC/XCP are returned as native quote balances so DefiLlama prices them at the requested period. A historical window beyond the indexed block time is served only when the indexer has completed a fresh caught-up run; otherwise it returns 503 instead of a placeholder zero. Historical responses receive long-lived shared-cache headers; current windows are cached briefly.",
+        "description": "Executed spot volume for an arbitrary [start, end) window, grouped by BTC/XCP quote asset and settlement source. Includes every non-hidden base asset traded against BTC or XCP; this endpoint does not use the CoinGecko/CMC pair allowlist. Direct order-book self-matches (maker = taker) are excluded as wash trading. BTC/XCP are returned as native quote balances so DefiLlama prices them at the requested period. A historical window beyond the indexed block time is served only when the indexer has completed a fresh caught-up run; otherwise it returns 503 instead of a placeholder zero. Historical responses receive long-lived shared-cache headers; current windows are cached briefly.",
         "parameters": [
           {
             "name": "start_timestamp",

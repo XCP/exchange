@@ -114,6 +114,11 @@ export default function MethodologyPage() {
           applies its historical BTC and XCP prices for each requested period.
         </P>
         <P>
+          Direct order-book self-matches, where the indexed maker and taker Bitcoin addresses
+          are equal, are excluded as wash trading. Different-address executions are not removed
+          without evidence that the addresses share an owner.
+        </P>
+        <P>
           <Code>/defillama/volume</Code> accepts an exact half-open historical window in Unix seconds:
           <Code>start_timestamp</Code> is inclusive and <Code>end_timestamp</Code> is exclusive. A
           window that the indexer has not completed returns <Code>503</Code> instead of partial data or

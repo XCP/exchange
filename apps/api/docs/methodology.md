@@ -30,6 +30,9 @@ That allowlist applies to the CoinGecko and CoinMarketCap feeds. The DefiLlama v
 is venue-wide: it includes every non-hidden Counterparty market whose executed quote asset is
 BTC or XCP. This includes long-tail base assets without assigning them speculative prices;
 the endpoint returns native BTC and XCP quote balances for DefiLlama to price historically.
+Direct order-book self-matches, where the indexed maker and taker Bitcoin addresses are equal,
+are excluded as wash trading. Different-address executions are not removed without evidence
+that the addresses share an owner.
 
 `/defillama/volume` accepts an exact half-open Unix-second window: `start_timestamp` is
 inclusive and `end_timestamp` is exclusive. If the indexer has not completed the requested

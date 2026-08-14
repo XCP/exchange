@@ -9,6 +9,7 @@ export const DEFILLAMA_TRADE_VOLUME_SQL = `
   FROM trades
   WHERE block_time >= ? AND block_time < ?
     AND quote_asset IN ('BTC', 'XCP')
+    AND (source_type = 'pool' OR maker <> taker)
     AND pair NOT IN (SELECT pair FROM pair_stats WHERE hidden = 1)
   GROUP BY quote_asset, source_type`;
 
