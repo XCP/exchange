@@ -162,7 +162,7 @@ export default function MethodologyPage() {
             Status: <Link href="/status" className="text-green-400 hover:text-green-300">xcpdex.com/status</Link>
           </li>
           <li>
-            Contact: <Code>data@xcpdex.com</Code>
+            Contact: <Code>dan@droplister.com</Code>
           </li>
         </ul>
       </Section>

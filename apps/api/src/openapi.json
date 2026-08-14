@@ -4,7 +4,7 @@
     "title": "XCP DEX Market Data API",
     "version": "1.0.0",
     "description": "Aggregator-facing market data for the Counterparty DEX (XCP DEX). One dataset, two presentations: the CoinGecko endpoints follow CoinGecko's Integration Ideal API Endpoints spec for spot DEXs; /coinmarketcap/summary follows CoinMarketCap's Ideal API summary. Venue definition: completed Counterparty order-book settlements (status=completed only; pending BTC order matches are never counted), AMM pool fills, and BTC-denominated dispenser executions on BTC-quoted pairs. Dispenser quote volume and prices are protocol-priced notional (dispensed quantity x the dispenser's satoshirate-derived unit price) - never the gross Bitcoin payment, which can be shared across multiple dispensers and can include overpayment. PSBT/UTXO swaps are excluded. Markets are an explicit allowlist; see /catalog/pairs. Methodology: https://xcpdex.com/methodology",
-    "contact": { "name": "XCP DEX", "url": "https://xcpdex.com", "email": "data@xcpdex.com" }
+    "contact": { "name": "XCP DEX", "url": "https://xcpdex.com", "email": "dan@droplister.com" }
   },
   "servers": [{ "url": "https://api.xcpdex.com" }],
   "paths": {

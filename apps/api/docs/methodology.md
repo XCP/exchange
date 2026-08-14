@@ -95,4 +95,4 @@ the venue must book twenty protocol-priced notionals rather than twenty copies o
 
 - API reference: [`api.xcpdex.com/openapi.json`](https://api.xcpdex.com/openapi.json)
 - Market catalog: [`api.xcpdex.com/catalog/pairs`](https://api.xcpdex.com/catalog/pairs)
-- Contact: `data@xcpdex.com`
+- Contact: `dan@droplister.com`
