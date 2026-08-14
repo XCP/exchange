@@ -657,6 +657,18 @@ export async function syncBlocks(
     }
   }
 
+  // A deployment may introduce last_block_time while the indexer is already
+  // caught up, leaving no new block to populate it in the processing loop.
+  // The current tip was just fetched and its checkpoint hash verified above,
+  // so initialize/update the timestamp without waiting for another block.
+  if (rollbackTo === null && lastBlock === currentBlock.block_index) {
+    await db.prepare(
+      `INSERT INTO indexer_state (key, value) VALUES ('last_block_time', ?)
+       ON CONFLICT (key) DO UPDATE SET value = excluded.value
+       WHERE value != excluded.value`
+    ).bind(String(currentBlock.block_time)).run();
+  }
+
   if (rollbackTo !== null) {
 
     // Gather context BEFORE deleting any rows
