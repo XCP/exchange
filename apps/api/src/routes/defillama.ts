@@ -37,7 +37,11 @@ function requiredTimestamp(url: URL, name: string): number | null {
   return Number.isSafeInteger(value) ? value : null;
 }
 
-export async function handleDefiLlamaVolume(request: Request, db: D1Database): Promise<Response> {
+export async function handleDefiLlamaVolume(
+  request: Request,
+  db: D1Database,
+  executionCtx?: ExecutionContext
+): Promise<Response> {
   const url = new URL(request.url);
   const startTimestamp = requiredTimestamp(url, "start_timestamp");
   const endTimestamp = requiredTimestamp(url, "end_timestamp");
@@ -54,6 +58,15 @@ export async function handleDefiLlamaVolume(request: Request, db: D1Database): P
   if (endTimestamp - startTimestamp > MAX_WINDOW_SECONDS) {
     return Response.json({ error: "time window cannot exceed 31 days" }, { status: 400 });
   }
+
+  // Normalize away unrelated query parameters so every caller requesting the
+  // same immutable window shares one cache entry and one D1 aggregation.
+  const cacheUrl = new URL(url.origin + url.pathname);
+  cacheUrl.searchParams.set("start_timestamp", String(startTimestamp));
+  cacheUrl.searchParams.set("end_timestamp", String(endTimestamp));
+  const cacheKey = new Request(cacheUrl.toString());
+  const cached = await caches.default.match(cacheKey);
+  if (cached) return cached;
 
   const indexedTime = await db.prepare(
     `SELECT value FROM indexer_state WHERE key = 'last_block_time'`
@@ -92,7 +105,7 @@ export async function handleDefiLlamaVolume(request: Request, db: D1Database): P
   const cache = endTimestamp <= now - 86400
     ? "public, max-age=3600, s-maxage=604800, stale-while-revalidate=86400"
     : "public, max-age=300, s-maxage=3600";
-  return Response.json(
+  const response = Response.json(
     {
       start_timestamp: startTimestamp,
       end_timestamp: endTimestamp,
@@ -107,4 +120,8 @@ export async function handleDefiLlamaVolume(request: Request, db: D1Database): P
     },
     { headers: { "Cache-Control": cache } }
   );
+  if (executionCtx) {
+    executionCtx.waitUntil(caches.default.put(cacheKey, response.clone()));
+  }
+  return response;
 }
