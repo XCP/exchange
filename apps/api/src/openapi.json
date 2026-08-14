@@ -3,7 +3,7 @@
   "info": {
     "title": "XCP DEX Market Data API",
     "version": "1.0.0",
-    "description": "Aggregator-facing market data for the Counterparty DEX (XCP DEX). One dataset, two presentations: the CoinGecko endpoints follow CoinGecko's Integration Ideal API Endpoints spec for spot DEXs; /coinmarketcap/summary follows CoinMarketCap's Ideal API summary. Venue definition: completed Counterparty order-book settlements (status=completed only; pending BTC order matches are never counted), AMM pool fills, and BTC-denominated dispenser executions on BTC-quoted pairs. Dispenser quote volume and prices are protocol-priced notional (dispensed quantity x the dispenser's satoshirate-derived unit price) - never the gross Bitcoin payment, which can be shared across multiple dispensers and can include overpayment. PSBT/UTXO swaps are excluded. Markets are an explicit allowlist; see /catalog/pairs. Methodology: https://xcpdex.com/methodology",
+    "description": "Aggregator-facing market data for the Counterparty DEX (XCP DEX). CoinGecko and CoinMarketCap use the explicit market allowlist in /catalog/pairs. DefiLlama volume is venue-wide across every BTC- or XCP-quoted market that can be priced defensibly. Completed Counterparty order-book settlements, AMM pool fills, and BTC-denominated dispenser executions are counted once; pending BTC order matches and PSBT/UTXO swaps are excluded. Dispenser quote volume and prices are protocol-priced notional (dispensed quantity x the dispenser's satoshirate-derived unit price), never the gross Bitcoin payment, which can be shared across multiple dispensers and can include overpayment. Methodology: https://xcpdex.com/methodology",
     "contact": { "name": "XCP DEX", "url": "https://xcpdex.com", "email": "dan@droplister.com" }
   },
   "servers": [{ "url": "https://api.xcpdex.com" }],
@@ -152,6 +152,59 @@
         }
       }
     },
+    "/defillama/volume": {
+      "get": {
+        "summary": "DefiLlama venue-wide spot volume",
+        "description": "Executed spot volume for an arbitrary finalized [start, end) window, grouped by BTC/XCP quote asset and settlement source. Includes every non-hidden base asset traded against BTC or XCP; this endpoint does not use the CoinGecko/CMC pair allowlist. BTC/XCP are returned as native quote balances so DefiLlama prices them at the requested period. A window not yet finalized by the indexer returns 503 instead of a placeholder zero. Historical responses receive long-lived shared-cache headers.",
+        "parameters": [
+          {
+            "name": "start_timestamp",
+            "in": "query",
+            "required": true,
+            "description": "Inclusive window start, unix seconds.",
+            "schema": { "type": "integer", "format": "int64" }
+          },
+          {
+            "name": "end_timestamp",
+            "in": "query",
+            "required": true,
+            "description": "Exclusive window end, unix seconds. The maximum window is 31 days.",
+            "schema": { "type": "integer", "format": "int64" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Finalized volume",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "start_timestamp": { "type": "integer", "format": "int64" },
+                    "end_timestamp": { "type": "integer", "format": "int64" },
+                    "window_semantics": { "type": "string", "const": "start inclusive, end exclusive" },
+                    "volume_by_quote": { "$ref": "#/components/schemas/DefiLlamaQuoteVolume" },
+                    "volume_by_source": {
+                      "type": "object",
+                      "properties": {
+                        "order_book": { "$ref": "#/components/schemas/DefiLlamaQuoteVolume" },
+                        "amm_pool": { "$ref": "#/components/schemas/DefiLlamaQuoteVolume" },
+                        "dispenser": { "$ref": "#/components/schemas/DefiLlamaQuoteVolume" }
+                      }
+                    },
+                    "trade_count": { "type": "integer" }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "503": {
+            "description": "The indexer has not finalized the requested end timestamp; retry later."
+          }
+        }
+      }
+    },
     "/catalog/pairs": {
       "get": {
         "summary": "Market catalog",
@@ -215,6 +268,14 @@
         "type": "integer",
         "format": "int64",
         "description": "Permanent unique integer, namespaced by settlement source: source_id x 8 + code, where code 0 = order-book settlement, 1 = AMM pool fill, 2 = dispenser execution, 3 = reserved for PSBT/UTXO swaps. Rows only ever append under protocol-derived unique keys, so an ID never changes or repeats."
+      },
+      "DefiLlamaQuoteVolume": {
+        "type": "object",
+        "properties": {
+          "BTC": { "$ref": "#/components/schemas/QuantityString" },
+          "XCP": { "$ref": "#/components/schemas/QuantityString" }
+        },
+        "required": ["BTC", "XCP"]
       },
       "Ticker": {
         "type": "object",

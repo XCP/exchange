@@ -10,6 +10,7 @@
   },
   "include": [
     "src/lib/pool-math.ts",
+    "src/routes/defillama.ts",
     "tests/node-test.d.ts",
     "tests/**/*.test.ts"
   ]

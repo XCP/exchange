@@ -31,6 +31,7 @@ import { handleAddressPools, handlePool, handlePoolAddress, handlePools } from "
 import { handleCgPairs, handleCgTickers, handleCgOrderbook, handleCgHistoricalTrades } from "./routes/coingecko";
 import { handleCmcSummary } from "./routes/coinmarketcap";
 import { handleCatalogPairs } from "./routes/catalog";
+import { handleDefiLlamaVolume } from "./routes/defillama";
 import openapi from "./openapi.json";
 import { refreshDealScores } from "./indexer/deal-scores";
 import { indexAllAssets, syncNewAssets } from "./indexer/assets";
@@ -124,6 +125,7 @@ app.get('/coingecko/tickers', (c) => handleCgTickers(c.req.raw, c.env.DB));
 app.get('/coingecko/orderbook', (c) => handleCgOrderbook(c.req.raw, c.env.DB));
 app.get('/coingecko/historical_trades', (c) => handleCgHistoricalTrades(c.req.raw, c.env.DB));
 app.get('/coinmarketcap/summary', (c) => handleCmcSummary(c.req.raw, c.env.DB));
+app.get('/defillama/volume', (c) => handleDefiLlamaVolume(c.req.raw, c.env.DB));
 app.get('/catalog/pairs', (c) => handleCatalogPairs(c.req.raw, c.env.DB));
 app.get('/openapi.json', () =>
   Response.json(openapi, { headers: { 'Cache-Control': 'public, max-age=3600' } }));

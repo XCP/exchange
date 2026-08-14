@@ -1259,14 +1259,19 @@ export async function syncBlocks(
       }
     }
 
-    // Update checkpoint after each block
-    await db
-      .prepare(
+    // Update both height and time atomically. Time lets historical API
+    // consumers distinguish a genuinely empty window from one the indexer
+    // has not completed yet.
+    await db.batch([
+      db.prepare(
         `INSERT INTO indexer_state (key, value) VALUES ('last_block_index', ?)
          ON CONFLICT (key) DO UPDATE SET value = excluded.value`
-      )
-      .bind(String(blockIdx))
-      .run();
+      ).bind(String(blockIdx)),
+      db.prepare(
+        `INSERT INTO indexer_state (key, value) VALUES ('last_block_time', ?)
+         ON CONFLICT (key) DO UPDATE SET value = excluded.value`
+      ).bind(String(blockTime)),
+    ]);
 
     lastBlock = blockIdx;
     result.blocks_processed++;
