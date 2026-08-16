@@ -57,6 +57,11 @@ const NAV: NavEntry[] = [
       { label: 'Withdrawal', href: '/liquidity/withdrawal', hint: 'Take your share back out' },
     ],
   },
+  // Last, and top level. This was the homepage until 2026-08-16, which made the
+  // front door a report rather than somewhere to act. It is a real destination
+  // — you come here to ask how the exchange is doing — so it gets a name in the
+  // nav rather than being folded into Explore, which is for browsing records.
+  { label: 'Stats', href: '/stats' },
 ]
 
 /** Exact match, or a child route — never a bare prefix, so /dispense would

@@ -105,7 +105,23 @@ type MobileMode = 'xcp' | 'btc'
 
 // ── Main Orchestrator ───────────────────────────────────────────────
 
-export default function AnalyticsPage() {
+/**
+ * Home and /stats are the same machine with two faces.
+ *
+ * The homepage WAS this whole dashboard: hero, then network summary, then
+ * charts, then traders. That made the front door a report — you arrived at
+ * xcpdex.com and got told how the exchange was doing rather than being shown
+ * anything to do. The analytics half now lives at /stats, which is a page
+ * people go to on purpose.
+ *
+ * One component rather than two because both faces need the same timeframe,
+ * quote-asset and low-quality state and the same cascading fetches, and the
+ * home face genuinely uses the summary data — the two marquees are built from
+ * it. Splitting the file would have duplicated all of that to save rendering
+ * three sections.
+ */
+export default function AnalyticsPage({ variant = 'home' }: { variant?: 'home' | 'stats' }) {
+  const isStats = variant === 'stats'
   // The same remembered window the Explore pages use, so a reader who picked
   // 1y over there does not land back on 30d here.
   const [timeframe, setTimeframe] = useTimeframeParam()
@@ -135,8 +151,12 @@ export default function AnalyticsPage() {
 
   return (
     <div className="px-4 py-8">
-      <HomeHero />
-      <LaunchStrip />
+      {!isStats && (
+        <>
+          <HomeHero />
+          <LaunchStrip />
+        </>
+      )}
 
       {/*
         The tickers, back under the launch banner.
@@ -147,22 +167,24 @@ export default function AnalyticsPage() {
         trades, BITCRYSTALS 10,435, XCP 18,381 dispenses. The objection was
         to the numbers, not to the ticker, and the numbers changed.
       */}
-      {summaryLoading ? (
-        <MarqueeSkeleton />
-      ) : (
-        <>
-          <div className={mobileMode === 'btc' ? 'hidden md:block' : ''}>
-            <QuoteMarquee quoteVolumes={summaryProps.quoteVolumes} />
-          </div>
-          <div className={mobileMode === 'xcp' ? 'hidden md:block' : ''}>
-            <DispenseMarquee topDispensers={summaryProps.topDispensers} satsMode={satsMode} />
-          </div>
-        </>
-      )}
+      {!isStats &&
+        (summaryLoading ? (
+          <MarqueeSkeleton />
+        ) : (
+          <>
+            <div className={mobileMode === 'btc' ? 'hidden md:block' : ''}>
+              <QuoteMarquee quoteVolumes={summaryProps.quoteVolumes} />
+            </div>
+            <div className={mobileMode === 'xcp' ? 'hidden md:block' : ''}>
+              <DispenseMarquee topDispensers={summaryProps.topDispensers} satsMode={satsMode} />
+            </div>
+          </>
+        ))}
 
       {/* The numbers, and the controls that scope them. Below the hero rather
           than above it: they answer "how is it going", which is the second
           question, not the first. */}
+      {isStats && (
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-sm uppercase tracking-wider text-zinc-400">Network activity</h2>
         <div className="flex items-center gap-3">
@@ -170,11 +192,16 @@ export default function AnalyticsPage() {
           <TimeframePills value={timeframe} onChange={setTimeframe} />
         </div>
       </div>
+      )}
 
-      <SummarySection timeframe={timeframe} includeHidden={includeHidden} isLoading={summaryLoading} mobileMode={mobileMode} quoteAsset={quoteAsset} quoteOptions={quoteOptions} onQuoteAssetChange={setQuoteAsset} {...summaryProps} />
-      <RecentActivity mobileMode={mobileMode} />
-      <ChartsSection timeframe={timeframe} includeHidden={includeHidden} ready={chartsReady} mobileMode={mobileMode} />
-      <TradersSection isLoading={tradersLoading} mobileMode={mobileMode} quoteAsset={quoteAsset} quoteOptions={quoteOptions} onQuoteAssetChange={setQuoteAsset} {...tradersProps} />
+      {isStats && <SummarySection timeframe={timeframe} includeHidden={includeHidden} isLoading={summaryLoading} mobileMode={mobileMode} quoteAsset={quoteAsset} quoteOptions={quoteOptions} onQuoteAssetChange={setQuoteAsset} {...summaryProps} />}
+
+      {/* The four venues. Stays on the HOME page: it is the part that shows
+          what is happening rather than summarising it. */}
+      {!isStats && <RecentActivity mobileMode={mobileMode} />}
+
+      {isStats && <ChartsSection timeframe={timeframe} includeHidden={includeHidden} ready={chartsReady} mobileMode={mobileMode} />}
+      {isStats && <TradersSection isLoading={tradersLoading} mobileMode={mobileMode} quoteAsset={quoteAsset} quoteOptions={quoteOptions} onQuoteAssetChange={setQuoteAsset} {...tradersProps} />}
 
       {/* Floating mobile XCP/BTC toggle */}
       <div className="md:hidden fixed bottom-4 left-1/2 -translate-x-1/2 z-50">

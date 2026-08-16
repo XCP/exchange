@@ -285,7 +285,10 @@ function ExploreAssetsInner() {
                       </td>
                       <td className="px-3 py-2 text-right font-mono tabular-nums">
                         {a.active_dispensers > 0 ? (
-                          <Link href={`/buy/${encodeURIComponent(label)}`} className="text-zinc-300 hover:text-green-400">
+                          // A count is a fact about the asset, not a button.
+                          // This opened the buy form, turning "3 dispensers
+                          // exist" into "purchase from one right now".
+                          <Link href={`/${encodeURIComponent(label)}`} className="text-zinc-300 hover:text-green-400">
                             {a.active_dispensers}
                           </Link>
                         ) : (

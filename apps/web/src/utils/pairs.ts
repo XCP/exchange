@@ -88,9 +88,29 @@ export function splitPair(pair: string): { base: string; quote: string } | null 
  *
  * Falls back to the asset page when the pair is unsplittable — a link to
  * something real beats a link to a 404.
+ *
+ * CHANGED 2026-08-16: this used to return `/swap/BASE/QUOTE`, which meant
+ * every market name in every browse table, search result and portfolio row
+ * dropped you straight into a trade form. Two things were wrong with it.
+ *
+ * It skipped the reading step. `/BASE` already carries the chart, the market
+ * list, the dispensers, the holders AND the trade rail, so it is strictly more
+ * than the form was — landing on the form is the abrupt version of arriving
+ * somewhere you can decide.
+ *
+ * And it was increasingly a dead end: only 4 pools exist, so for almost every
+ * market `/swap/BASE/QUOTE` now renders "No pool for this pair". Clicking a
+ * market you can see trading and being told there is nothing to trade against
+ * is the worst possible answer to that click.
+ *
+ * Acting on a market is still one click away, and callers that mean an ACTION
+ * — meeting a resting order at its price — ask for it explicitly via
+ * `formPath('/limit', …)`. Reading is now the default; acting is opt-in.
  */
 export function marketPath(pair: string): string {
-  return formPath('/swap', pair)
+  const parts = splitPair(pair)
+  if (!parts) return `/${encodeURIComponent(pair)}`
+  return `/${encodeURIComponent(parts.base)}`
 }
 
 /**

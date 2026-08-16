@@ -383,17 +383,17 @@ function DispensersTable({ dispensers, isLoading, assetSearch, debouncedAsset, o
                   {formatPrice(d.price, satsMode)}
                 </td>
                 <td className="px-3 py-1.5">
-                  <Link href={`/buy/${encodeURIComponent(d.asset)}`} className="flex items-center gap-1.5 hover:underline decoration-zinc-400">
+                  <span className="flex items-center gap-1.5">
                     <Image src={`${XCP_IMG_BASE}/icon/BTC`} alt="" width={14} height={14} className="rounded-sm" unoptimized />
                     <span className="text-zinc-400 truncate">{satsMode ? 'sats' : 'BTC'}</span>
-                  </Link>
+                  </span>
                 </td>
                 <td className="text-right text-zinc-400 font-mono px-3 py-1.5">
                   {formatPrice(d.give_quantity)}
                 </td>
                 <td className="px-3 py-1.5">
                   {isExactMatch ? (
-                    <Link href={`/buy/${encodeURIComponent(d.asset)}`} className="flex items-center gap-1.5 hover:underline">
+                    <Link href={`/${encodeURIComponent(d.asset)}`} className="flex items-center gap-1.5 hover:underline">
                       <Image src={`${XCP_IMG_BASE}/icon/${d.asset}`} alt="" width={14} height={14} className="rounded-sm" unoptimized />
                       <span className="text-zinc-200 truncate">{displayName}</span>
                     </Link>
@@ -562,17 +562,17 @@ function DispensesTable({ dispenses, isLoading, satsMode, assetSearch, debounced
                 })()}
               </td>
               <td className="px-3 py-1.5">
-                <Link href={`/buy/${encodeURIComponent(d.asset)}?address=${d.source}`} className="flex items-center gap-1.5 hover:underline decoration-zinc-400">
+                <span className="flex items-center gap-1.5">
                   <Image src={`${XCP_IMG_BASE}/icon/BTC`} alt="" width={14} height={14} className="rounded-sm" unoptimized />
                   <span className="text-zinc-400 truncate">{satsMode ? 'sats' : 'BTC'}</span>
-                </Link>
+                </span>
               </td>
               <td className="text-right text-zinc-400 font-mono px-3 py-1.5">
                 {formatPrice(d.dispense_quantity)}
               </td>
               <td className="px-3 py-1.5">
                 {isExactMatch ? (
-                  <Link href={`/buy/${encodeURIComponent(d.asset)}`} className="flex items-center gap-1.5 hover:underline">
+                  <Link href={`/${encodeURIComponent(d.asset)}`} className="flex items-center gap-1.5 hover:underline">
                     <Image src={`${XCP_IMG_BASE}/icon/${d.asset}`} alt="" width={14} height={14} className="rounded-sm" unoptimized />
                     <span className="text-zinc-200 truncate">{displayName}</span>
                   </Link>

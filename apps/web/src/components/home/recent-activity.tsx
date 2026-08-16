@@ -6,6 +6,8 @@ import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { useLatestOrders, type LatestOrder } from '@/lib/hooks/useLatestOrders'
 import { useDispensersLatest, useDispensesLatest, type LatestDispenser, type LatestDispense } from '@/lib/hooks/useDispensersLatest'
+import { usePools } from '@/lib/hooks/usePools'
+import { useMempool } from '@/lib/hooks/useMempool'
 import { useSatsMode } from '@/lib/sats-context'
 import { formatPrice } from '@/utils/format-price'
 import { marketPath } from '@/utils/pairs'
@@ -42,6 +44,20 @@ function CollectionChip({ slug, name, type }: { slug: string; name: string; type
 
 const CARD_COUNT = 4
 
+/**
+ * All four venues, given equal room.
+ *
+ * Orders and dispensers were here first because they are what people already
+ * use. Pools and the mempool are here despite being thin — 4 pools against
+ * ~18,000 assets with open dispensers — and that is the point: a venue nobody
+ * can see is a venue nobody uses, so ranking these panels by current volume
+ * would quietly ratify the status quo. The mempool panel earns its place even
+ * while empty, because "nothing pending right now" is still the site telling
+ * you it is live.
+ *
+ * The mobileMode split stays two-up per column so the phone layout does not
+ * become a four-card stack: XCP-side venues on one, BTC-side on the other.
+ */
 export function RecentActivity({ mobileMode }: { mobileMode?: 'xcp' | 'btc' }) {
   return (
     <>
@@ -53,8 +69,125 @@ export function RecentActivity({ mobileMode }: { mobileMode?: 'xcp' | 'btc' }) {
         <div className={mobileMode === 'xcp' ? 'hidden md:block' : ''}>
           <DispensersCard />
         </div>
+        <div className={mobileMode === 'btc' ? 'hidden md:block' : ''}>
+          <PoolsCard />
+        </div>
+        <div className={mobileMode === 'xcp' ? 'hidden md:block' : ''}>
+          <MempoolCard />
+        </div>
       </div>
     </>
+  )
+}
+
+/**
+ * Pools, and what they are worth trading against.
+ *
+ * Four exist. Showing them anyway is deliberate: the swap form is gated on a
+ * pool existing, so this panel is the only place someone learns that pools are
+ * a thing they could open. The empty state says so outright rather than
+ * reading as a broken feed.
+ */
+function PoolsCard() {
+  const [tab, setTab] = useState<0 | 1>(0)
+  const { pools, isLoading } = usePools(0, CARD_COUNT, tab === 0 ? 'match_count' : 'opened_block_time', 'desc')
+  const rows = pools.slice(0, CARD_COUNT)
+
+  return (
+    <div className="bg-zinc-900/50 border border-zinc-800 rounded-sm">
+      <div className="px-3 py-2 flex items-center gap-2">
+        <span className="text-xs text-zinc-500">Pools</span>
+        <div className="ml-auto">
+          <TogglePills
+            options={[0, 1] as const}
+            value={tab}
+            onChange={setTab}
+            label={(i) => (i === 0 ? 'Busiest' : 'Newest')}
+          />
+        </div>
+      </div>
+      <div>
+        {isLoading ? (
+          <div className="text-center py-8 text-zinc-500 text-xs">Loading...</div>
+        ) : rows.length === 0 ? (
+          <div className="px-3 py-6 text-center">
+            <p className="text-xs text-zinc-400">No pools yet</p>
+            <Link href="/liquidity/deposit" className="mt-1 inline-block text-[11px] text-green-500 hover:text-green-400">
+              Open the first one →
+            </Link>
+          </div>
+        ) : (
+          rows.map((p, i) => (
+            <Link
+              key={p.lp_asset}
+              href={`/pool/${encodeURIComponent(p.lp_asset)}`}
+              className={`flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-zinc-900 ${i === rows.length - 1 ? '' : 'border-b border-zinc-800/60'}`}
+            >
+              <span className="truncate text-zinc-200">{p.display_pair ?? p.pair.replace('_', '/')}</span>
+              <span className="ml-auto shrink-0 tabular-nums text-zinc-500">
+                {p.match_count} {p.match_count === 1 ? 'swap' : 'swaps'}
+              </span>
+            </Link>
+          ))
+        )}
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Broadcast, not yet confirmed.
+ *
+ * Usually one transaction or none — the Counterparty mempool drains every
+ * block. Kept on the homepage anyway because an empty mempool that is visibly
+ * empty is still a heartbeat, and because it is the only panel here that
+ * changes between blocks rather than because someone traded.
+ */
+function MempoolCard() {
+  const { entries, isLoading } = useMempool()
+  const rows = entries.slice(0, CARD_COUNT)
+
+  return (
+    <div className="bg-zinc-900/50 border border-zinc-800 rounded-sm">
+      <div className="px-3 py-2 flex items-center gap-2">
+        <span className="text-xs text-zinc-500">Mempool</span>
+        <Link href="/mempool" className="ml-auto text-[11px] text-zinc-500 hover:text-zinc-300">
+          All →
+        </Link>
+      </div>
+      <div>
+        {isLoading && rows.length === 0 ? (
+          <div className="text-center py-8 text-zinc-500 text-xs">Loading...</div>
+        ) : rows.length === 0 ? (
+          <div className="px-3 py-6 text-center">
+            <p className="text-xs text-zinc-400">Nothing pending</p>
+            <p className="mt-1 text-[11px] text-zinc-600">Everything broadcast has confirmed.</p>
+          </div>
+        ) : (
+          rows.map((e, i) => (
+            <div
+              key={e.tx_hash}
+              className={`flex items-center gap-2 px-3 py-1.5 text-xs ${i === rows.length - 1 ? '' : 'border-b border-zinc-800/60'}`}
+            >
+              <span className="shrink-0 rounded-sm border border-amber-500/30 bg-amber-500/10 px-1 text-[10px] uppercase tracking-wider text-amber-400">
+                {e.kind}
+              </span>
+              <span className="truncate text-zinc-300">
+                {e.asset ?? (e.give_asset && e.get_asset ? `${e.give_asset}→${e.get_asset}` : '—')}
+              </span>
+              <a
+                href={`https://xcp.io/tx/${e.tx_hash}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="ml-auto shrink-0 font-mono text-[11px] text-zinc-600 hover:text-zinc-400"
+              >
+                {e.tx_hash.slice(0, 6)}
+              </a>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
   )
 }
 
@@ -196,7 +329,7 @@ function DispenserRow({ d, satsMode, last }: { d: LatestDispenser; satsMode: boo
 
   return (
     <Link
-      href={`/buy/${encodeURIComponent(d.asset)}`}
+      href={`/${encodeURIComponent(d.asset)}`}
       className={`flex items-center gap-3 px-3 py-2.5 hover:bg-zinc-800/50 transition-colors ${last ? '' : 'border-b border-zinc-800/30'}`}
     >
       <div className="relative shrink-0 w-[46px] rounded-sm overflow-hidden bg-zinc-950" style={{ aspectRatio: '5/7' }}>
@@ -237,7 +370,7 @@ function DispenseRow({ d, satsMode, last }: { d: LatestDispense; satsMode: boole
 
   return (
     <Link
-      href={`/buy/${encodeURIComponent(d.asset)}`}
+      href={`/${encodeURIComponent(d.asset)}`}
       className={`flex items-center gap-3 px-3 py-2.5 hover:bg-zinc-800/50 transition-colors ${last ? '' : 'border-b border-zinc-800/30'}`}
     >
       <div className="relative shrink-0 w-[46px] rounded-sm overflow-hidden bg-zinc-950" style={{ aspectRatio: '5/7' }}>
