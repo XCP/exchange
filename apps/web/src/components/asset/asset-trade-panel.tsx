@@ -8,6 +8,7 @@ import { LimitWidget } from '@/components/limit-widget'
 import { FormSettings, SlippageSetting, FeeRateSetting, ExpirationSetting } from '@/components/form-settings'
 import { useFeeRate } from '@/lib/hooks/useNetworkInfo'
 import { useFormSettings } from '@/lib/hooks/useFormSettings'
+import { useAssetPoolVenue } from '@/lib/hooks/useAssetPoolVenue'
 
 /**
  * `dispense` is a destination, not a mode — selecting it navigates.
@@ -18,7 +19,6 @@ import { useFormSettings } from '@/lib/hooks/useFormSettings'
  * looking at.
  */
 type Mode = 'swap' | 'buy' | 'sell'
-const TABS = ['swap', 'buy', 'sell', 'dispense'] as const
 
 /**
  * The trade form beside an asset's chart.
@@ -40,7 +40,44 @@ export function AssetTradePanel({
   assetLabel: string
 }) {
   const router = useRouter()
-  const [mode, setMode] = useState<Mode>('swap')
+
+  /**
+   * An asset with no pool gets no swap tab at all.
+   *
+   * Swapping is an AMM action, so without a pool the widget has nothing to
+   * quote against and behaves oddly when the only liquidity is resting limit
+   * orders. Hiding the tab rather than showing a broken one makes the absence
+   * itself the signal: no swap tab means nobody has opened a pool yet.
+   *
+   * `counterAsset` comes from the server so this and /swap cannot disagree
+   * about which venue an asset opens against.
+   */
+  const { hasPool, preferred, isLoading: venueLoading } = useAssetPoolVenue(asset)
+  const counterAsset = preferred?.counter_asset ?? 'XCP'
+
+  const [modeOverride, setModeOverride] = useState<Mode | null>(null)
+  /**
+   * Derived rather than stored, so the default follows the pool answer when it
+   * lands instead of being frozen at first render. An explicit choice wins,
+   * except a choice of `swap` on an asset that turns out to have no pool.
+   */
+  const mode: Mode =
+    modeOverride && (modeOverride !== 'swap' || hasPool)
+      ? modeOverride
+      : hasPool
+        ? 'swap'
+        : 'buy'
+  const setMode = setModeOverride
+
+  /**
+   * Held until the pool answer arrives, otherwise the swap tab appears and
+   * then vanishes on assets that do not have a pool — which is most of them.
+   */
+  const tabs: readonly string[] = venueLoading
+    ? ['buy', 'sell', 'dispense']
+    : hasPool
+      ? ['swap', 'buy', 'sell', 'dispense']
+      : ['buy', 'sell', 'dispense']
 
   /**
    * The same preferences the dedicated form pages use — a fee rate set on
@@ -77,7 +114,7 @@ export function AssetTradePanel({
           }}
         >
           <SegmentedList className="w-full">
-            {TABS.map((m) => (
+            {tabs.map((m) => (
               <SegmentedTrigger key={m} value={m}>
                 {m}
               </SegmentedTrigger>
@@ -100,15 +137,17 @@ export function AssetTradePanel({
       </div>
 
       {mode === 'swap' && (
-        // XCP in, this asset out — the direction someone lands on an asset
-        // page wanting. The flip control still reverses it.
+        // Counter-asset in, this asset out — the direction someone lands on an
+        // asset page wanting. The flip control still reverses it. The counter
+        // side is whichever pool the server ranked first (XCP, else PEPECASH,
+        // else the deepest), not a hardcoded XCP that may have no pool.
         <SwapWidget
-          giveAsset="XCP"
+          giveAsset={counterAsset}
           getAsset={asset}
-          giveLabel="XCP"
+          giveLabel={counterAsset}
           getLabel={assetLabel}
           onSelect={(leg, a, longname) => leg === 'get' && goToAsset(a, longname)}
-          onFlip={() => router.push(`/swap/${encodeURIComponent(assetLabel)}/XCP`)}
+          onFlip={() => router.push(`/swap/${encodeURIComponent(assetLabel)}/${encodeURIComponent(counterAsset)}`)}
           slippage={slippage}
           slippageAuto={slippageAuto}
           onAutoSlippage={setAutoSlippage}

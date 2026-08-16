@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { SwapWidget } from '@/components/swap-widget'
 import { PoolManagePanel } from '@/components/pool/pool-manage-panel'
 import { usePoolByPair, usePoolAddressPosition } from '@/lib/hooks/usePools'
+import { useAssetPoolVenue } from '@/lib/hooks/useAssetPoolVenue'
 import { useWallet } from '@/lib/wallet/wallet-context'
 import { TradeChart } from '@/components/trade-chart'
 import { TradeLayout } from '@/components/trade-layout'
@@ -98,6 +99,25 @@ export default function SwapClient({
     mode === 'liquidity' ? get.name : null,
   )
   const { position } = usePoolAddressPosition(pool?.lp_asset ?? null, address)
+  /**
+   * Whether this exact pair has a pool, for the swap side.
+   *
+   * Deliberately NOT usePoolByPair: that fetches /pools?asset=, which computes
+   * fee and volume projections for every pool the asset appears in. This only
+   * needs to know whether one counter-asset is among them, and the venue
+   * endpoint answers that from an index seek.
+   */
+  const { pools: givePools, isLoading: venueLoading } = useAssetPoolVenue(
+    mode === 'swap' ? give.name : null,
+  )
+  const swapHasPool = givePools.some((p) => p.counter_asset === get.name)
+  /**
+   * Only claim "no pool" once we have actually been told so. Before the answer
+   * lands, and before both legs are chosen, the form stays as it was — warning
+   * someone off a pair they have not finished picking would be nonsense.
+   */
+  const swapPoolMissing =
+    mode === 'swap' && !!give.name && !!get.name && !venueLoading && !swapHasPool
   const [chartOpen, setChartOpen] = useState(false)
   /**
    * The pop-out chart opens on All, deliberately not remembered.
@@ -209,6 +229,58 @@ export default function SwapClient({
             </Link>
           </div>
         )
+      ) : swapPoolMissing ? (
+        /**
+         * No pool, no swap form.
+         *
+         * A swap is priced against an AMM curve. With no pool the widget has
+         * nothing to quote and falls back to whatever is resting on the book,
+         * which behaves unlike a swap and reads as broken. Saying so plainly —
+         * and pointing at the thing that would fix it — is more honest than a
+         * form that half works, and it is the only moment where "open a pool"
+         * is obviously worth doing to the person reading.
+         *
+         * Limit orders still work for this pair, so that route is offered too
+         * rather than leaving a dead end.
+         */
+        <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-6 text-center">
+          <p className="text-sm font-semibold text-zinc-200">
+            No pool for {give.canonical || '—'} / {get.canonical || '—'}
+          </p>
+          <p className="mx-auto mt-2 max-w-sm text-xs leading-relaxed text-zinc-400">
+            Swaps price against a liquidity pool. This pair does not have one, so
+            there is nothing to swap against. Open a pool to give it a real swap
+            market — or trade it on the order book instead.
+          </p>
+          <div className="mt-4 flex items-center justify-center gap-2">
+            <Link
+              href="/liquidity/deposit"
+              className="inline-block rounded-sm bg-green-500 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-zinc-950 transition-colors hover:bg-green-400"
+            >
+              Open a pool
+            </Link>
+            <Link
+              /**
+               * /limit's segments are base/quote, not give/get, so the legs are
+               * reordered into the DEX's own pair orientation rather than
+               * carried across as-is — otherwise the destination silently opens
+               * the inverted market.
+               */
+              href={
+                pairing
+                  ? pairPath(
+                      '/limit',
+                      pairing.base === give.name ? give.canonical : get.canonical,
+                      pairing.base === give.name ? get.canonical : give.canonical,
+                    )
+                  : '/limit'
+              }
+              className="inline-block rounded-sm border border-zinc-700 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-zinc-300 transition-colors hover:border-zinc-500 hover:text-zinc-100"
+            >
+              Limit order
+            </Link>
+          </div>
+        </div>
       ) : (
       <SwapWidget
         giveAsset={give.name}
