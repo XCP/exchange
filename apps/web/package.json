@@ -18,7 +18,7 @@
     "date-fns": "^4.1.0",
     "fathom-client": "^3.7.2",
     "lightweight-charts": "^5.1.0",
-    "next": "16.1.6",
+    "next": "^16.3.1",
     "radix-ui": "^1.6.7",
     "react": "19.2.3",
     "react-dom": "19.2.3",
@@ -26,7 +26,7 @@
     "swr": "^2.4.0"
   },
   "devDependencies": {
-    "@opennextjs/cloudflare": "^1.16.5",
+    "@opennextjs/cloudflare": "^1.20.2",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
