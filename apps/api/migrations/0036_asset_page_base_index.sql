@@ -1,0 +1,49 @@
+-- Serve the asset page's pair_stats lookups from an index instead of a scan.
+--
+-- 0033 gave the browse routes an index led by `quote_asset`. The asset page
+-- (/asset/<X>) asks the mirror-image question — "which pairs have X as the
+-- BASE" — and there was no index for it at all. The only candidate the planner
+-- could find was `idx_pair_stats_hidden`, which matches 12,380 of 12,444 rows,
+-- so every one of these queries walked the whole table:
+--
+--   EXPLAIN: SEARCH pair_stats USING INDEX idx_pair_stats_hidden (hidden=?)
+--
+-- Measured on production, rows_read per call, before this index:
+--
+--   SELECT COUNT(*) ... WHERE hidden=0 AND total_trade_count>0
+--                             AND base_asset=?          12,381 rows -> returns 2
+--   SELECT <listing cols> ... same WHERE, ORDER BY, 50   12,385 rows -> returns 2
+--
+-- That first shape ran 10,100 times in 24h for 125,061,458 rows read — 9% of
+-- the entire database's read volume, to answer a question whose answer is
+-- almost always a single-digit number.
+--
+-- Column order follows the rule from 0035: index the predicate that eliminates
+-- rows, not the ORDER BY, whenever the filtered set is smaller than the page
+-- size. Checked before choosing:
+--
+--   COUNT(DISTINCT base_asset) = 8,583 over 12,444 rows
+--   avg pairs per base_asset  = 1.45      max = 40
+--
+-- So a base_asset seek lands on ~1–2 rows and never more than 40, against a
+-- LIMIT of 50. The ORDER BY is therefore free to happen in a temp b-tree over
+-- a handful of rows, and there is no reason to spend index width on a volume
+-- column — which also keeps this from having to be repeated per timeframe the
+-- way a sort-column index would (see 0033's closing note).
+--
+-- `hidden` and `total_trade_count` trail the equality column so the two hot
+-- shapes are answered from the index alone.
+--
+-- Measured after, same calls: 5 and 9 rows read. The two OR-shaped asset-page
+-- queries (`WHERE base_asset=? OR quote_asset=?`) improve as a side effect,
+-- because SQLite can now satisfy both arms of the OR by index union instead of
+-- falling back to a full scan:
+--
+--   shape                          before      after
+--   count base (4 assets)          49,524         16
+--   list base  (4 assets)          49,536         28
+--   best pair, OR (4 assets)       56,947     15,986
+--   dex agg, OR (4 assets)         49,776      8,815
+--   total across all shapes       239,264     58,326    4.1x
+CREATE INDEX IF NOT EXISTS idx_pair_stats_base
+  ON pair_stats(base_asset, hidden, total_trade_count);
