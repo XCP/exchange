@@ -67,6 +67,52 @@ const app = new Hono<{ Bindings: Bindings }>();
 
 app.use('*', cors());
 
+/**
+ * Serve GETs from the colo's cache before the handler runs.
+ *
+ * Every read route already sets `cache-control`, and that header was doing
+ * half the job it looked like it was doing: a Worker on a custom domain runs
+ * BEFORE the zone cache, so `public, max-age=60` was a browser-only
+ * instruction. Responses carried no cf-cache-status header at all, because
+ * they never entered Cloudflare's cache — every distinct visitor's first
+ * call, and every call after their own browser cache lapsed, ran the handler
+ * and queried D1.
+ *
+ * That is invisible at low traffic and exactly the wrong shape for a launch:
+ * the browse pages poll per open tab, so a thousand tabs is a thousand
+ * independent invocations asking one database the same question. With this
+ * they collapse to roughly one origin request per colo per TTL.
+ *
+ * Per-colo rather than global — N warm caches, warmed in proportion to how
+ * many places the traffic comes from rather than how much of it there is.
+ */
+app.use('*', async (c, next) => {
+  // Nothing that mutates, and nothing the Cache API will not key on. The
+  // /swaps and /indexer routes are POSTs and skip this entirely.
+  if (c.req.method !== 'GET') return next();
+
+  const cache = caches.default;
+  const hit = await cache.match(c.req.raw);
+  if (hit) return hit;
+
+  await next();
+
+  // Errors are never cached. A 400 from a bad param and a 500 from a
+  // transient D1 blip would both otherwise stick for the TTL, turning one bad
+  // moment into a minute of them.
+  const res = c.res;
+  if (!res.ok) return;
+
+  // Store only what asked to be stored — a route that omits cache-control is
+  // asking to stay fresh, and this must not invent a TTL on its behalf.
+  const control = res.headers.get('Cache-Control');
+  if (!control || !/max-age=\d+/.test(control)) return;
+
+  // clone() because a body reads once and the caller still needs it;
+  // waitUntil so filling the cache never delays the response that filled it.
+  c.executionCtx.waitUntil(cache.put(c.req.raw, res.clone()));
+});
+
 // Fix scientific notation in JSON responses (e.g. 7.1e-7 -> 0.00000071).
 app.use('*', async (c, next) => {
   await next();

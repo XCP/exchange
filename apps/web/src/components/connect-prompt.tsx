@@ -1,16 +1,13 @@
 'use client'
 
-import { useState } from 'react'
-import { useWallet } from '@/lib/wallet/wallet-context'
-import { WalletInstallModal } from '@/components/wallet-install-modal'
+import { useConnectFlow } from '@/lib/wallet/useConnectFlow'
 
 interface ConnectPromptProps {
   message: string
 }
 
 export function ConnectPrompt({ message }: ConnectPromptProps) {
-  const { connect, status } = useWallet()
-  const [showInstall, setShowInstall] = useState(false)
+  const wallet = useConnectFlow()
 
   return (
     <div className="flex flex-col items-center justify-center h-full gap-3 py-12">
@@ -19,16 +16,12 @@ export function ConnectPrompt({ message }: ConnectPromptProps) {
       </svg>
       <span className="text-xs text-zinc-500">{message}</span>
       <button
-        onClick={async () => {
-          await connect()
-          // If connect didn't work (no wallet ref set), show install modal
-          if (!window.xcpwallet) setShowInstall(true)
-        }}
+        onClick={wallet.start}
         className="text-xs font-medium text-green-400 hover:text-green-300 transition-colors"
       >
         Connect Wallet
       </button>
-      {showInstall && <WalletInstallModal onClose={() => setShowInstall(false)} />}
+      {wallet.installModal}
     </div>
   )
 }

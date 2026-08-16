@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useBalance } from '@/lib/hooks/useBalance'
 import { useCompose } from '@/lib/wallet/useCompose'
+import { useConnectFlow } from '@/lib/wallet/useConnectFlow'
 import {
   usePoolAssetInfo,
   usePoolDepositQuote,
@@ -65,8 +66,6 @@ export function PoolManagePanel({
   position,
   walletStatus,
   address,
-  connecting,
-  onConnect,
   slippagePercent,
   tab: controlledTab,
   onTabChange,
@@ -84,8 +83,6 @@ export function PoolManagePanel({
   position: PoolAddressPosition | null
   walletStatus: 'not_detected' | 'disconnected' | 'connected'
   address: string | null
-  connecting: boolean
-  onConnect: () => void | Promise<void>
   /**
    * Lifted to the page so it can live behind the gear beside the mode tabs,
    * which is rendered above this component. It is a setting like the fee
@@ -112,6 +109,7 @@ export function PoolManagePanel({
   /** Makes the leg chips clickable. Without it they are labels, as before. */
   onSelectAsset?: (which: 'a' | 'b') => void
 }) {
+  const wallet = useConnectFlow()
   const [ownTab, setOwnTab] = useState<PoolManageTab>('deposit')
   const askedTab = controlledTab ?? ownTab
   const setTab = onTabChange ?? setOwnTab
@@ -330,10 +328,16 @@ export function PoolManagePanel({
       )
     }
     if (walletStatus !== 'connected') {
+      // Via the shared flow, so a visitor with no extension gets the install
+      // modal rather than a button that sets an error nobody renders.
       return (
-        <CTA onClick={onConnect} disabled={connecting}>
-          {connecting ? 'Connecting…' : 'Connect Wallet'}
-        </CTA>
+        <>
+          {wallet.connectError && <FormNotice tone="error">{wallet.connectError}</FormNotice>}
+          <CTA onClick={wallet.start} disabled={wallet.connecting}>
+            {wallet.connecting ? 'Connecting…' : 'Connect Wallet'}
+          </CTA>
+          {wallet.installModal}
+        </>
       )
     }
     return (

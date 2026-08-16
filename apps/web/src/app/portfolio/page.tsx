@@ -3,12 +3,12 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { useWallet } from '@/lib/wallet/wallet-context'
+import { useConnectFlow } from '@/lib/wallet/useConnectFlow'
 import { PortfolioActivity } from '@/components/portfolio/portfolio-activity'
 import { PortfolioOrders } from '@/components/portfolio/portfolio-orders'
 import { PortfolioDispensers } from '@/components/portfolio/portfolio-dispensers'
 import { PortfolioBalances } from '@/components/portfolio/portfolio-balances'
 import { PortfolioUtxos } from '@/components/portfolio/portfolio-utxos'
-import { WalletInstallModal } from '@/components/wallet-install-modal'
 import { BrowseHeader } from '@/components/browse-controls'
 import { Tabs, SegmentedList, SegmentedTrigger } from '@/components/ui/tabs'
 import { formatAddress } from '@/utils/format-address'
@@ -42,9 +42,9 @@ const TABS: [TabKey, string][] = [
 ]
 
 export default function PortfolioPage() {
-  const { status, address, connect, connecting } = useWallet()
+  const { status, address } = useWallet()
   const [activeTab, setActiveTab] = useState<TabKey>('activity')
-  const [showInstall, setShowInstall] = useState(false)
+  const wallet = useConnectFlow()
 
   if (status !== 'connected' || !address) {
     return (
@@ -54,14 +54,14 @@ export default function PortfolioPage() {
           <div className="rounded-sm border border-zinc-800 bg-zinc-900/50 px-6 py-16 text-center">
             <p className="text-sm text-zinc-400">Connect your wallet to view your portfolio.</p>
             <button
-              onClick={status === 'disconnected' ? connect : () => setShowInstall(true)}
-              disabled={connecting}
+              onClick={wallet.start}
+              disabled={wallet.connecting}
               className="mt-4 rounded-sm bg-green-500 px-6 py-2 text-sm font-semibold text-zinc-950 transition-colors hover:bg-green-400 disabled:opacity-50"
             >
-              {connecting ? 'Connecting…' : 'Connect Wallet'}
+              {wallet.connecting ? 'Connecting…' : 'Connect Wallet'}
             </button>
           </div>
-          {showInstall && <WalletInstallModal onClose={() => setShowInstall(false)} />}
+          {wallet.installModal}
         </div>
       </div>
     )

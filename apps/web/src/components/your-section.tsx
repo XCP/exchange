@@ -1,9 +1,9 @@
 'use client'
 
-import { useState, type ReactNode } from 'react'
+import { type ReactNode } from 'react'
 import Link from 'next/link'
 import { useWallet } from '@/lib/wallet/wallet-context'
-import { WalletInstallModal } from '@/components/wallet-install-modal'
+import { useConnectFlow } from '@/lib/wallet/useConnectFlow'
 import { formatAddress } from '@/utils/format-address'
 
 /**
@@ -36,8 +36,8 @@ export function YourSection({
   emptyLabel: string
   children: ReactNode
 }) {
-  const { status, address, connect, connecting } = useWallet()
-  const [showInstall, setShowInstall] = useState(false)
+  const { status, address } = useWallet()
+  const wallet = useConnectFlow()
   const connected = status === 'connected' && !!address
 
   return (
@@ -52,11 +52,11 @@ export function YourSection({
         {!connected && (
           <button
             type="button"
-            onClick={status === 'disconnected' ? connect : () => setShowInstall(true)}
-            disabled={connecting}
+            onClick={wallet.start}
+            disabled={wallet.connecting}
             className="rounded-sm border border-zinc-700 px-2.5 py-1 text-[11px] font-medium text-zinc-200 transition-colors hover:border-zinc-500 disabled:opacity-50"
           >
-            {connecting ? 'Connecting…' : 'Connect Wallet'}
+            {wallet.connecting ? 'Connecting…' : 'Connect Wallet'}
           </button>
         )}
       </div>
@@ -74,7 +74,7 @@ export function YourSection({
           children
         ))}
 
-      {showInstall && <WalletInstallModal onClose={() => setShowInstall(false)} />}
+      {wallet.installModal}
     </section>
   )
 }

@@ -35,7 +35,7 @@ const POOL_DATA_TABS: [PoolDataTab, string][] = [
 export default function PoolDetailPage({ lpAsset: lpAssetProp }: { lpAsset: string }) {
   const lpAsset = lpAssetProp.toUpperCase()
   const { pool, totalLpSupplyRaw, holders, deposits, withdrawals, matches, isLoading, error: poolError } = usePool(lpAsset)
-  const { status: walletStatus, address, connect, connecting } = useWallet()
+  const { status: walletStatus, address } = useWallet()
   const { position, isLoading: positionLoading, error: positionError } = usePoolAddressPosition(lpAsset, address)
   const [showInstall, setShowInstall] = useState(false)
   /** The forms stay folded away until asked for — see the rail below. */
@@ -183,15 +183,7 @@ export default function PoolDetailPage({ lpAsset: lpAssetProp }: { lpAsset: stri
                 position={position}
                 walletStatus={walletStatus}
                 address={address}
-                connecting={connecting}
                 slippagePercent={poolSlippage}
-                onConnect={async () => {
-                  if (walletStatus === 'disconnected') {
-                    await connect()
-                  } else {
-                    setShowInstall(true)
-                  }
-                }}
               />
             )}
 

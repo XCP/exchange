@@ -1,6 +1,10 @@
 'use client'
 
 import { useEffect, useRef, useState, type ReactNode } from 'react'
+import Link from 'next/link'
+import { usePathname } from 'next/navigation'
+import { RiExternalLinkLine } from 'react-icons/ri'
+import { splitPair } from '@/utils/pairs'
 import {
   createChart,
   AreaSeries,
@@ -62,6 +66,20 @@ export function TradeChart({
   /** Top-right slot — a pair picker where the asset has several markets. */
   headerRight?: ReactNode
 }) {
+  const pathname = usePathname()
+  /**
+   * The asset this chart is ABOUT, so the header can link to its page.
+   *
+   * Derived here rather than asked of every caller: three of the four pass a
+   * pair slug and one passes a bare asset, and the answer is the same rule in
+   * both cases — the base is the thing being priced, the quote is the money.
+   *
+   * Suppressed when it would link to the page you are already on, which is
+   * exactly the asset page, where this would be a button back to itself.
+   */
+  const subject = asset ?? (pairSlug ? (splitPair(pairSlug)?.base ?? null) : null)
+  const assetHref = subject ? `/${encodeURIComponent(subject)}` : null
+  const showAssetLink = !!assetHref && pathname !== assetHref
   const { candles, realCount, last, change, isLoading } = useTradeSeries({
     venue,
     pairSlug,
@@ -254,7 +272,19 @@ export function TradeChart({
             </div>
           )}
         </div>
-        {headerRight && <div className="shrink-0">{headerRight}</div>}
+        <div className="flex shrink-0 items-center gap-2">
+          {headerRight}
+          {showAssetLink && (
+            <Link
+              href={assetHref}
+              title={`Open ${subject}`}
+              aria-label={`Open ${subject}`}
+              className="rounded-sm border border-zinc-800 p-1.5 text-zinc-500 transition-colors hover:border-zinc-700 hover:text-zinc-200"
+            >
+              <RiExternalLinkLine className="text-sm" aria-hidden />
+            </Link>
+          )}
+        </div>
       </div>
 
       {/* The container stays mounted even when empty: the chart instance is

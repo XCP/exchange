@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import { detectProvider, XcpWallet, friendlyError, validateProof, UNAUTHORIZED, type XcpProvider, type ConnectionProof, type ConnectResult } from './sdk'
+import { trackWallet } from '@/lib/analytics'
 
 /**
  * How much we actually know about the connected address's key:
@@ -337,6 +338,9 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     const wallet = walletRef.current
     if (!wallet) {
       setConnectError('No XCP wallet extension detected — please install one')
+      // The most important number on the site: someone who wanted to trade
+      // and could not, which no pageview report can show.
+      trackWallet('missing')
       return
     }
     connectingRef.current = true
@@ -377,11 +381,15 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         const status = result.proof ? await checkProof(result.proof, addr) : 'unverified'
         verifiedAddressRef.current = addr
         adopt(addr, result.proof, status)
+        trackWallet('connected', addr)
       } else {
         setConnectError('The wallet returned no account — open the extension and try again')
       }
     } catch (e) {
       if (!disconnectingRef.current) setConnectError(friendlyError(e))
+      // 4001 is the wallet's "user rejected" code. Distinguished from a
+      // transport failure because they mean opposite things about intent.
+      if ((e as { code?: number })?.code === 4001) trackWallet('rejected')
     } finally {
       connectingRef.current = false
       setConnecting(false)

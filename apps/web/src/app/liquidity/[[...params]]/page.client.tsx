@@ -64,7 +64,7 @@ export default function LiquidityPage() {
 
   const { poolSlippage, setPoolSlippage, feeRate, setFeeRate } = useFormSettings()
   const suggestedFee = useFeeRate()
-  const { status: walletStatus, address, connect, connecting } = useWallet()
+  const { status: walletStatus, address } = useWallet()
   const { pool } = usePoolByPair(a.name, b?.name ?? null)
   const { position } = usePoolAddressPosition(pool?.lp_asset ?? null, address)
 
@@ -105,8 +105,6 @@ export default function LiquidityPage() {
         position={position}
         walletStatus={walletStatus}
         address={address}
-        connecting={connecting}
-        onConnect={connect}
         slippagePercent={poolSlippage}
         tab={tab}
         onTabChange={(next) => sync(next, a, b)}

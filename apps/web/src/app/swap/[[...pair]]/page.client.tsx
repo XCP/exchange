@@ -92,7 +92,7 @@ export default function SwapClient({
    * (a resting order on the book), not another thing to do with a pool.
    */
   const [mode, setMode] = useState<'swap' | 'liquidity'>('swap')
-  const { status: walletStatus, address, connect, connecting } = useWallet()
+  const { status: walletStatus, address } = useWallet()
   const { pool } = usePoolByPair(
     mode === 'liquidity' ? give.name : null,
     mode === 'liquidity' ? get.name : null,
@@ -194,8 +194,6 @@ export default function SwapClient({
             position={position}
             walletStatus={walletStatus}
             address={address}
-            connecting={connecting}
-            onConnect={connect}
             slippagePercent={poolSlippage}
           />
         ) : (

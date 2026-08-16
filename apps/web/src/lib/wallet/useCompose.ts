@@ -8,6 +8,7 @@ import { msSinceLastSpend, recentlySpentUtxos, registerSpentUtxos } from './spen
 import { quantityParam } from '@/utils/quantity-param'
 import { COUNTERPARTY_API_BASE } from '@/utils/constants'
 import { PRECISE_FEES_URL, feeRateFrom } from '@/lib/hooks/useNetworkInfo'
+import { trackTx } from '@/lib/analytics'
 
 /** A compose parameter value; bigint/string carry quantities beyond 2^53. */
 type ComposeValue = string | number | bigint
@@ -239,8 +240,15 @@ export function useCompose() {
    * can tell core to exclude them regardless of which backend worker
    * answers it. See spent-utxos.ts for why that matters.
    */
+  /**
+   * Every broadcast on the site funnels through here, so this is the one
+   * place a conversion can be reported without a widget having to remember
+   * to. `label` is the compose type — order, dispense, pooldeposit — which is
+   * already the name of the thing the user just did.
+   */
   const run = async (
     getUnsigned: () => Promise<{ hex: string; inputs: TxInput[] }>,
+    label?: string,
   ): Promise<void> => {
     if (busyRef.current) return
     busyRef.current = true
@@ -256,6 +264,9 @@ export function useCompose() {
       const txid = await broadcastTransaction(signedHex)
 
       registerSpentUtxos(inputs)
+      // Deduped on the txid inside trackTx, so a re-render or a reload with
+      // the confirmation still on screen cannot double-count it.
+      if (label) trackTx(txid, label)
       setState({ status: 'confirmed', txid, error: null })
     } catch (e) {
       setState({ status: 'error', txid: null, error: composeError(e) })
@@ -325,7 +336,7 @@ export function useCompose() {
         hex = await composeWith(false)
       }
       return { hex, inputs: parseTxInputs(hex) }
-    })
+    }, type)
   }
 
   const executeUtxo = (utxo: string, type: string, params: Record<string, ComposeValue>): void => {
@@ -342,7 +353,7 @@ export function useCompose() {
     run(async () => {
       const hex = await composeRequest(`utxos/${utxo}`, type, params)
       return { hex, inputs: [] }
-    })
+    }, type)
   }
 
   const composeOrder = (params: {

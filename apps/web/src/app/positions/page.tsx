@@ -1,10 +1,9 @@
 'use client'
 
-import { useState } from 'react'
 import Link from 'next/link'
 import { useWallet } from '@/lib/wallet/wallet-context'
+import { useConnectFlow } from '@/lib/wallet/useConnectFlow'
 import { useAddressPools, type AddressPoolSummary } from '@/lib/hooks/usePools'
-import { WalletInstallModal } from '@/components/wallet-install-modal'
 import { formatAmount } from '@/utils/format-amount'
 import { formatAddress } from '@/utils/format-address'
 import { poolFeeLabel } from '@/utils/pool-fee'
@@ -21,8 +20,8 @@ import { poolFeeLabel } from '@/utils/pool-fee'
  * of two other assets, and the number that matters is what it redeems for.
  */
 export default function PositionsPage() {
-  const { status, address, connect, connecting } = useWallet()
-  const [showInstall, setShowInstall] = useState(false)
+  const { status, address } = useWallet()
+  const wallet = useConnectFlow()
   const { pools, isLoading } = useAddressPools(status === 'connected' ? address : null)
 
   if (status !== 'connected' || !address) {
@@ -33,13 +32,13 @@ export default function PositionsPage() {
             <h1 className="text-lg font-semibold">Positions</h1>
             <p className="text-sm text-zinc-500">Connect your wallet to see your liquidity</p>
             <button
-              onClick={status === 'disconnected' ? connect : () => setShowInstall(true)}
-              disabled={connecting}
+              onClick={wallet.start}
+              disabled={wallet.connecting}
               className="rounded-sm bg-green-500 px-6 py-2 text-sm font-semibold text-zinc-950 transition-colors hover:bg-green-400 disabled:opacity-50"
             >
-              {connecting ? 'Connecting…' : 'Connect Wallet'}
+              {wallet.connecting ? 'Connecting…' : 'Connect Wallet'}
             </button>
-            {showInstall && <WalletInstallModal onClose={() => setShowInstall(false)} />}
+            {wallet.installModal}
           </div>
         </div>
       </div>
