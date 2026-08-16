@@ -75,6 +75,15 @@ export function AssetTradePanel({
   const { hasPool, preferred, isLoading: venueLoading } = useAssetPoolVenue(asset)
   const counterAsset = preferred?.counter_asset ?? 'XCP'
 
+  /**
+   * The hero's own two legs. Give starts on this panel's asset (XCP on the
+   * homepage), get starts empty and is chosen from the selector — the same
+   * opening /swap uses. Nothing is remembered between visits: a form that
+   * opens on whatever you last looked at is guessing.
+   */
+  const [heroGive, setHeroGive] = useState({ name: asset, canonical: assetLabel })
+  const [heroGet, setHeroGet] = useState({ name: '', canonical: '' })
+
   const [modeOverride, setModeOverride] = useState<Mode | null>(null)
   /**
    * Derived rather than stored, so the default follows the pool answer when it
@@ -174,7 +183,44 @@ export function AssetTradePanel({
         </FormSettings>
       </div>
 
-      {mode === 'swap' && (
+      {mode === 'swap' && isHero && (
+        /**
+         * The hero swap opens exactly the way /swap does: XCP in, nothing
+         * picked yet, and the get leg chosen from the selector.
+         *
+         * NOT prefilled with the deepest pool's counter-asset the way an asset
+         * page is. There, the asset IS the subject and the only open question
+         * is what to pay with. Here nobody has chosen anything, and filling in
+         * a pair — PEPECASH/XCP, because that happens to be the deepest XCP
+         * pool — states a recommendation the visitor never asked for. /swap's
+         * own note puts it best: a wrong guess on a trading form is worse than
+         * an empty field, and XCP is the one assumption worth making.
+         *
+         * Both legs are free and stay local: picking here fills the form
+         * rather than navigating away, which is the whole point of the form
+         * being on the homepage.
+         */
+        <SwapWidget
+          giveAsset={heroGive.name}
+          getAsset={heroGet.name}
+          giveLabel={heroGive.canonical}
+          getLabel={heroGet.canonical}
+          onSelect={(leg, a, longname) =>
+            (leg === 'give' ? setHeroGive : setHeroGet)({ name: a, canonical: longname ?? a })
+          }
+          onFlip={() => {
+            setHeroGive(heroGet)
+            setHeroGet(heroGive)
+          }}
+          slippage={slippage}
+          slippageAuto={slippageAuto}
+          onAutoSlippage={setAutoSlippage}
+          feeRate={feeRate}
+          expiration={expiration}
+        />
+      )}
+
+      {mode === 'swap' && !isHero && (
         // Counter-asset in, this asset out — the direction someone lands on an
         // asset page wanting. The flip control still reverses it. The counter
         // side is whichever pool the server ranked first (XCP, else PEPECASH,
