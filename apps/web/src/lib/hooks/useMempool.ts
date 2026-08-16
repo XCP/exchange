@@ -13,8 +13,14 @@ export interface MempoolEntry {
   get_asset: string | null
   give_quantity: number | null
   get_quantity: number | null
+  destination: string | null
   dispenser_tx_hash: string | null
   btc_amount: number | null
+  /** Display units. Null when the asset's divisibility could not be
+   *  established — the API returns null rather than guessing, because a wrong
+   *  number here is unrecoverable and a missing one is not. */
+  give_quantity_normalized: number | null
+  get_quantity_normalized: number | null
 }
 
 interface MempoolResponse {
@@ -79,4 +85,19 @@ export function useMempoolDispenses(): Set<string> {
   const pending = new Set<string>()
   for (const e of entries) if (e.dispenser_tx_hash) pending.add(e.dispenser_tx_hash)
   return pending
+}
+
+/**
+ * Your own transactions that are broadcast but not yet confirmed.
+ *
+ * The portfolio tables are built from our indexed database, which by
+ * definition only knows about confirmed state — so an order you placed ten
+ * seconds ago simply was not there, and the honest reading of an empty table
+ * was "it did not work". These fill that gap without pretending the
+ * transaction has settled.
+ */
+export function useMyPending(address: string | null | undefined, kind?: string) {
+  const { entries } = useMempool(kind)
+  if (!address) return []
+  return entries.filter((e) => e.source === address)
 }

@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { usePortfolioDispensers } from '@/lib/hooks/usePortfolio'
+import { useMyPending } from '@/lib/hooks/useMempool'
 import { DataTable, Thead, Tbody, Th, Tr, Td, TableMessage } from '@/components/ui/data-table'
 import { formatPrice } from '@/utils/format-price'
 import { useSatsMode } from '@/lib/sats-context'
@@ -17,6 +18,13 @@ import { useSatsMode } from '@/lib/sats-context'
 export function PortfolioDispensers({ address }: { address: string }) {
   const { dispensers, isLoading } = usePortfolioDispensers(address)
   const { satsMode } = useSatsMode()
+  /**
+   * Dispensers you have opened that no block has confirmed yet. Shown above
+   * the confirmed rows, marked, because the question a freshly-opened
+   * dispenser raises — "did that go through" — is asked immediately, and the
+   * indexed table can only ever answer it after a block.
+   */
+  const pending = useMyPending(address, 'dispenser')
 
   return (
     <DataTable className="border-0 bg-transparent">
@@ -28,6 +36,23 @@ export function PortfolioDispensers({ address }: { address: string }) {
         <Th className="max-sm:hidden">Dispenses</Th>
       </Thead>
       <Tbody>
+        {pending.map((p) => (
+          <Tr key={`pending-${p.tx_hash}`}>
+            <Td>
+              <span className="font-medium text-zinc-400">{p.asset ?? '—'}</span>
+            </Td>
+            <Td>
+              <span className="rounded-sm border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-amber-400">
+                Pending
+              </span>
+            </Td>
+            <Td num muted>
+              {p.give_quantity_normalized !== null ? p.give_quantity_normalized : '—'}
+            </Td>
+            <Td num muted className="max-sm:hidden">—</Td>
+            <Td num muted className="max-sm:hidden">in mempool</Td>
+          </Tr>
+        ))}
         {dispensers.map((d) => (
           <Tr key={d.tx_hash}>
             <Td>
@@ -46,8 +71,8 @@ export function PortfolioDispensers({ address }: { address: string }) {
             </Td>
           </Tr>
         ))}
-        {isLoading && dispensers.length === 0 && <TableMessage cols={5}>Loading dispensers…</TableMessage>}
-        {!isLoading && dispensers.length === 0 && <TableMessage cols={5}>No open dispensers</TableMessage>}
+        {isLoading && dispensers.length === 0 && pending.length === 0 && <TableMessage cols={5}>Loading dispensers…</TableMessage>}
+        {!isLoading && dispensers.length === 0 && pending.length === 0 && <TableMessage cols={5}>No open dispensers</TableMessage>}
       </Tbody>
     </DataTable>
   )

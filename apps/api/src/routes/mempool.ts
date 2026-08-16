@@ -59,15 +59,68 @@ export interface MempoolEntry {
   get_asset: string | null;
   give_quantity: number | null;
   get_quantity: number | null;
+  /** SEND only. */
+  destination: string | null;
   /** DISPENSE only: which dispenser is being drained. */
   dispenser_tx_hash: string | null;
   btc_amount: number | null;
+  /** Display units. Null when the asset's divisibility is unknown — see
+   *  normalizeQuantities; a missing number is safer than a guessed one. */
+  give_quantity_normalized: number | null;
+  get_quantity_normalized: number | null;
 }
 
 const str = (v: unknown): string | null => (typeof v === "string" && v ? v : null);
 const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
 
-export async function handleMempool(request: Request, env: { CP_API_BASE: string }): Promise<Response> {
+/**
+ * Raw base units -> display units, using each asset's own divisibility.
+ *
+ * This is the satoshis-vs-coins trap and it is not optional: an indivisible
+ * asset's `give_quantity` of 1 means one token, while a divisible asset's 1
+ * means 0.00000001. Rendering the raw number for both is how a supply loses
+ * eight decimal places with nothing throwing. Anything whose divisibility we
+ * cannot establish stays null rather than being guessed — a missing number is
+ * recoverable, a wrong one is not.
+ */
+async function normalizeQuantities(db: D1Database, entries: MempoolEntry[]): Promise<void> {
+  const assets = new Set<string>();
+  for (const e of entries) {
+    for (const a of [e.asset, e.give_asset, e.get_asset]) if (a) assets.add(a);
+  }
+  if (assets.size === 0) return;
+
+  // Bounded: the mempool drains every block and is small, but a caller-facing
+  // list still must not become an unbounded IN clause. 200 matches the cap the
+  // asset filter on /assets uses.
+  const names = [...assets].slice(0, 200);
+  const placeholders = names.map(() => "?").join(",");
+  const rows = await db
+    .prepare(`SELECT asset, divisible FROM assets WHERE asset IN (${placeholders})`)
+    .bind(...names)
+    .all<{ asset: string; divisible: number }>()
+    .catch(() => null);
+
+  const divisible = new Map<string, boolean>();
+  for (const r of rows?.results ?? []) divisible.set(r.asset, r.divisible === 1);
+
+  const scale = (asset: string | null, raw: number | null): number | null => {
+    if (!asset || raw === null) return null;
+    const d = divisible.get(asset);
+    if (d === undefined) return null;
+    return d ? raw / 1e8 : raw;
+  };
+
+  for (const e of entries) {
+    e.give_quantity_normalized = scale(e.give_asset ?? e.asset, e.give_quantity);
+    e.get_quantity_normalized = scale(e.get_asset, e.get_quantity);
+  }
+}
+
+export async function handleMempool(
+  request: Request,
+  env: { CP_API_BASE: string; DB: D1Database }
+): Promise<Response> {
   const url = new URL(request.url);
   const limit = Math.min(parseInt(url.searchParams.get("limit") ?? "100", 10) || 100, 500);
   const kindFilter = url.searchParams.get("kind");
@@ -112,10 +165,16 @@ export async function handleMempool(request: Request, env: { CP_API_BASE: string
       asset: str(p.asset),
       give_asset: str(p.give_asset),
       get_asset: str(p.get_asset),
-      give_quantity: num(p.give_quantity),
+      // Counterparty names the amount differently per event: an order has
+      // give_quantity, a send has quantity, a dispense has dispense_quantity.
+      // Folding them onto one field is the whole point of this endpoint.
+      give_quantity: num(p.give_quantity) ?? num(p.quantity) ?? num(p.dispense_quantity),
       get_quantity: num(p.get_quantity),
+      destination: str(p.destination),
       dispenser_tx_hash: str(p.dispenser_tx_hash),
       btc_amount: num(p.btc_amount),
+      give_quantity_normalized: null,
+      get_quantity_normalized: null,
     });
   }
 
@@ -128,6 +187,9 @@ export async function handleMempool(request: Request, env: { CP_API_BASE: string
   // rather than jumping to the top on a falsy comparison.
   entries.sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0));
   entries = entries.slice(0, limit);
+
+  // After slicing, so divisibility is only looked up for rows actually served.
+  await normalizeQuantities(env.DB, entries).catch(() => {});
 
   return Response.json(
     { entries, count: entries.length, upstream_ok: upstreamOk },
