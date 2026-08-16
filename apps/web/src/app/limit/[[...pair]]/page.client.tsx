@@ -105,6 +105,7 @@ export default function LimitClient({
       onModeChange={(m) => setSide(m as 'buy' | 'sell')}
       chartOpen={chartOpen}
       onChartToggle={() => setChartOpen((v) => !v)}
+      split={!chartOpen}
       chart={
         <TradeChart
           venue="market"
@@ -131,6 +132,7 @@ export default function LimitClient({
         onQuoteChange={selectQuote}
         side={side}
         expiration={expiration}
+        showLadder={!chartOpen}
         seedPrice={seed?.price}
         seedAmount={seed?.amount}
       />

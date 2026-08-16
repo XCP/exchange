@@ -10,6 +10,7 @@ import { useCompose } from '@/lib/wallet/useCompose'
 import { useBalance } from '@/lib/hooks/useBalance'
 import { useTradingPair } from '@/lib/hooks/useTradingPair'
 import { useOrderBook } from '@/lib/hooks/useOrderBook'
+import { OrderBookLadder } from '@/components/order-book-ladder'
 import { useXcpPrice } from '@/lib/hooks/useNetworkInfo'
 import { formatAmount } from '@/utils/format-amount'
 import { toBase, totalToBase, sanitizeAmountInput, rawErrorMessage, big, num, isPositive, DIVISIBLE_DECIMALS, ROUND_DOWN } from '@/utils/numeric'
@@ -34,6 +35,7 @@ export function LimitWidget({
   side,
   expiration,
   compact = false,
+  showLadder = false,
   seedPrice,
   seedAmount,
 }: {
@@ -54,6 +56,11 @@ export function LimitWidget({
    * rate and minimum-received lines do.
    */
   compact?: boolean
+  /**
+   * The resting book beside the form. Off by default: the asset-page rail is
+   * already a narrow column beside a chart and has no room for a second one.
+   */
+  showLadder?: boolean
   /**
    * Opening values, from a link that already named the trade — clicking a
    * resting order in Explore, or an old /trade/PAIR?price=…&amount=… link.
@@ -91,7 +98,7 @@ export function LimitWidget({
   )
   // useOrderBook takes the display market ("BASE/QUOTE") and reverses it
   // itself for core — the underscore slug is the site's own URL format.
-  const { bids, asks } = useOrderBook(asset ? `${asset}/${quoteAsset}` : '')
+  const { bids, asks, spread, spreadPct, isLoading: bookLoading } = useOrderBook(asset ? `${asset}/${quoteAsset}` : '')
   const baseDivisible: boolean | undefined = pairData?.asset_info?.divisible
   const quoteDivisible: boolean | undefined =
     quoteAsset === 'XCP' ? true : quotePairData?.asset_info?.divisible
@@ -209,7 +216,8 @@ export function LimitWidget({
   }
 
   return (
-    <>
+    <div className="contents">
+      <div className="min-w-0">
       <Panel>
         <PanelSection>
           <AmountField
@@ -383,6 +391,22 @@ export function LimitWidget({
           selectorLeg === 'quote' ? onQuoteChange(a, longname) : onAssetChange(a, longname)
         }
       />
-    </>
+      </div>
+
+      {/* Only where there is room for it: the asset-page rail is already a
+          narrow column beside a chart, and /limit drops it when its own chart
+          is open, exactly as /buy and /sell drop the dispenser ladder. */}
+      {showLadder && !samePair && (
+        <OrderBookLadder
+          bids={bids ?? []}
+          asks={asks ?? []}
+          spread={spread ?? '0'}
+          spreadPct={spreadPct ?? '0'}
+          isLoading={bookLoading}
+          quoteLabel={quoteLabel}
+          onPickPrice={(p) => setPrice(p.replace(/\.?0+$/, ''))}
+        />
+      )}
+    </div>
   )
 }
