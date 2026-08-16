@@ -22,11 +22,14 @@ import { TopTradersTable } from './top-traders-table'
 import { MarketInfoTable, COMPARABLE_QUOTE } from '@/components/market-info-table'
 import { RecentActivity } from './recent-activity'
 import { HomeHero, LaunchStrip } from './home-hero'
+import { QuoteMarquee } from './quote-marquee'
+import { DispenseMarquee } from './dispense-marquee'
 import { toSats } from '@/utils/numeric'
 import {
   LeaderboardSkeleton,
   ChartsSkeleton,
   TradersSkeleton,
+  MarqueeSkeleton,
 } from './skeletons'
 
 const ComboVolumeChart = dynamic(() => import('./combo-volume-chart'), { ssr: false })
@@ -109,6 +112,7 @@ export default function AnalyticsPage() {
   const [hideLowQuality, setHideLowQuality] = useState(true)
   const [mobileMode, setMobileMode] = useState<MobileMode>('xcp')
   const [quoteAsset, setQuoteAsset] = useState('XCP')
+  const { satsMode } = useSatsMode()
   const includeHidden = !hideLowQuality
 
   // Cascade: summary first → charts after summary → traders after charts
@@ -133,6 +137,28 @@ export default function AnalyticsPage() {
     <div className="px-4 py-8">
       <HomeHero />
       <LaunchStrip />
+
+      {/*
+        The tickers, back under the launch banner.
+        
+        They were cut when the browse window defaulted to 24h, where almost
+        every row read "1 trades" — motion carrying no information. The
+        default is all time now, and the same rows read PEPECASH 43,426
+        trades, BITCRYSTALS 10,435, XCP 18,381 dispenses. The objection was
+        to the numbers, not to the ticker, and the numbers changed.
+      */}
+      {summaryLoading ? (
+        <MarqueeSkeleton />
+      ) : (
+        <>
+          <div className={mobileMode === 'btc' ? 'hidden md:block' : ''}>
+            <QuoteMarquee quoteVolumes={summaryProps.quoteVolumes} />
+          </div>
+          <div className={mobileMode === 'xcp' ? 'hidden md:block' : ''}>
+            <DispenseMarquee topDispensers={summaryProps.topDispensers} satsMode={satsMode} />
+          </div>
+        </>
+      )}
 
       {/* The numbers, and the controls that scope them. Below the hero rather
           than above it: they answer "how is it going", which is the second

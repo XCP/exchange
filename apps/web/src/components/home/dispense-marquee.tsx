@@ -6,11 +6,19 @@ import type { AnalyticsTopDispenser } from '@/lib/hooks/useAnalytics'
 import { formatPrice } from '@/utils/format-price'
 import { XCP_IMG_BASE } from '@/utils/constants'
 
-export function DispenseMarquee({ topDispensers, satsMode }: { topDispensers: AnalyticsTopDispenser[]; satsMode: boolean }) {
-  if (topDispensers.length === 0) return null
+/** Same floor as the quote ticker, in the unit this one counts. */
+const MIN_DISPENSES = 20
 
-  const reps = Math.max(2, Math.ceil(8 / topDispensers.length))
-  const strip = Array<AnalyticsTopDispenser[]>(reps).fill(topDispensers).flat()
+export function DispenseMarquee({ topDispensers, satsMode }: { topDispensers: AnalyticsTopDispenser[]; satsMode: boolean }) {
+  const rows = topDispensers.filter(
+    (d) =>
+      // A numeric asset id is not a name anyone recognises scrolling past.
+      (d.asset_longname || !/^A\d+$/.test(d.asset)) && d.dispense_count >= MIN_DISPENSES,
+  )
+  if (rows.length === 0) return null
+
+  const reps = Math.max(2, Math.ceil(8 / rows.length))
+  const strip = Array<AnalyticsTopDispenser[]>(reps).fill(rows).flat()
   const doubled = [...strip, ...strip]
 
   const duration = `${Math.max(strip.length * 6, 40)}s`

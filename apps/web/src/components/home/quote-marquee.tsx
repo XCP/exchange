@@ -6,9 +6,20 @@ import type { QuoteVolume } from '@/lib/hooks/useAnalytics'
 import { formatBig } from '@/utils/format-analytics'
 import { XCP_IMG_BASE } from '@/utils/constants'
 
+/**
+ * The tail is where a ticker goes wrong. A quote currency that priced three
+ * trades in the history of the network is true and not worth scrolling past,
+ * and a strip of them is what made this look like noise. Twenty-five rows
+ * became a handful worth reading.
+ */
+const MIN_TRADES = 50
+
 export function QuoteMarquee({ quoteVolumes }: { quoteVolumes: QuoteVolume[] }) {
-  // Filter out subassets with no longname (show as raw numeric IDs like A1234...)
-  const filtered = quoteVolumes.filter((q) => q.quote_asset_longname || !/^A\d+$/.test(q.quote_asset))
+  const filtered = quoteVolumes.filter(
+    (q) =>
+      // Numeric subassets show as raw A1234… ids, which name nothing.
+      (q.quote_asset_longname || !/^A\d+$/.test(q.quote_asset)) && q.trade_count >= MIN_TRADES,
+  )
   if (filtered.length === 0) return null
 
   const reps = Math.max(2, Math.ceil(8 / filtered.length))
