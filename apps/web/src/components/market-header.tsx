@@ -6,7 +6,9 @@ import { formatAmount } from '@/utils/format-amount'
 import { XCP_IMG_BASE } from '@/utils/constants'
 import type { TradingPairData } from '@/lib/hooks/useTradingPair'
 
-type Timeframe = '24h' | '7d' | '30d'
+type Timeframe = '24h' | '30d' | '1y'
+
+const TIMEFRAMES: readonly Timeframe[] = ['24h', '30d', '1y']
 
 interface MarketHeaderProps {
   pairData: TradingPairData | undefined
@@ -19,16 +21,18 @@ interface MarketHeaderProps {
 
 function getStats(p: TradingPairData | undefined, tf: Timeframe) {
   if (!p) return { change: null, volume: null, high: null, low: null, count: null }
-  if (tf === '7d') return { change: p.price_change_7d, volume: p.volume_7d, high: p.high_7d ?? null, low: p.low_7d ?? null, count: p.trade_count_7d }
   if (tf === '30d') return { change: p.price_change_30d ?? null, volume: p.volume_30d, high: p.high_30d ?? null, low: p.low_30d ?? null, count: p.trade_count_30d }
+  if (tf === '1y') return { change: p.price_change_1y, volume: p.volume_1y, high: p.high_1y ?? null, low: p.low_1y ?? null, count: p.trade_count_1y }
   return { change: p.price_change_24h, volume: p.volume_24h, high: p.high_24h, low: p.low_24h, count: p.trade_count_24h }
 }
 
+// 24h is the default, but a pair that hasn't traded today would render an
+// all-dashes header, so widen to the first window that has trades in it.
 function bestTimeframe(p: TradingPairData | undefined): Timeframe {
   if (!p) return '24h'
   if (p.trade_count_24h && p.trade_count_24h > 0) return '24h'
-  if (p.trade_count_7d && p.trade_count_7d > 0) return '7d'
   if (p.trade_count_30d && p.trade_count_30d > 0) return '30d'
+  if (p.trade_count_1y && p.trade_count_1y > 0) return '1y'
   return '24h'
 }
 
@@ -118,7 +122,7 @@ export function MarketHeader({ pairData, baseSymbol, quoteSymbol, market, isLoad
 
         {/* Timeframe selector */}
         <div className="flex rounded-sm overflow-hidden border border-zinc-800 ml-auto md:ml-0">
-          {(['24h', '7d', '30d'] as const).map((t) => (
+          {TIMEFRAMES.map((t) => (
             <button
               key={t}
               onClick={() => setTfOverride(t)}

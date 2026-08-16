@@ -1,9 +1,10 @@
 import { cacheControl } from "../utils/cache";
 
 const VALID_SORTS = new Set([
-  "volume_24h", "volume_7d", "volume_30d", "total_volume",
-  "trade_count_24h", "trade_count_7d", "trade_count_30d", "total_trade_count",
-  "price_change_24h", "price_change_7d", "price_change_30d",
+  "volume_24h", "volume_30d", "volume_1y", "total_volume",
+  "trade_count_24h", "trade_count_30d", "trade_count_1y", "total_trade_count",
+  "price_change_24h", "price_change_30d", "price_change_1y",
+  "last_price", "high_24h", "low_24h",
   "open_orders", "first_trade_time", "last_trade_time", "unique_traders",
 ]);
 
@@ -15,14 +16,14 @@ export async function handlePair(
   const row = await db
     .prepare(
       `SELECT pair, base_asset, quote_asset, base_asset_longname, last_price, last_trade_time,
-              last_side, price_change_24h, price_change_7d, price_change_30d,
-              volume_24h, volume_7d, volume_30d,
-              high_24h, low_24h, high_7d, low_7d, high_30d, low_30d,
-              trade_count_24h, trade_count_7d, trade_count_30d,
+              last_side, price_change_24h, price_change_30d, price_change_1y,
+              volume_24h, volume_30d, volume_1y,
+              high_24h, low_24h, high_30d, low_30d, high_1y, low_1y,
+              trade_count_24h, trade_count_30d, trade_count_1y,
               first_trade_time, open_orders, bid_count, ask_count,
               best_bid, best_ask, spread, updated_at,
               total_volume, total_base_volume, total_trade_count, unique_traders, all_time_high, all_time_low,
-              base_volume_24h, base_volume_7d, base_volume_30d
+              base_volume_24h, base_volume_30d, base_volume_1y
        FROM pair_stats WHERE pair = ?`
     )
     .bind(pair)
@@ -53,7 +54,7 @@ export async function handlePairs(
 
   const base = url.searchParams.get("base");
   const tfParam = url.searchParams.get("timeframe");
-  const tf = tfParam === "7d" || tfParam === "30d" || tfParam === "all" ? tfParam : "24h";
+  const tf = tfParam === "30d" || tfParam === "1y" || tfParam === "all" ? tfParam : "24h";
   const includeHidden = url.searchParams.get("include_hidden") === "1";
   const order = url.searchParams.get("order") === "asc" ? "ASC" : "DESC";
   const offset = Math.max(
@@ -62,14 +63,14 @@ export async function handlePairs(
   );
 
   let query = `SELECT pair, base_asset, quote_asset, base_asset_longname, last_price, last_trade_time,
-                      last_side, price_change_24h, price_change_7d, price_change_30d,
-                      volume_24h, volume_7d, volume_30d,
-                      high_24h, low_24h, high_7d, low_7d, high_30d, low_30d,
-                      trade_count_24h, trade_count_7d, trade_count_30d,
+                      last_side, price_change_24h, price_change_30d, price_change_1y,
+                      volume_24h, volume_30d, volume_1y,
+                      high_24h, low_24h, high_30d, low_30d, high_1y, low_1y,
+                      trade_count_24h, trade_count_30d, trade_count_1y,
                       first_trade_time, open_orders, bid_count, ask_count,
                       best_bid, best_ask, spread, updated_at,
                       total_volume, total_base_volume, total_trade_count, unique_traders, all_time_high, all_time_low,
-                      base_volume_24h, base_volume_7d, base_volume_30d
+                      base_volume_24h, base_volume_30d, base_volume_1y
                FROM pair_stats`;
   const binds: (string | number)[] = [];
   const conditions: string[] = [];

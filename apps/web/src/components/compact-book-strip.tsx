@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { formatPrice } from '@/utils/format-price'
 import type { OrderBookEntry } from '@/types/trading'
+import { num } from '@/utils/numeric'
 
 interface PoolBandData {
   /** Pool spot price in the trade pair's quote-per-base terms. */
@@ -23,8 +24,8 @@ const ROW_HEIGHT = 90
 
 export function CompactBookStrip({ bids, asks, spread, spreadPct, onRowClick, pool }: CompactBookStripProps) {
   // Is the pool price inside the current spread (i.e. the best available liquidity)?
-  const bestBid = bids[0] ? parseFloat(bids[0].price.replace(/,/g, '')) : null
-  const bestAsk = asks[0] ? parseFloat(asks[0].price.replace(/,/g, '')) : null
+  const bestBid = bids[0] ? num(bids[0].price.replace(/,/g, '')) : null
+  const bestAsk = asks[0] ? num(asks[0].price.replace(/,/g, '')) : null
   const poolInside =
     pool?.price != null &&
     bestBid != null &&
@@ -33,12 +34,12 @@ export function CompactBookStrip({ bids, asks, spread, spreadPct, onRowClick, po
     pool.price < bestAsk
   // Cumulative totals for depth bars
   const bidCumulative = bids.reduce<number[]>((acc, bid, i) => {
-    const val = parseFloat(bid.total.replace(/,/g, ''))
+    const val = num(bid.total.replace(/,/g, ''))
     acc.push(i === 0 ? val : acc[i - 1] + val)
     return acc
   }, [])
   const askCumulative = asks.reduce<number[]>((acc, ask, i) => {
-    const val = parseFloat(ask.total.replace(/,/g, ''))
+    const val = num(ask.total.replace(/,/g, ''))
     acc.push(i === 0 ? val : acc[i - 1] + val)
     return acc
   }, [])
@@ -63,7 +64,7 @@ export function CompactBookStrip({ bids, asks, spread, spreadPct, onRowClick, po
           className={`flex items-center justify-between gap-2 border-y px-3 py-1 text-[11px] transition-colors ${
             poolInside
               ? 'border-green-500/30 bg-green-500/10 text-green-300 hover:bg-green-500/15'
-              : 'border-zinc-800 bg-zinc-900/40 text-zinc-400 hover:bg-zinc-900'
+              : 'border-zinc-800 bg-zinc-900/40 text-zinc-400 hover:bg-zinc-800/50'
           }`}
           title={poolInside ? 'Pool is the best price right now' : 'AMM pool for this pair'}
         >
@@ -95,7 +96,7 @@ export function CompactBookStrip({ bids, asks, spread, spreadPct, onRowClick, po
                 return (
                   <div
                     key={`strip-bid-${i}`}
-                    className="relative grid grid-cols-2 md:grid-cols-3 gap-0 px-2 py-px hover:bg-zinc-900 cursor-pointer"
+                    className="relative grid grid-cols-2 md:grid-cols-3 gap-0 px-2 py-px hover:bg-zinc-800/50 cursor-pointer"
                     onClick={() => onRowClick?.(bid, 'sell')}
                   >
                     <div
@@ -128,7 +129,7 @@ export function CompactBookStrip({ bids, asks, spread, spreadPct, onRowClick, po
                 return (
                   <div
                     key={`strip-ask-${i}`}
-                    className="relative grid grid-cols-2 md:grid-cols-3 gap-0 px-2 py-px hover:bg-zinc-900 cursor-pointer"
+                    className="relative grid grid-cols-2 md:grid-cols-3 gap-0 px-2 py-px hover:bg-zinc-800/50 cursor-pointer"
                     onClick={() => onRowClick?.(ask, 'buy')}
                   >
                     <div

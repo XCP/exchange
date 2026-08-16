@@ -1,7 +1,15 @@
 import useSWR from 'swr'
 import { dexUrl, fetcher } from '@/lib/api/client'
 
-export type Timeframe = '24h' | '7d' | '30d' | 'all'
+export type Timeframe = '24h' | '30d' | '1y' | 'all'
+
+export const TIMEFRAMES: readonly Timeframe[] = ['24h', '30d', '1y', 'all']
+export const TIMEFRAME_LABELS: Record<Timeframe, string> = {
+  '24h': '24h',
+  '30d': '30d',
+  '1y': '1y',
+  all: 'All',
+}
 
 export interface TradeSummary {
   total_volume: number

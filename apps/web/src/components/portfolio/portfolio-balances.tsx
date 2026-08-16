@@ -6,6 +6,7 @@ import { usePortfolioBalances, usePortfolioBids, type PortfolioBid } from '@/lib
 import { formatAmount } from '@/utils/format-amount'
 import { getQuoteRank } from '@/utils/trading-pair'
 import { XCP_IMG_BASE } from '@/utils/constants'
+import { marketPath } from '@/utils/pairs'
 
 interface BidSummary {
   count: number
@@ -116,7 +117,7 @@ export function PortfolioBalances({ address }: { address: string }) {
           return (
             <div key={b.asset}>
               <div
-                className={`grid gap-0 px-2 py-1.5 text-xs hover:bg-zinc-900 transition-colors items-center ${
+                className={`grid gap-0 px-2 py-1.5 text-xs hover:bg-zinc-800/50 transition-colors items-center ${
                   showBidsOnly ? 'grid-cols-[1fr_auto_auto_auto] cursor-pointer' : 'grid-cols-3'
                 }`}
                 onClick={showBidsOnly && summary ? () => setExpandedAsset(isExpanded ? null : b.asset) : undefined}
@@ -144,7 +145,7 @@ export function PortfolioBalances({ address }: { address: string }) {
                     </span>
                   ) : (
                     <Link
-                      href={`/trade/${b.asset}_XCP`}
+                      href={marketPath(`${b.asset}_XCP`)}
                       className="text-green-400 hover:text-green-300 transition-colors"
                     >
                       Trade
@@ -172,7 +173,7 @@ export function PortfolioBalances({ address }: { address: string }) {
                         <span className="text-right text-zinc-400 font-mono pl-4">{formatAmount(String(bid.price))} {bid.quote_asset}/ea</span>
                         <div className="text-right pl-4">
                           <Link
-                            href={`/trade/${bid.pair.replace('/', '_')}`}
+                            href={marketPath(bid.pair)}
                             className="text-green-400 hover:text-green-300 transition-colors text-[10px]"
                           >
                             Sell

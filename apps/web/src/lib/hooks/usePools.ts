@@ -34,45 +34,45 @@ export interface PoolSummary {
   total_fees_b_raw: number
   fees_24h_a?: number
   fees_24h_b?: number
-  fees_7d_a?: number
-  fees_7d_b?: number
+  fees_1y_a?: number
+  fees_1y_b?: number
   fees_30d_a?: number
   fees_30d_b?: number
   volume_a?: number
   volume_b?: number
   volume_24h_a?: number
   volume_24h_b?: number
-  volume_7d_a?: number
-  volume_7d_b?: number
+  volume_1y_a?: number
+  volume_1y_b?: number
   volume_30d_a?: number
   volume_30d_b?: number
   implied_fees_24h_a?: number
   implied_fees_24h_b?: number
-  implied_fees_7d_a?: number
-  implied_fees_7d_b?: number
+  implied_fees_1y_a?: number
+  implied_fees_1y_b?: number
   implied_fees_30d_a?: number
   implied_fees_30d_b?: number
   implied_fee_apy_24h?: number | null
-  implied_fee_apy_7d?: number | null
+  implied_fee_apy_1y?: number | null
   implied_fee_apy_30d?: number | null
   display_fees_24h_base?: number
   display_fees_24h_quote?: number
-  display_fees_7d_base?: number
-  display_fees_7d_quote?: number
+  display_fees_1y_base?: number
+  display_fees_1y_quote?: number
   display_fees_30d_base?: number
   display_fees_30d_quote?: number
   display_volume_base?: number
   display_volume_quote?: number
   display_volume_24h_base?: number
   display_volume_24h_quote?: number
-  display_volume_7d_base?: number
-  display_volume_7d_quote?: number
+  display_volume_1y_base?: number
+  display_volume_1y_quote?: number
   display_volume_30d_base?: number
   display_volume_30d_quote?: number
   display_implied_fees_24h_base?: number
   display_implied_fees_24h_quote?: number
-  display_implied_fees_7d_base?: number
-  display_implied_fees_7d_quote?: number
+  display_implied_fees_1y_base?: number
+  display_implied_fees_1y_quote?: number
   display_implied_fees_30d_base?: number
   display_implied_fees_30d_quote?: number
   updated_at: number
@@ -286,14 +286,14 @@ export type PoolSortKey =
   | 'opened_block_time'
   | 'total_fees_value'
   | 'fees_24h_value'
-  | 'fees_7d_value'
+  | 'fees_1y_value'
   | 'fees_30d_value'
   | 'total_volume_value'
   | 'volume_24h_value'
-  | 'volume_7d_value'
+  | 'volume_1y_value'
   | 'volume_30d_value'
   | 'implied_fee_apy_24h'
-  | 'implied_fee_apy_7d'
+  | 'implied_fee_apy_1y'
   | 'implied_fee_apy_30d'
 
 export type PoolStatusFilter = 'all' | 'active' | 'inactive'
@@ -307,7 +307,7 @@ export function usePools(
     status?: PoolStatusFilter
     includeHidden?: boolean
     tag?: string | null
-    timeframe?: '24h' | '7d' | '30d' | 'all'
+    timeframe?: '24h' | '30d' | '1y' | 'all'
   }
 ) {
   const params = new URLSearchParams({

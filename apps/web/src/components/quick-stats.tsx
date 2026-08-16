@@ -1,3 +1,4 @@
+import { formatCommas } from '@/utils/format-commas'
 import type { TradingPairData } from '@/lib/hooks/useTradingPair'
 
 interface QuickStatsProps {
@@ -14,7 +15,9 @@ export function QuickStats({ pairData, assetOnly }: QuickStatsProps) {
         <div>
           <div className="text-xs text-zinc-500">Supply</div>
           <div className="text-xs text-zinc-300 font-mono">
-            {info?.supply_normalized ? Number(info.supply_normalized).toLocaleString() : '—'}
+            {/* formatCommas groups the digits of the STRING; Number() here would
+                round away the precision the lossless parse preserved. */}
+            {info?.supply_normalized ? formatCommas(info.supply_normalized) : '—'}
           </div>
         </div>
         <div>

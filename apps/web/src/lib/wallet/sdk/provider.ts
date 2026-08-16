@@ -1,4 +1,4 @@
-import type { XcpProvider, XcpWalletEvents, SignPsbtParams, ConnectionProof, ConnectResult } from './types'
+import type { XcpProvider, XcpWalletEvents, SignPsbtParams, ConnectionProof, ConnectResult, WalletAddresses } from './types'
 import { BTC_ADDRESS_REGEX, HEX_REGEX, TXID_REGEX, DISCONNECTED } from './constants'
 
 /** Per-method timeouts: interactive methods get longer, passive methods are short. */
@@ -45,10 +45,14 @@ export class XcpWallet {
     return withTimeout(this.provider.request(args), timeout)
   }
 
-  // Sign requests retry once if the service worker drops mid-flight. The wallet
-  // persists each flow by (origin, method, params), so the retry recovers a
-  // result the user already approved or rejoins an open prompt — never a second popup.
-  private async signRequest(args: { method: string; params?: unknown[] }, timeout: number): Promise<unknown> {
+  // Retried once if the service worker drops mid-flight. The wallet persists the requests a user
+  // decides on — sign flows by (origin, method, params), and connect approvals in the same way —
+  // so the retry recovers a decision already made or rejoins an open prompt, never a second popup.
+  //
+  // Connect is included because the grant now outlives the worker: the wallet stores the approval,
+  // completes it when the user clicks, and emits accountsChanged. A connect that died in flight has
+  // usually already succeeded by the time we ask again.
+  private async durableRequest(args: { method: string; params?: unknown[] }, timeout: number): Promise<unknown> {
     try {
       return await this.request(args, timeout)
     } catch (error) {
@@ -58,7 +62,7 @@ export class XcpWallet {
   }
 
   async connect(): Promise<ConnectResult> {
-    const result = await this.request({ method: 'xcp_requestAccounts' }, Timeout.interactive)
+    const result = await this.durableRequest({ method: 'xcp_requestAccounts' }, Timeout.interactive)
 
     // Handle new { accounts, proof } response shape
     let accounts: string[]
@@ -94,8 +98,36 @@ export class XcpWallet {
     await this.request({ method: 'xcp_disconnect' }, Timeout.fast)
   }
 
+  /**
+   * The wallet's addresses WITH their public keys.
+   *
+   * Counterparty needs the source pubkey to compose anything whose message
+   * exceeds an OP_RETURN — it falls back to bare multisig, which embeds that
+   * key — and it can only find one itself after the address has spent. A
+   * freshly funded wallet has never spent, so without this its first-ever
+   * transaction of that shape cannot compose at all.
+   *
+   * Passive and cheap: no prompt, no signature, just the key the wallet
+   * already holds. Returns null on any failure (older extension builds
+   * predate the method) so callers can fall back rather than break.
+   */
+  async getAddresses(): Promise<WalletAddresses | null> {
+    try {
+      const result = await this.request({ method: 'xcp_getAddresses' }, Timeout.fast)
+      if (!result || typeof result !== 'object') return null
+      const { active } = result as { active?: unknown }
+      if (!active || typeof active !== 'object') return null
+      const { address, publicKey } = active as Record<string, unknown>
+      if (typeof address !== 'string' || typeof publicKey !== 'string') return null
+      if (!BTC_ADDRESS_REGEX.test(address) || !HEX_REGEX.test(publicKey)) return null
+      return result as WalletAddresses
+    } catch {
+      return null
+    }
+  }
+
   async signMessage(message: string): Promise<string> {
-    const result = await this.signRequest({
+    const result = await this.durableRequest({
       method: 'xcp_signMessage',
       params: [message],
     }, Timeout.interactive)
@@ -105,7 +137,7 @@ export class XcpWallet {
   }
 
   async signTransaction(hex: string): Promise<string> {
-    const result = await this.signRequest({
+    const result = await this.durableRequest({
       method: 'xcp_signTransaction',
       params: [hex],
     }, Timeout.interactive)
@@ -118,11 +150,13 @@ export class XcpWallet {
     psbtHex: string,
     signInputs?: Record<string, number[]>,
     sighashTypes?: number[],
+    inscription?: SignPsbtParams['inscription'],
   ): Promise<string> {
     const params: SignPsbtParams = { hex: psbtHex }
     if (signInputs) params.signInputs = signInputs
     if (sighashTypes) params.sighashTypes = sighashTypes
-    const result = await this.signRequest({
+    if (inscription) params.inscription = inscription
+    const result = await this.durableRequest({
       method: 'xcp_signPsbt',
       params: [params],
     }, Timeout.interactive)

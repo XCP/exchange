@@ -7,6 +7,7 @@ import { useDeals, type DealEntry } from '@/lib/hooks/useDeals'
 import { Pagination } from '@/components/Pagination'
 import { formatPrice } from '@/utils/format-price'
 import { XCP_IMG_BASE } from '@/utils/constants'
+import { marketPath } from '@/utils/pairs'
 
 function compactTime(ts: number): string {
   const diff = Math.max(0, Math.floor(Date.now() / 1000 - ts))
@@ -50,7 +51,7 @@ function DealRow({ deal }: { deal: DealEntry }) {
   return (
     <div className="border border-zinc-800 rounded-sm bg-zinc-900/50 hover:bg-zinc-800/30 transition-colors flex gap-4 p-3">
       {/* Large image */}
-      <Link href={`/trade/${pairSlug}`} className="flex-shrink-0">
+      <Link href={marketPath(pairSlug)} className="flex-shrink-0">
         <Image
           src={`${XCP_IMG_BASE}/full/${deal.asset}`}
           alt=""
@@ -67,7 +68,7 @@ function DealRow({ deal }: { deal: DealEntry }) {
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <Link href={`/trade/${pairSlug}`} className="font-semibold text-sm text-zinc-100 hover:text-white truncate">
+              <Link href={marketPath(pairSlug)} className="font-semibold text-sm text-zinc-100 hover:text-white truncate">
                 {displayName}
               </Link>
               {hasDiscount && (

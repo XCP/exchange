@@ -16,8 +16,8 @@ export async function bulkUpdateDispenserStats(
 
   const now = Math.floor(Date.now() / 1000);
   const t24h = now - 86400;
-  const t7d = now - 604800;
   const t30d = now - 2592000;
+  const t1y = now - 31536000;
 
   for (let ci = 0; ci < assets.length; ci += BULK_CHUNK) {
     const chunk = assets.slice(ci, ci + BULK_CHUNK);
@@ -26,9 +26,9 @@ export async function bulkUpdateDispenserStats(
       chunk.map((_, i) => `?${start + i}`).join(",");
 
     // Batch 6 read queries in one round trip
-    const [statsRes, lastRes, p24Res, p7Res, p30Res, dispenserRes] =
+    const [statsRes, lastRes, p24Res, p30Res, p1yRes, dispenserRes] =
       await db.batch([
-        // Q1: Windowed + all-time stats from dispenses
+        // Q1: Windowed + all-time stats from dispenses (?1=t24h, ?2=t30d, ?3=t1y)
         db
           .prepare(
             `SELECT asset,
@@ -37,21 +37,21 @@ export async function bulkUpdateDispenserStats(
               COUNT(*) as total_cnt,
               COUNT(DISTINCT destination) as unique_buyers,
               COALESCE(SUM(CASE WHEN block_time >= ?1 THEN btc_amount END), 0) as vol_24h,
-              COALESCE(SUM(CASE WHEN block_time >= ?2 THEN btc_amount END), 0) as vol_7d,
-              COALESCE(SUM(CASE WHEN block_time >= ?3 THEN btc_amount END), 0) as vol_30d,
+              COALESCE(SUM(CASE WHEN block_time >= ?2 THEN btc_amount END), 0) as vol_30d,
+              COALESCE(SUM(CASE WHEN block_time >= ?3 THEN btc_amount END), 0) as vol_1y,
               SUM(CASE WHEN block_time >= ?1 THEN 1 ELSE 0 END) as cnt_24h,
-              SUM(CASE WHEN block_time >= ?2 THEN 1 ELSE 0 END) as cnt_7d,
-              SUM(CASE WHEN block_time >= ?3 THEN 1 ELSE 0 END) as cnt_30d,
+              SUM(CASE WHEN block_time >= ?2 THEN 1 ELSE 0 END) as cnt_30d,
+              SUM(CASE WHEN block_time >= ?3 THEN 1 ELSE 0 END) as cnt_1y,
               MAX(CASE WHEN block_time >= ?1 THEN price END) as hi_24h,
               MIN(CASE WHEN block_time >= ?1 THEN price END) as lo_24h,
-              MAX(CASE WHEN block_time >= ?2 THEN price END) as hi_7d,
-              MIN(CASE WHEN block_time >= ?2 THEN price END) as lo_7d,
-              MAX(CASE WHEN block_time >= ?3 THEN price END) as hi_30d,
-              MIN(CASE WHEN block_time >= ?3 THEN price END) as lo_30d
+              MAX(CASE WHEN block_time >= ?2 THEN price END) as hi_30d,
+              MIN(CASE WHEN block_time >= ?2 THEN price END) as lo_30d,
+              MAX(CASE WHEN block_time >= ?3 THEN price END) as hi_1y,
+              MIN(CASE WHEN block_time >= ?3 THEN price END) as lo_1y
             FROM dispenses WHERE asset IN (${phFrom(4)})
             GROUP BY asset`
           )
-          .bind(t24h, t7d, t30d, ...chunk),
+          .bind(t24h, t30d, t1y, ...chunk),
 
         // Q2: Last/first dispense info
         db
@@ -76,18 +76,7 @@ export async function bulkUpdateDispenserStats(
           )
           .bind(...chunk, t24h),
 
-        // Q4: Price 7d ago
-        db
-          .prepare(
-            `SELECT asset, price as price_ago FROM (
-              SELECT asset, price,
-                ROW_NUMBER() OVER (PARTITION BY asset ORDER BY block_time DESC) as rn
-              FROM dispenses WHERE asset IN (${phFrom(1)}) AND block_time <= ?${n + 1}
-            ) WHERE rn = 1`
-          )
-          .bind(...chunk, t7d),
-
-        // Q5: Price 30d ago
+        // Q4: Price 30d ago
         db
           .prepare(
             `SELECT asset, price as price_ago FROM (
@@ -97,6 +86,17 @@ export async function bulkUpdateDispenserStats(
             ) WHERE rn = 1`
           )
           .bind(...chunk, t30d),
+
+        // Q5: Price 1y ago
+        db
+          .prepare(
+            `SELECT asset, price as price_ago FROM (
+              SELECT asset, price,
+                ROW_NUMBER() OVER (PARTITION BY asset ORDER BY block_time DESC) as rn
+              FROM dispenses WHERE asset IN (${phFrom(1)}) AND block_time <= ?${n + 1}
+            ) WHERE rn = 1`
+          )
+          .bind(...chunk, t1y),
 
         // Q6: Dispenser counts from dispensers table
         db
@@ -120,8 +120,8 @@ export async function bulkUpdateDispenserStats(
     const statsMap = toMap(statsRes);
     const ltMap = toMap(lastRes);
     const p24Map = toMap(p24Res);
-    const p7Map = toMap(p7Res);
     const p30Map = toMap(p30Res);
+    const p1yMap = toMap(p1yRes);
     const dispMap = toMap(dispenserRes);
 
     // Compute price changes and build JSON
@@ -129,17 +129,17 @@ export async function bulkUpdateDispenserStats(
       const s = statsMap.get(asset);
       const lt = ltMap.get(asset);
       const p24 = p24Map.get(asset);
-      const p7 = p7Map.get(asset);
       const p30 = p30Map.get(asset);
+      const p1y = p1yMap.get(asset);
       const d = dispMap.get(asset);
 
       const lp = lt?.last_price ?? null;
       const pa24 = p24?.price_ago ?? 0;
-      const pa7 = p7?.price_ago ?? 0;
       const pa30 = p30?.price_ago ?? 0;
+      const pa1y = p1y?.price_ago ?? 0;
       const pc24 = lp && pa24 > 0 ? ((lp - pa24) / pa24) * 100 : 0;
-      const pc7 = lp && pa7 > 0 ? ((lp - pa7) / pa7) * 100 : 0;
       const pc30 = lp && pa30 > 0 ? ((lp - pa30) / pa30) * 100 : 0;
+      const pc1y = lp && pa1y > 0 ? ((lp - pa1y) / pa1y) * 100 : 0;
 
       const totalBtc = s?.total_btc ?? 0;
       const totalCnt = s?.total_cnt ?? 0;
@@ -149,12 +149,12 @@ export async function bulkUpdateDispenserStats(
         lp,
         lt: lt?.last_time ?? null,
         ft: lt?.first_time ?? null,
-        pc24, pc7, pc30,
-        v24: s?.vol_24h ?? 0, v7: s?.vol_7d ?? 0, v30: s?.vol_30d ?? 0,
+        pc24, pc30, pc1y,
+        v24: s?.vol_24h ?? 0, v30: s?.vol_30d ?? 0, v1y: s?.vol_1y ?? 0,
         h24: s?.hi_24h ?? null, l24: s?.lo_24h ?? null,
-        h7: s?.hi_7d ?? null, l7: s?.lo_7d ?? null,
         h30: s?.hi_30d ?? null, l30: s?.lo_30d ?? null,
-        c24: s?.cnt_24h ?? 0, c7: s?.cnt_7d ?? 0, c30: s?.cnt_30d ?? 0,
+        h1y: s?.hi_1y ?? null, l1y: s?.lo_1y ?? null,
+        c24: s?.cnt_24h ?? 0, c30: s?.cnt_30d ?? 0, c1y: s?.cnt_1y ?? 0,
         tb: totalBtc,
         td: s?.total_qty ?? 0,
         tc: totalCnt,
@@ -174,20 +174,20 @@ export async function bulkUpdateDispenserStats(
           last_dispense_time = json_extract(j.value, '$.lt'),
           first_dispense_time = json_extract(j.value, '$.ft'),
           price_change_24h = json_extract(j.value, '$.pc24'),
-          price_change_7d = json_extract(j.value, '$.pc7'),
           price_change_30d = json_extract(j.value, '$.pc30'),
+          price_change_1y = json_extract(j.value, '$.pc1y'),
           volume_24h = json_extract(j.value, '$.v24'),
-          volume_7d = json_extract(j.value, '$.v7'),
           volume_30d = json_extract(j.value, '$.v30'),
+          volume_1y = json_extract(j.value, '$.v1y'),
           high_24h = json_extract(j.value, '$.h24'),
           low_24h = json_extract(j.value, '$.l24'),
-          high_7d = json_extract(j.value, '$.h7'),
-          low_7d = json_extract(j.value, '$.l7'),
           high_30d = json_extract(j.value, '$.h30'),
           low_30d = json_extract(j.value, '$.l30'),
+          high_1y = json_extract(j.value, '$.h1y'),
+          low_1y = json_extract(j.value, '$.l1y'),
           dispense_count_24h = json_extract(j.value, '$.c24'),
-          dispense_count_7d = json_extract(j.value, '$.c7'),
           dispense_count_30d = json_extract(j.value, '$.c30'),
+          dispense_count_1y = json_extract(j.value, '$.c1y'),
           total_btc_spent = json_extract(j.value, '$.tb'),
           total_dispensed = json_extract(j.value, '$.td'),
           total_dispense_count = json_extract(j.value, '$.tc'),
@@ -261,8 +261,8 @@ export async function updateDispenserStats(
 ): Promise<void> {
   const now = Math.floor(Date.now() / 1000);
   const t24h = now - 86400;
-  const t7d = now - 604800;
   const t30d = now - 2592000;
+  const t1y = now - 31536000;
 
   // Single consolidated query for latest, first, and windowed stats
   const stats = await db
@@ -272,40 +272,40 @@ export async function updateDispenserStats(
         (SELECT block_time FROM dispenses WHERE asset = ?1 ORDER BY block_time DESC LIMIT 1) as last_time,
         (SELECT block_time FROM dispenses WHERE asset = ?1 ORDER BY block_time ASC LIMIT 1) as first_time,
         COALESCE(SUM(CASE WHEN block_time >= ?2 THEN btc_amount ELSE 0 END), 0) as vol_24h,
-        COALESCE(SUM(CASE WHEN block_time >= ?3 THEN btc_amount ELSE 0 END), 0) as vol_7d,
-        COALESCE(SUM(CASE WHEN block_time >= ?4 THEN btc_amount ELSE 0 END), 0) as vol_30d,
+        COALESCE(SUM(CASE WHEN block_time >= ?3 THEN btc_amount ELSE 0 END), 0) as vol_30d,
+        COALESCE(SUM(CASE WHEN block_time >= ?4 THEN btc_amount ELSE 0 END), 0) as vol_1y,
         SUM(CASE WHEN block_time >= ?2 THEN 1 ELSE 0 END) as cnt_24h,
-        SUM(CASE WHEN block_time >= ?3 THEN 1 ELSE 0 END) as cnt_7d,
-        SUM(CASE WHEN block_time >= ?4 THEN 1 ELSE 0 END) as cnt_30d,
+        SUM(CASE WHEN block_time >= ?3 THEN 1 ELSE 0 END) as cnt_30d,
+        SUM(CASE WHEN block_time >= ?4 THEN 1 ELSE 0 END) as cnt_1y,
         MAX(CASE WHEN block_time >= ?2 THEN price END) as hi_24h,
         MIN(CASE WHEN block_time >= ?2 THEN price END) as lo_24h,
-        MAX(CASE WHEN block_time >= ?3 THEN price END) as hi_7d,
-        MIN(CASE WHEN block_time >= ?3 THEN price END) as lo_7d,
-        MAX(CASE WHEN block_time >= ?4 THEN price END) as hi_30d,
-        MIN(CASE WHEN block_time >= ?4 THEN price END) as lo_30d
+        MAX(CASE WHEN block_time >= ?3 THEN price END) as hi_30d,
+        MIN(CASE WHEN block_time >= ?3 THEN price END) as lo_30d,
+        MAX(CASE WHEN block_time >= ?4 THEN price END) as hi_1y,
+        MIN(CASE WHEN block_time >= ?4 THEN price END) as lo_1y
        FROM dispenses WHERE asset = ?1 AND block_time >= ?4`
     )
-    .bind(asset, t24h, t7d, t30d)
+    .bind(asset, t24h, t30d, t1y)
     .first<{
       last_price: number | null;
       last_time: number | null;
       first_time: number | null;
       vol_24h: number;
-      vol_7d: number;
       vol_30d: number;
+      vol_1y: number;
       cnt_24h: number;
-      cnt_7d: number;
       cnt_30d: number;
+      cnt_1y: number;
       hi_24h: number | null;
       lo_24h: number | null;
-      hi_7d: number | null;
-      lo_7d: number | null;
       hi_30d: number | null;
       lo_30d: number | null;
+      hi_1y: number | null;
+      lo_1y: number | null;
     }>();
 
   // Price change lookups + all-time totals (run in parallel)
-  const [price24hAgo, price7dAgo, price30dAgo, allTime, dispenserInfo] = await Promise.all([
+  const [price24hAgo, price30dAgo, price1yAgo, allTime, dispenserInfo] = await Promise.all([
     db
       .prepare(
         `SELECT price FROM dispenses
@@ -318,14 +318,14 @@ export async function updateDispenserStats(
         `SELECT price FROM dispenses
          WHERE asset = ? AND block_time <= ? ORDER BY block_time DESC LIMIT 1`
       )
-      .bind(asset, t7d)
+      .bind(asset, t30d)
       .first<{ price: number }>(),
     db
       .prepare(
         `SELECT price FROM dispenses
          WHERE asset = ? AND block_time <= ? ORDER BY block_time DESC LIMIT 1`
       )
-      .bind(asset, t30d)
+      .bind(asset, t1y)
       .first<{ price: number }>(),
     db
       .prepare(
@@ -355,13 +355,13 @@ export async function updateDispenserStats(
     lastPrice && price24hAgo && price24hAgo.price > 0
       ? ((lastPrice - price24hAgo.price) / price24hAgo.price) * 100
       : 0;
-  const priceChange7d =
-    lastPrice && price7dAgo && price7dAgo.price > 0
-      ? ((lastPrice - price7dAgo.price) / price7dAgo.price) * 100
-      : 0;
   const priceChange30d =
     lastPrice && price30dAgo && price30dAgo.price > 0
       ? ((lastPrice - price30dAgo.price) / price30dAgo.price) * 100
+      : 0;
+  const priceChange1y =
+    lastPrice && price1yAgo && price1yAgo.price > 0
+      ? ((lastPrice - price1yAgo.price) / price1yAgo.price) * 100
       : 0;
 
   const totalBtc = allTime?.total_btc ?? 0;
@@ -376,10 +376,10 @@ export async function updateDispenserStats(
     .prepare(
       `INSERT INTO dispenser_stats
          (asset, asset_longname, last_dispense_price, last_dispense_time,
-          price_change_24h, price_change_7d, price_change_30d,
-          volume_24h, volume_7d, volume_30d,
-          high_24h, low_24h, high_7d, low_7d, high_30d, low_30d,
-          dispense_count_24h, dispense_count_7d, dispense_count_30d,
+          price_change_24h, price_change_30d, price_change_1y,
+          volume_24h, volume_30d, volume_1y,
+          high_24h, low_24h, high_30d, low_30d, high_1y, low_1y,
+          dispense_count_24h, dispense_count_30d, dispense_count_1y,
           first_dispense_time,
           total_btc_spent, total_dispensed, total_dispense_count,
           unique_buyers, unique_sellers, total_dispensers_created, avg_dispense_btc,
@@ -391,20 +391,20 @@ export async function updateDispenserStats(
          last_dispense_price = excluded.last_dispense_price,
          last_dispense_time = excluded.last_dispense_time,
          price_change_24h = excluded.price_change_24h,
-         price_change_7d = excluded.price_change_7d,
          price_change_30d = excluded.price_change_30d,
+         price_change_1y = excluded.price_change_1y,
          volume_24h = excluded.volume_24h,
-         volume_7d = excluded.volume_7d,
          volume_30d = excluded.volume_30d,
+         volume_1y = excluded.volume_1y,
          high_24h = excluded.high_24h,
          low_24h = excluded.low_24h,
-         high_7d = excluded.high_7d,
-         low_7d = excluded.low_7d,
          high_30d = excluded.high_30d,
          low_30d = excluded.low_30d,
+         high_1y = excluded.high_1y,
+         low_1y = excluded.low_1y,
          dispense_count_24h = excluded.dispense_count_24h,
-         dispense_count_7d = excluded.dispense_count_7d,
          dispense_count_30d = excluded.dispense_count_30d,
+         dispense_count_1y = excluded.dispense_count_1y,
          first_dispense_time = excluded.first_dispense_time,
          total_btc_spent = excluded.total_btc_spent,
          total_dispensed = excluded.total_dispensed,
@@ -424,20 +424,20 @@ export async function updateDispenserStats(
       lastPrice,
       stats?.last_time ?? null,
       priceChange24h,
-      priceChange7d,
       priceChange30d,
+      priceChange1y,
       stats?.vol_24h ?? 0,
-      stats?.vol_7d ?? 0,
       stats?.vol_30d ?? 0,
+      stats?.vol_1y ?? 0,
       stats?.hi_24h ?? null,
       stats?.lo_24h ?? null,
-      stats?.hi_7d ?? null,
-      stats?.lo_7d ?? null,
       stats?.hi_30d ?? null,
       stats?.lo_30d ?? null,
+      stats?.hi_1y ?? null,
+      stats?.lo_1y ?? null,
       stats?.cnt_24h ?? 0,
-      stats?.cnt_7d ?? 0,
       stats?.cnt_30d ?? 0,
+      stats?.cnt_1y ?? 0,
       stats?.first_time ?? null,
       totalBtc,
       totalDispensed,
@@ -456,15 +456,14 @@ export async function updateDispenserStats(
 
 /**
  * Refresh stale rolling-window stats for dispenser assets that had recent
- * activity but haven't had a dispense in a while. Covers all three time
- * windows (24h, 7d, 30d).
+ * activity but haven't had a dispense in a while. Covers the short windows
+ * (24h, 30d); the year window is swept separately by
+ * refreshLongWindowDispenserStats.
  */
 export async function refreshStaleDispenserStats(
   db: D1Database
 ): Promise<number> {
   const now = Math.floor(Date.now() / 1000);
-  const t24h = now - 86400;
-  const t7d = now - 604800;
   const t30d = now - 2592000;
 
   // Refresh all assets that had any dispense in the last 30 days or have
@@ -475,7 +474,6 @@ export async function refreshStaleDispenserStats(
        WHERE last_dispense_time IS NOT NULL AND (
          last_dispense_time >= ?1
          OR dispense_count_24h > 0 OR volume_24h > 0
-         OR dispense_count_7d > 0 OR volume_7d > 0
          OR dispense_count_30d > 0 OR volume_30d > 0
        )`
     )
@@ -487,4 +485,35 @@ export async function refreshStaleDispenserStats(
   }
 
   return staleAssets.results.length;
+}
+
+/**
+ * Daily sweep of the year window - the dispenser twin of
+ * refreshLongWindowPairStats. Selects on last_dispense_time so assets whose
+ * year columns still hold pre-rename 7-day values are repriced, and on the
+ * stored year totals so an asset whose last dispense ages out of the window
+ * gets zeroed rather than frozen.
+ */
+export async function refreshLongWindowDispenserStats(
+  db: D1Database
+): Promise<number> {
+  const now = Math.floor(Date.now() / 1000);
+  const t1y = now - 31536000;
+
+  const assets = await db
+    .prepare(
+      `SELECT asset FROM dispenser_stats
+       WHERE last_dispense_time IS NOT NULL AND (
+         last_dispense_time >= ?1
+         OR dispense_count_1y > 0 OR volume_1y > 0
+       )`
+    )
+    .bind(t1y)
+    .all<{ asset: string }>();
+
+  if (assets.results.length > 0) {
+    await bulkUpdateDispenserStats(db, assets.results.map((a) => a.asset));
+  }
+
+  return assets.results.length;
 }

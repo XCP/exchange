@@ -6,7 +6,7 @@ export async function handleAnalytics(
 ): Promise<Response> {
   const url = new URL(request.url);
   const tfParam = url.searchParams.get("timeframe");
-  const tf = tfParam === "7d" || tfParam === "30d" || tfParam === "all" ? tfParam : "24h";
+  const tf = tfParam === "30d" || tfParam === "1y" || tfParam === "all" ? tfParam : "24h";
   const includeHidden = url.searchParams.get("include_hidden") === "1";
   const section = url.searchParams.get("section"); // summary | charts | traders (null = all)
   const tag = url.searchParams.get("tag");
@@ -33,8 +33,8 @@ export async function handleAnalytics(
   const now = Math.floor(Date.now() / 1000);
   const cutoffMap: Record<string, number> = {
     "24h": now - 86400,
-    "7d": now - 604800,
     "30d": now - 2592000,
+    "1y": now - 31536000,
   };
   const cutoff = cutoffMap[tf] ?? 0; // 0 = no filter (all)
   const timeFilt = cutoff > 0 ? ` AND block_time >= ${cutoff}` : "";
@@ -129,7 +129,7 @@ export async function handleAnalytics(
                 ${pctCol} AS price_change
          FROM pair_stats
          WHERE ${tradeCountCol} > 0 AND quote_asset = ?${pairHidden}
-         ORDER BY ${tradeCountCol} DESC
+         ORDER BY ${volCol} DESC
          LIMIT 10`
       ).bind(quoteAsset),
       db.prepare(
@@ -165,7 +165,7 @@ export async function handleAnalytics(
          WHERE t.tag_type = 'collection' AND ps.hidden = 0
          GROUP BY t.id, t.slug, t.name
          HAVING trade_count > 0
-         ORDER BY trade_count DESC LIMIT 10`
+         ORDER BY volume DESC LIMIT 10`
       ),
       db.prepare(
         `SELECT t.slug, t.name,

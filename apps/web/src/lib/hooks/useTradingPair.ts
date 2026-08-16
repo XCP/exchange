@@ -11,7 +11,8 @@ interface CounterpartyAssetInfo {
   issuer: string | null
   divisible: boolean
   locked: boolean
-  supply: number
+  /** Above 2^53 this arrives as a string — see lib/api/lossless-json. */
+  supply: number | string
   supply_normalized: string
   owner: string | null
   first_issuance_block_index: number | null
@@ -31,25 +32,25 @@ export interface TradingPairData {
   last_trade_time: number | null
   last_side: string | null
   price_change_24h: number | null
-  price_change_7d: number | null
+  price_change_1y: number | null
   price_change_30d: number | null
   volume_24h: number | null
-  volume_7d: number | null
+  volume_1y: number | null
   volume_30d: number | null
   high_24h: number | null
   low_24h: number | null
-  high_7d: number | null
-  low_7d: number | null
+  high_1y: number | null
+  low_1y: number | null
   high_30d: number | null
   low_30d: number | null
   trade_count_24h: number | null
-  trade_count_7d: number | null
+  trade_count_1y: number | null
   trade_count_30d: number | null
   first_trade_time: number | null
   total_volume: number | null
   total_base_volume: number | null
   base_volume_24h: number | null
-  base_volume_7d: number | null
+  base_volume_1y: number | null
   base_volume_30d: number | null
   total_trade_count: number | null
   unique_traders: number | null

@@ -1,9 +1,11 @@
 'use client'
 
 import { useState, useEffect, useMemo } from 'react'
+import { useTimeframeParam } from '@/lib/hooks/useTimeframeParam'
 import dynamic from 'next/dynamic'
 import Image from 'next/image'
 import type { Timeframe } from '@/lib/hooks/useAnalytics'
+import { marketPath } from '@/utils/pairs'
 import {
   useAnalyticsSummary,
   useAnalyticsCharts,
@@ -13,19 +15,18 @@ import { useSatsMode } from '@/lib/sats-context'
 import { formatBig, formatPct, pctColor, mergeDailyVolumes } from '@/utils/format-analytics'
 import { formatPrice } from '@/utils/format-price'
 import { XCP_IMG_BASE } from '@/utils/constants'
-import { TogglePills } from './toggle-pills'
+import { HideLowQualityToggle, TimeframePills } from '@/components/browse-controls'
 import { CounterCard } from './counter-card'
 import { LeaderboardTable, type LeaderboardRow } from './leaderboard-table'
 import { TopTradersTable } from './top-traders-table'
-import { QuoteMarquee } from './quote-marquee'
-import { DispenseMarquee } from './dispense-marquee'
-import { MarketInfoTable } from './market-info-table'
+import { MarketInfoTable, COMPARABLE_QUOTE } from '@/components/market-info-table'
 import { RecentActivity } from './recent-activity'
+import { HomeHero, LaunchStrip } from './home-hero'
+import { toSats } from '@/utils/numeric'
 import {
   LeaderboardSkeleton,
   ChartsSkeleton,
   TradersSkeleton,
-  MarqueeSkeleton,
 } from './skeletons'
 
 const ComboVolumeChart = dynamic(() => import('./combo-volume-chart'), { ssr: false })
@@ -97,15 +98,14 @@ const COLLECTION_ICONS: Record<string, string> = {
   'npcs': 'A10267050732029322730',
 }
 
-const TF_OPTIONS = ['24h', '7d', '30d', 'all'] as const
-const TF_LABELS: Record<Timeframe, string> = { '24h': '24h', '7d': '7d', '30d': '30d', all: 'All' }
-
 type MobileMode = 'xcp' | 'btc'
 
 // ── Main Orchestrator ───────────────────────────────────────────────
 
 export default function AnalyticsPage() {
-  const [timeframe, setTimeframe] = useState<Timeframe>('all')
+  // The same remembered window the Explore pages use, so a reader who picked
+  // 1y over there does not land back on 30d here.
+  const [timeframe, setTimeframe] = useTimeframeParam()
   const [hideLowQuality, setHideLowQuality] = useState(true)
   const [mobileMode, setMobileMode] = useState<MobileMode>('xcp')
   const [quoteAsset, setQuoteAsset] = useState('XCP')
@@ -131,28 +131,17 @@ export default function AnalyticsPage() {
 
   return (
     <div className="px-4 py-8">
-      {/* Header + Controls */}
-      <div className="flex items-start justify-between mb-6 gap-4 flex-wrap">
-        <div>
-          <h1 className="text-lg font-semibold text-zinc-100 mb-1">Dashboard</h1>
-          <p className="text-xs text-zinc-500">Decentralized exchange metrics and leaderboards</p>
-        </div>
+      <HomeHero />
+      <LaunchStrip />
+
+      {/* The numbers, and the controls that scope them. Below the hero rather
+          than above it: they answer "how is it going", which is the second
+          question, not the first. */}
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-sm uppercase tracking-wider text-zinc-400">Network activity</h2>
         <div className="flex items-center gap-3">
-          <label className="flex items-center gap-1.5 cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={hideLowQuality}
-              onChange={(e) => setHideLowQuality(e.target.checked)}
-              className="accent-zinc-500 size-3"
-            />
-            <span className="text-xs text-zinc-500">Hide low quality</span>
-          </label>
-          <TogglePills
-            options={TF_OPTIONS}
-            value={timeframe}
-            onChange={setTimeframe}
-            label={(tf) => TF_LABELS[tf]}
-          />
+          <HideLowQualityToggle checked={hideLowQuality} onChange={setHideLowQuality} />
+          <TimeframePills value={timeframe} onChange={setTimeframe} />
         </div>
       </div>
 
@@ -216,7 +205,7 @@ function SummarySection({ timeframe, includeHidden, isLoading, mobileMode, quote
   // Build leaderboard row data
   const tradedAssetRows: LeaderboardRow[] = topPairs.map((p) => ({
     key: p.pair,
-    href: `/trade/${p.pair}`,
+    href: marketPath(p.pair),
     icon: p.base_asset,
     label: p.base_asset_longname ?? p.base_asset,
     cells: [
@@ -242,7 +231,7 @@ function SummarySection({ timeframe, includeHidden, isLoading, mobileMode, quote
 
   const dispensedAssetRows: LeaderboardRow[] = topDispensers.map((d) => ({
     key: d.asset,
-    href: `/dispense/${d.asset}`,
+    href: `/buy/${d.asset}`,
     icon: d.asset,
     label: d.asset_longname ?? d.asset,
     cells: [
@@ -255,7 +244,7 @@ function SummarySection({ timeframe, includeHidden, isLoading, mobileMode, quote
 
   const dispensedCollRows: LeaderboardRow[] = topDispensedCollections.map((c) => ({
     key: c.slug,
-    href: `/dispense?v=${c.slug}`,
+    href: `/dispensers?v=${c.slug}`,
     icon: COLLECTION_ICONS[c.slug],
     label: c.name,
     cells: [
@@ -300,8 +289,8 @@ function SummarySection({ timeframe, includeHidden, isLoading, mobileMode, quote
           <CounterCard
             label="Dispense Volume"
             loading={isLoading}
-            value={dispenseSummary ? formatBig(satsMode ? dispenseSummary.tf_volume * 1e8 : dispenseSummary.tf_volume) + ` ${btcLabel.toUpperCase()}` : '\u2014'}
-            sub={dispenseSummary && dispenseSummary.tf_dispenses > 0 ? `Avg: ${formatBig(satsMode ? (dispenseSummary.tf_volume / dispenseSummary.tf_dispenses) * 1e8 : dispenseSummary.tf_volume / dispenseSummary.tf_dispenses)} ${btcLabel.toUpperCase()}` : undefined}
+            value={dispenseSummary ? formatBig(satsMode ? toSats(dispenseSummary.tf_volume) : dispenseSummary.tf_volume) + ` ${btcLabel.toUpperCase()}` : '\u2014'}
+            sub={dispenseSummary && dispenseSummary.tf_dispenses > 0 ? `Avg: ${formatBig(satsMode ? toSats(dispenseSummary.tf_volume / dispenseSummary.tf_dispenses) : dispenseSummary.tf_volume / dispenseSummary.tf_dispenses)} ${btcLabel.toUpperCase()}` : undefined}
           />
           <CounterCard
             label="Dispensers Created"
@@ -324,21 +313,15 @@ function SummarySection({ timeframe, includeHidden, isLoading, mobileMode, quote
         </div>
       </div>
 
-      {/* Quote Volume Marquee Ticker — XCP on mobile:xcp, BTC on mobile:btc, both on desktop */}
-      {isLoading ? (
-        <MarqueeSkeleton />
-      ) : (
-        <>
-          <div className={mobileMode === 'btc' ? 'hidden md:block' : ''}>
-            <QuoteMarquee quoteVolumes={quoteVolumes} />
-          </div>
-          <div className={mobileMode === 'xcp' ? 'hidden md:block' : ''}>
-            <DispenseMarquee topDispensers={topDispensers} satsMode={satsMode} />
-          </div>
-        </>
-      )}
+      {/* The two marquees are gone. They scrolled a row per quote asset and
+          per dispensed asset, and on a network this quiet almost every row
+          read "1 trades" or "1 dispenses" — motion carrying no information,
+          above tables that carry it properly. */}
 
-      <MarketInfoTable />
+      {/* XCP-quoted only. Without it this table ranked every market on a
+          volume figure denominated in its own quote asset, so a 6.9M
+          DANKROSECASH market outranked a 328K XCP one. See COMPARABLE_QUOTE. */}
+      <MarketInfoTable timeframe={timeframe} includeHidden={includeHidden} quote={COMPARABLE_QUOTE} />
 
       {/* Leaderboards */}
       <h2 className="text-sm uppercase tracking-wider text-zinc-400 mb-2">Leaderboards</h2>
@@ -351,8 +334,8 @@ function SummarySection({ timeframe, includeHidden, isLoading, mobileMode, quote
               title="Most Traded"
               titleExtra={quoteDropdown(quoteAsset, onQuoteAssetChange, quoteOptions)}
               tabs={[
-                { label: 'Assets', headers: ['Asset', 'Trades', `Volume (${quoteAsset})`, 'Chg'], rows: tradedAssetRows, sortable: [true, true, false] },
-                { label: 'Collections', headers: ['Collection', 'Trades', 'Volume (XCP)', 'Chg'], rows: tradedCollRows, sortable: [true, true, false] },
+                { label: 'Assets', headers: ['Asset', 'Trades', `Volume (${quoteAsset})`, 'Chg'], rows: tradedAssetRows, sortable: [true, true, false], defaultSortIndex: 1 },
+                { label: 'Collections', headers: ['Collection', 'Trades', 'Volume (XCP)', 'Chg'], rows: tradedCollRows, sortable: [true, true, false], defaultSortIndex: 1 },
               ]}
             />
           </div>
@@ -360,8 +343,8 @@ function SummarySection({ timeframe, includeHidden, isLoading, mobileMode, quote
             <LeaderboardTable
               title="Most Dispensed"
               tabs={[
-                { label: 'Assets', headers: ['Asset', 'Dispenses', `Volume (${btcLabel})`, 'Chg'], rows: dispensedAssetRows, sortable: [true, true, false] },
-                { label: 'Collections', headers: ['Collection', 'Dispenses', `Volume (${btcLabel})`, 'Chg'], rows: dispensedCollRows, sortable: [true, true, false] },
+                { label: 'Assets', headers: ['Asset', 'Dispenses', `Volume (${btcLabel})`, 'Chg'], rows: dispensedAssetRows, sortable: [true, true, false], defaultSortIndex: 1 },
+                { label: 'Collections', headers: ['Collection', 'Dispenses', `Volume (${btcLabel})`, 'Chg'], rows: dispensedCollRows, sortable: [true, true, false], defaultSortIndex: 1 },
               ]}
             />
           </div>
@@ -381,7 +364,7 @@ function ChartsSection({ timeframe, includeHidden, ready, mobileMode }: { timefr
 
   const mergedBtcVolume = mergeDailyVolumes(dailyBtcTradeVolume, dailyDispenseVolume)
   const btcChartData = satsMode
-    ? mergedBtcVolume.map(d => ({ ...d, volume: d.volume * 1e8 }))
+    ? mergedBtcVolume.map(d => ({ ...d, volume: toSats(d.volume) }))
     : mergedBtcVolume
 
   return (
@@ -436,8 +419,10 @@ function TradersSection({ topMakers, topTakers, topBtcBuyers, topBtcSellers, isL
 }) {
   const { satsMode } = useSatsMode()
   const btcLabel = satsMode ? 'sats' : 'BTC'
-  const toSats = (list: typeof topBtcBuyers) =>
-    satsMode ? list.map((t) => ({ ...t, volume: t.volume * 1e8 })) : list
+  // Named for what it does to the LIST — a bare `toSats` here shadowed the
+  // imported scalar helper and called itself.
+  const listInSats = (list: typeof topBtcBuyers) =>
+    satsMode ? list.map((t) => ({ ...t, volume: toSats(t.volume) })) : list
   return (
     <>
       <h2 className="text-sm uppercase tracking-wider text-zinc-400 mb-2">Top Traders</h2>
@@ -460,8 +445,8 @@ function TradersSection({ topMakers, topTakers, topBtcBuyers, topBtcSellers, isL
               title={`Top Traders (${btcLabel})`}
               unit={btcLabel}
               tabLabels={['Makers', 'Takers']}
-              listA={toSats(topBtcSellers)}
-              listB={toSats(topBtcBuyers)}
+              listA={listInSats(topBtcSellers)}
+              listB={listInSats(topBtcBuyers)}
             />
           </div>
         </div>

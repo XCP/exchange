@@ -5,11 +5,13 @@ import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { useSearch } from '@/lib/hooks/useSearch'
 import { XCP_IMG_BASE } from '@/utils/constants'
+import { toSats } from '@/utils/numeric'
+import { marketPath } from '@/utils/pairs'
 
 function formatBtc(val: number | null): string {
   if (val == null || val === 0) return ''
   if (val >= 1) return `${val.toFixed(2)} BTC`
-  return `${(val * 1e8).toFixed(0)} sats`
+  return `${toSats(val).toFixed(0)} sats`
 }
 
 export function SearchInput({ mobileOpen = false, onMobileOpenChange }: { mobileOpen?: boolean; onMobileOpenChange?: (open: boolean) => void } = {}) {
@@ -114,10 +116,10 @@ export function SearchInput({ mobileOpen = false, onMobileOpenChange }: { mobile
         if (selectedIndex >= 0) {
           if (selectedIndex < pairs.length) {
             const p = pairs[selectedIndex]
-            navigate(`/trade/${p.pair.replace('/', '_')}`)
+            navigate(marketPath(p.pair))
           } else {
             const d = dispensers[selectedIndex - pairs.length]
-            navigate(`/dispense/${d.asset}`)
+            navigate(`/buy/${d.asset}`)
           }
         }
         break
@@ -146,7 +148,7 @@ export function SearchInput({ mobileOpen = false, onMobileOpenChange }: { mobile
             <button
               key={p.pair}
               onMouseDown={(e) => e.preventDefault()}
-              onClick={() => navigate(`/trade/${p.pair.replace('/', '_')}`)}
+              onClick={() => navigate(marketPath(p.pair))}
               onMouseEnter={() => setSelectedIndex(i)}
               className={`w-full flex items-center justify-between px-3 py-1.5 text-left transition-colors ${
                 selectedIndex === i ? 'bg-zinc-800' : 'hover:bg-zinc-800/50'
@@ -181,7 +183,7 @@ export function SearchInput({ mobileOpen = false, onMobileOpenChange }: { mobile
               <button
                 key={d.asset}
                 onMouseDown={(e) => e.preventDefault()}
-                onClick={() => navigate(`/dispense/${d.asset}`)}
+                onClick={() => navigate(`/buy/${d.asset}`)}
                 onMouseEnter={() => setSelectedIndex(idx)}
                 className={`w-full flex items-center justify-between px-3 py-1.5 text-left transition-colors ${
                   selectedIndex === idx ? 'bg-zinc-800' : 'hover:bg-zinc-800/50'
@@ -294,7 +296,7 @@ export function SearchInput({ mobileOpen = false, onMobileOpenChange }: { mobile
                     {pairs.map((p, i) => (
                       <button
                         key={p.pair}
-                        onClick={() => navigate(`/trade/${p.pair.replace('/', '_')}`)}
+                        onClick={() => navigate(marketPath(p.pair))}
                         className={`w-full flex items-center justify-between px-3 py-2.5 text-left transition-colors ${
                           selectedIndex === i ? 'bg-zinc-800' : 'active:bg-zinc-800/50'
                         }`}
@@ -327,7 +329,7 @@ export function SearchInput({ mobileOpen = false, onMobileOpenChange }: { mobile
                       return (
                         <button
                           key={d.asset}
-                          onClick={() => navigate(`/dispense/${d.asset}`)}
+                          onClick={() => navigate(`/buy/${d.asset}`)}
                           className={`w-full flex items-center justify-between px-3 py-2.5 text-left transition-colors ${
                             selectedIndex === idx ? 'bg-zinc-800' : 'active:bg-zinc-800/50'
                           }`}

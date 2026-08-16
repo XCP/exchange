@@ -10,6 +10,14 @@ export interface PairEntry {
   last_trade_time: number | null
   price_change_24h: number | null
   volume_24h: number | null
+  /**
+   * Volume in the BASE asset's own units. The `volume_*` fields are
+   * QUOTE-denominated, so they are only comparable within a single market —
+   * ranking an asset's markets by them compares XCP against BTC against SJCX
+   * as though they were one currency.
+   */
+  base_volume_24h: number | null
+  total_base_volume: number | null
   trade_count_24h: number | null
   best_bid: number | null
   best_ask: number | null
