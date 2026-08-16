@@ -8,6 +8,15 @@ routes = [
   { pattern = "api.xcpdex.com", custom_domain = true },
 ]
 
+# Workers Logs. Without this there are no per-route logs at all, which is why
+# this worker's ~708 unhandled exceptions a day could be counted from
+# analytics but never read. Both sibling repos have had it since they were
+# written. Turn head_sampling_rate down if volume becomes a problem; do not
+# turn observability off.
+[observability]
+enabled = true
+head_sampling_rate = 1
+
 [limits]
 cpu_ms = 300000
 

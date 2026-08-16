@@ -3,6 +3,21 @@ main = ".open-next/worker.js"
 compatibility_date = "2025-01-01"
 compatibility_flags = ["nodejs_compat"]
 
+# Workers Logs. Neither exchange worker had this, so the p99 (329ms CPU, the
+# highest per-request of any worker on the account) could be measured but not
+# explained, and the API's ~708 unhandled exceptions a day could be counted
+# but not read. Both sibling repos have had it since they were written.
+[observability]
+enabled = true
+head_sampling_rate = 1
+
 [assets]
 directory = ".open-next/assets"
 binding = "ASSETS"
+
+# Next's data/route cache. The binding NAME is fixed by the adapter's
+# r2-incremental-cache override in open-next.config.ts — renaming it turns
+# caching back off silently, with no error.
+[[r2_buckets]]
+binding = "NEXT_INC_CACHE_R2_BUCKET"
+bucket_name = "xcpdex-inc-cache"
