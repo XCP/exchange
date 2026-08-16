@@ -23,6 +23,20 @@ cpu_ms = 300000
 [triggers]
 crons = ["*/2 * * * *"]
 
+# Site-wide headcount. One fixed instance: the whole point is that every visitor
+# lands in the SAME room, and a second one would just split the number in half.
+# Costs nothing at rest — no alarm, no polling, hibernated sockets.
+[[durable_objects.bindings]]
+name = "SITE_PRESENCE"
+class_name = "SitePresence"
+
+# SQLite-backed classes are the only kind new namespaces can be, and this one
+# stores nothing anyway — visitor ids ride on the socket via
+# serializeAttachment so they survive hibernation.
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["SitePresence"]
+
 [[d1_databases]]
 binding = "DB"
 database_name = "xcpdex"

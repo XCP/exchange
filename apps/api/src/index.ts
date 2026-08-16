@@ -58,6 +58,7 @@ export interface Env {
   CP_API_BASE: string;
   INDEXER_TOKEN?: string;
   FEE_ADDRESS?: string;
+  SITE_PRESENCE: DurableObjectNamespace;
 }
 
 type Bindings = Env;
@@ -91,6 +92,11 @@ app.use('*', async (c, next) => {
   // Nothing that mutates, and nothing the Cache API will not key on. The
   // /swaps and /indexer routes are POSTs and skip this entirely.
   if (c.req.method !== 'GET') return next();
+
+  // A websocket upgrade is a GET, but it is a handshake, not a document. There
+  // is no body to store and the 101 must reach the client untouched, so it
+  // never enters the cache path at all.
+  if (c.req.header('Upgrade') === 'websocket') return next();
 
   const cache = caches.default;
   const hit = await cache.match(c.req.raw);
@@ -169,6 +175,17 @@ app.get('/block', (c) => handleBlock(c.env.DB));
 app.get('/tags', (c) => handleTags(c.req.raw, c.env.DB));
 app.get('/tags/asset/:asset', (c) => handleAssetTags(c.req.raw, c.env.DB, c.req.param('asset')));
 app.get('/deals', (c) => handleDeals(c.req.raw, c.env.DB));
+// Site-wide "how many people have xcpdex.com open right now" — one fixed room,
+// every page connects to the same instance. Registered before the cache
+// middleware's concerns because a websocket upgrade is not a cacheable GET.
+app.get('/ws/presence', (c) => {
+  if (c.req.header('Upgrade') !== 'websocket') {
+    return c.text('expected a websocket upgrade', 426);
+  }
+  const id = c.env.SITE_PRESENCE.idFromName('global');
+  return c.env.SITE_PRESENCE.get(id).fetch(c.req.raw);
+});
+
 app.get('/pools', (c) => handlePools(c.req.raw, c.env.DB));
 app.get('/pools/:lpAsset', (c) => handlePool(new URL(c.req.url), c.env.DB, c.req.param('lpAsset')));
 // Reserves over time, straight from pool_updates — see pool-liquidity.ts.
@@ -518,6 +535,8 @@ async function scheduled(env: Env): Promise<void> {
     ).run();
   }
 }
+
+export { SitePresence } from "./durable/site-presence";
 
 export default {
   fetch: app.fetch,
