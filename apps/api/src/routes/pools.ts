@@ -965,3 +965,71 @@ export async function handleAddressPools(
     { headers: { "Cache-Control": cacheControl(url, 60) } }
   );
 }
+
+interface PoolVenueRow {
+  lp_asset: string;
+  pair: string;
+  counter_asset: string;
+  asset_reserve: number;
+  counter_reserve: number;
+  match_count: number;
+}
+
+/**
+ * "Can this asset be swapped, and against what?"
+ *
+ * The swap widget is an AMM surface: with no pool behind it there is nothing to
+ * quote against and the form degrades into a confusing wrapper around the order
+ * book. So the UI hides it entirely for assets with no pool, and this endpoint
+ * is what it asks. Kept deliberately separate from /pools — that route computes
+ * fee/volume/APY projections over every pool and is far too heavy to answer a
+ * yes/no question on every asset page view.
+ *
+ * Ordering encodes the venue preference, in SQL so the client cannot drift from
+ * it: XCP first, then PEPECASH, then the deepest remaining pool measured in the
+ * asset's OWN reserve — depth in the asset being swapped is what determines how
+ * much of it you can move before slippage bites, and reserves denominated in
+ * different counter-assets are not comparable to each other.
+ *
+ * Both arms of the UNION are index seeks (idx_pools_asset_a / _asset_b), so
+ * this stays a handful of rows read regardless of how many pools exist.
+ */
+export async function handleAssetPoolVenue(
+  url: URL,
+  db: D1Database,
+  asset: string
+): Promise<Response> {
+  const upper = asset.toUpperCase();
+
+  const rows = await db
+    .prepare(
+      `SELECT * FROM (
+         SELECT lp_asset, pair, asset_b AS counter_asset,
+                reserve_a AS asset_reserve, reserve_b AS counter_reserve, match_count
+           FROM pools
+          WHERE asset_a = ?1 AND reserve_a > 0 AND reserve_b > 0
+         UNION ALL
+         SELECT lp_asset, pair, asset_a AS counter_asset,
+                reserve_b AS asset_reserve, reserve_a AS counter_reserve, match_count
+           FROM pools
+          WHERE asset_b = ?1 AND reserve_a > 0 AND reserve_b > 0
+       )
+       ORDER BY CASE counter_asset WHEN 'XCP' THEN 0 WHEN 'PEPECASH' THEN 1 ELSE 2 END,
+                asset_reserve DESC,
+                lp_asset ASC`
+    )
+    .bind(upper)
+    .all<PoolVenueRow>();
+
+  const pools = rows.results ?? [];
+
+  return Response.json(
+    {
+      asset: upper,
+      has_pool: pools.length > 0,
+      preferred: pools[0] ?? null,
+      pools,
+    },
+    { headers: { "Cache-Control": cacheControl(url, 60) } }
+  );
+}

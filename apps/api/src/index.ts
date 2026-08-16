@@ -31,7 +31,7 @@ import { handleSearch } from "./routes/search";
 import { handleBlock } from "./routes/block";
 import { handleTags, handleAssetTags } from "./routes/tags";
 import { handleDeals } from "./routes/deals";
-import { handleAddressPools, handlePool, handlePoolAddress, handlePools } from "./routes/pools";
+import { handleAddressPools, handleAssetPoolVenue, handlePool, handlePoolAddress, handlePools } from "./routes/pools";
 import { handleCgPairs, handleCgTickers, handleCgOrderbook, handleCgHistoricalTrades } from "./routes/coingecko";
 import { handleCmcSummary } from "./routes/coinmarketcap";
 import { handleCatalogPairs } from "./routes/catalog";
@@ -175,6 +175,10 @@ app.get('/pools/:lpAsset', (c) => handlePool(new URL(c.req.url), c.env.DB, c.req
 app.get('/pools/:lpAsset/liquidity', (c) => handlePoolLiquidity(c.req.raw, c.env.DB, c.req.param('lpAsset')));
 app.get('/pools/:lpAsset/addresses/:address', (c) => handlePoolAddress(new URL(c.req.url), c.env.DB, c.req.param('lpAsset'), c.req.param('address')));
 app.get('/addresses/:address/pools', (c) => handleAddressPools(new URL(c.req.url), c.env.DB, c.req.param('address')));
+// "Can this asset be swapped, and against what?" — decides whether the swap tab
+// is offered at all. Deliberately not /pools?asset=, which computes fee and
+// volume projections this question does not need.
+app.get('/assets/:asset/pool-venue', (c) => handleAssetPoolVenue(new URL(c.req.url), c.env.DB, c.req.param('asset')));
 
 // Aggregator Integration Routes (CoinGecko / CoinMarketCap ideal API specs)
 
