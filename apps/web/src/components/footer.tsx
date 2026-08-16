@@ -1,7 +1,6 @@
 'use client'
 
 import { usePathname } from 'next/navigation'
-import { SitePresenceBadge } from '@/components/site-presence'
 
 /**
  * The trading surfaces run without a footer.
@@ -22,9 +21,6 @@ export function Footer() {
         <div className="flex items-center gap-4">
           <span className="text-xs font-bold tracking-wider text-green-500/60 font-mono">XCP DEX</span>
           <span className="text-[11px] text-zinc-500">Peer-to-peer trading on Bitcoin</span>
-          {/* Renders nothing until the socket answers, so it can appear late
-              without reserving space or shifting what is beside it. */}
-          <SitePresenceBadge />
         </div>
         <div className="flex items-center gap-4">
           <a

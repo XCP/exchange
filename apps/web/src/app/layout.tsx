@@ -5,6 +5,7 @@ import { WalletProvider } from "@/lib/wallet/wallet-context";
 import { SatsProvider } from "@/lib/sats-context";
 import { TopBar } from "@/components/top-bar";
 import { Footer } from "@/components/footer";
+import { SitePresenceBadge } from "@/components/site-presence";
 import { FathomAnalytics } from "./fathom";
 import "./globals.css";
 
@@ -51,6 +52,11 @@ export default function RootLayout({
               <TopBar />
               {children}
               <Footer />
+              {/* Outside the Footer on purpose: the footer is suppressed on the
+                  four trading surfaces, which is where someone is most likely to
+                  care whether anyone else is around. Fixed rather than in flow so
+                  it never reserves space or shifts the page when it connects. */}
+              <SitePresenceBadge />
             </WalletProvider>
           </SatsProvider>
         </SWRProvider>

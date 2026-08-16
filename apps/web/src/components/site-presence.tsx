@@ -92,13 +92,26 @@ export function SitePresenceBadge() {
 
   if (count === null) return null
 
+  /**
+   * Fixed to the bottom-left rather than sitting in the footer.
+   *
+   * It lived in the footer first, which meant it was invisible on /swap,
+   * /limit, /buy and /sell — those four suppress the footer entirely, and they
+   * are exactly the pages where knowing someone else is around matters most.
+   *
+   * Bottom-LEFT because the wallet/connect affordances live on the right and
+   * this must never sit near something clickable that matters. Fixed so it
+   * never reserves layout or shifts the page when the socket answers late.
+   */
   return (
-    <span
-      className="inline-flex items-center gap-1.5 text-[11px] text-zinc-500"
-      title="People with xcpdex.com open right now, including you. Several tabs from the same browser count once."
-    >
-      <span aria-hidden className="size-1.5 rounded-full bg-green-500" />
-      {count} online
-    </span>
+    <div className="pointer-events-none fixed bottom-3 left-3 z-40">
+      <span
+        className="pointer-events-auto inline-flex cursor-default items-center gap-1.5 rounded-full border border-zinc-800 bg-zinc-900/90 px-2.5 py-1 text-[11px] text-zinc-400 shadow-lg backdrop-blur"
+        title="People with xcpdex.com open right now, including you. Several tabs from the same browser count once."
+      >
+        <span aria-hidden className="size-1.5 rounded-full bg-green-500" />
+        {count} online
+      </span>
+    </div>
   )
 }
