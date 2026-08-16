@@ -152,6 +152,20 @@ export async function handleAnalytics(
          ORDER BY trade_count DESC
          LIMIT 25`
       ),
+      // The two collection rollups below use CROSS JOIN to pin the join order.
+      // It does not change the result — SQLite treats CROSS JOIN as an inner
+      // join that the planner may not reorder.
+      //
+      // Left to the planner, both drove from `hidden = 0` on the stats table,
+      // which matches essentially every row, and nested the 68 collections
+      // outside it — so each call cost 68 x <the whole stats table>. Driving
+      // from the tag instead makes every step a seek: tag_assets by its
+      // (tag_id, asset) primary key, then the stats row by its own.
+      //
+      // Measured on production, rows read for one call:
+      //   dispenser rollup  1,250,216 -> 66,484   (441ms -> 18ms)
+      //   traded rollup       851,328 -> 57,833
+      // Both verified to return identical rows before and after.
       db.prepare(
         `SELECT t.slug, t.name,
                 COALESCE(SUM(ps.${tradeCountCol}), 0) AS trade_count,
@@ -160,8 +174,8 @@ export async function handleAnalytics(
                      THEN ROUND(SUM(${tf === "all" ? "0" : `ps.${pctCol}`} * ps.${tradeCountCol}) * 1.0 / SUM(ps.${tradeCountCol}), 1)
                      ELSE 0 END AS price_change
          FROM tags t
-         JOIN tag_assets ta ON t.id = ta.tag_id
-         JOIN pair_stats ps ON ta.asset = ps.base_asset
+         CROSS JOIN tag_assets ta ON t.id = ta.tag_id
+         CROSS JOIN pair_stats ps ON ta.asset = ps.base_asset
          WHERE t.tag_type = 'collection' AND ps.hidden = 0
          GROUP BY t.id, t.slug, t.name
          HAVING trade_count > 0
@@ -175,8 +189,8 @@ export async function handleAnalytics(
                      THEN ROUND(SUM(${tf === "all" ? "0" : `ds.${dispPctCol}`} * ds.${dispCountCol}) * 1.0 / SUM(ds.${dispCountCol}), 1)
                      ELSE 0 END AS price_change
          FROM tags t
-         JOIN tag_assets ta ON t.id = ta.tag_id
-         JOIN dispenser_stats ds ON ta.asset = ds.asset
+         CROSS JOIN tag_assets ta ON t.id = ta.tag_id
+         CROSS JOIN dispenser_stats ds ON ta.asset = ds.asset
          WHERE t.tag_type = 'collection' AND ds.hidden = 0
          GROUP BY t.id, t.slug, t.name
          HAVING volume > 0
