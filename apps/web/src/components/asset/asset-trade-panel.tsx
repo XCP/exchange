@@ -36,6 +36,7 @@ export function AssetTradePanel({
   asset,
   assetLabel,
   quoteAsset = 'XCP',
+  variant = 'full',
 }: {
   asset: string
   assetLabel: string
@@ -46,6 +47,16 @@ export function AssetTradePanel({
    * be its own market and the form correctly refuses to render one.
    */
   quoteAsset?: string
+  /**
+   * `hero` keeps only the swap FORM and turns limit and dispense into links.
+   *
+   * The homepage rail is an invitation, not a workbench: the point is that
+   * something can be done here and where the other two live, not to carry
+   * three forms in 22rem beside a chart. The asset page keeps all four inline
+   * because that page is about one asset and the forms are the reason to be
+   * on it.
+   */
+  variant?: 'full' | 'hero'
 }) {
   const router = useRouter()
 
@@ -60,6 +71,7 @@ export function AssetTradePanel({
    * `counterAsset` comes from the server so this and /swap cannot disagree
    * about which venue an asset opens against.
    */
+  const isHero = variant === 'hero'
   const { hasPool, preferred, isLoading: venueLoading } = useAssetPoolVenue(asset)
   const counterAsset = preferred?.counter_asset ?? 'XCP'
 
@@ -69,8 +81,9 @@ export function AssetTradePanel({
    * lands instead of being frozen at first render. An explicit choice wins,
    * except a choice of `swap` on an asset that turns out to have no pool.
    */
-  const mode: Mode =
-    modeOverride && (modeOverride !== 'swap' || hasPool)
+  const mode: Mode = isHero
+    ? 'swap'
+    : modeOverride && (modeOverride !== 'swap' || hasPool)
       ? modeOverride
       : hasPool
         ? 'swap'
@@ -81,11 +94,13 @@ export function AssetTradePanel({
    * Held until the pool answer arrives, otherwise the swap tab appears and
    * then vanishes on assets that do not have a pool — which is most of them.
    */
-  const tabs: readonly string[] = venueLoading
-    ? ['buy', 'sell', 'dispense']
-    : hasPool
-      ? ['swap', 'buy', 'sell', 'dispense']
-      : ['buy', 'sell', 'dispense']
+  const tabs: readonly string[] = isHero
+    ? ['swap', 'limit', 'dispense']
+    : venueLoading
+      ? ['buy', 'sell', 'dispense']
+      : hasPool
+        ? ['swap', 'buy', 'sell', 'dispense']
+        : ['buy', 'sell', 'dispense']
 
   /**
    * The same preferences the dedicated form pages use — a fee rate set on
@@ -117,6 +132,12 @@ export function AssetTradePanel({
             // so the asset page you were reading stays where it was.
             if (m === 'dispense') {
               window.open(`/buy/${encodeURIComponent(assetLabel)}`, '_blank', 'noopener')
+            }
+            // In the hero, limit is a destination rather than a second form.
+            // Navigated in this tab, not a new one: unlike dispense from an
+            // asset page, there is nothing here worth preserving behind it.
+            else if (m === 'limit') {
+              router.push(`/limit/${encodeURIComponent(assetLabel)}/${encodeURIComponent(quoteAsset)}`)
             }
             else setMode(m as Mode)
           }}

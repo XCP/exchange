@@ -1,9 +1,7 @@
 'use client'
 
-import { useState } from 'react'
 import Link from 'next/link'
-import { TradeChart } from '@/components/trade-chart'
-import { type ChartTimeframe } from '@/lib/hooks/useTradeSeries'
+import { XcpUsdChart } from '@/components/home/xcp-usd-chart'
 import { AssetTradePanel } from '@/components/asset/asset-trade-panel'
 import { useXcpPrice } from '@/lib/hooks/useNetworkInfo'
 
@@ -20,20 +18,21 @@ import { useXcpPrice } from '@/lib/hooks/useNetworkInfo'
  * reason to care about: it is the protocol's own token, it is the quote asset
  * for nearly every book on the network, and it is the number in the header.
  *
- * Quoted in BTC, not XCP. XCP_BTC is the market that actually prices XCP (757
- * trades, against a single self-referential XCP_XCP row), and an asset cannot
- * be its own market — the limit form correctly refuses to render one, which is
- * why AssetTradePanel takes the quote as a prop rather than assuming XCP.
+ * THE CHART IS NOT THE FORM'S MARKET. It is XCP in dollars, all-time — the
+ * same series /price/XCP draws — and it deliberately does not follow whatever
+ * the rail is quoting. It is context for being on the site at all, not a
+ * readout of the trade being composed; coupling them would mean the price of
+ * the protocol moving because someone picked a different asset to swap.
  *
- * The swap tab inside the rail follows its own rule: it appears only if XCP has
- * a pool, and opens against whichever pool is deepest. It is not forced to BTC,
- * because there is no XCP/BTC pool and pretending otherwise is the thing the
- * gating was built to stop.
+ * The rail quotes BTC only because an asset cannot be its own market: the
+ * limit form correctly refuses to render XCP/XCP, which is why
+ * AssetTradePanel takes the quote as a prop instead of assuming XCP. The swap
+ * tab inside it still follows its own rule — it appears only if XCP has a pool
+ * and opens against whichever is deepest, rather than being forced to BTC,
+ * because there is no XCP/BTC pool and pretending otherwise is exactly what
+ * the gating was built to stop.
  */
-const XCP_PAIR = 'XCP_BTC'
-
 export function HomeTradeHero() {
-  const [timeframe, setTimeframe] = useState<ChartTimeframe>('All')
   const { xcpUsd } = useXcpPrice()
 
   return (
@@ -50,18 +49,7 @@ export function HomeTradeHero() {
 
       <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_22rem]">
         <div className="min-w-0">
-          <TradeChart
-            venue="market"
-            pairSlug={XCP_PAIR}
-            asset={null}
-            title="XCP / BTC"
-            quoteLabel="BTC"
-            timeframe={timeframe}
-            onTimeframeChange={setTimeframe}
-            // Matches the asset page: beside a full form rather than above
-            // one, so the default 180px leaves the rail lopsided.
-            height={300}
-          />
+          <XcpUsdChart height={300} />
           <p className="mt-2 flex flex-wrap items-center gap-x-2 text-[11px] text-zinc-600">
             <span>Counterparty&rsquo;s own token, and the quote asset for most books on the network.</span>
             {xcpUsd != null && <span className="text-zinc-500">≈ ${xcpUsd.toFixed(2)}</span>}
@@ -71,7 +59,7 @@ export function HomeTradeHero() {
           </p>
         </div>
 
-        <AssetTradePanel asset="XCP" assetLabel="XCP" quoteAsset="BTC" />
+        <AssetTradePanel asset="XCP" assetLabel="XCP" quoteAsset="BTC" variant="hero" />
       </div>
     </div>
   )

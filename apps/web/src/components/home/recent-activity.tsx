@@ -61,6 +61,20 @@ const CARD_COUNT = 4
 export function RecentActivity({ mobileMode }: { mobileMode?: 'xcp' | 'btc' }) {
   return (
     <>
+      {/* Mempool and Pools lead, ahead of the settled feeds below.
+          Mempool first because it is the only one showing the chain as it is
+          right now; Pools second because it is the venue the site is trying to
+          grow. Both sit above Recent Activity rather than after it, where they
+          were read as an afterthought to the two established venues. */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-6">
+        <div className={mobileMode === 'btc' ? 'hidden md:block' : ''}>
+          <MempoolCard />
+        </div>
+        <div className={mobileMode === 'xcp' ? 'hidden md:block' : ''}>
+          <PoolsCard />
+        </div>
+      </div>
+
       <h2 className="text-sm uppercase tracking-wider text-zinc-400 mb-2">Recent Activity</h2>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-8">
         <div className={mobileMode === 'btc' ? 'hidden md:block' : ''}>
@@ -68,12 +82,6 @@ export function RecentActivity({ mobileMode }: { mobileMode?: 'xcp' | 'btc' }) {
         </div>
         <div className={mobileMode === 'xcp' ? 'hidden md:block' : ''}>
           <DispensersCard />
-        </div>
-        <div className={mobileMode === 'btc' ? 'hidden md:block' : ''}>
-          <PoolsCard />
-        </div>
-        <div className={mobileMode === 'xcp' ? 'hidden md:block' : ''}>
-          <MempoolCard />
         </div>
       </div>
     </>
