@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useAssetMarkets } from '@/lib/hooks/useAssetMarkets'
 import { formatAmount } from '@/utils/format-amount'
 import { formatTimeAgo } from '@/utils/format-time-ago'
+import { marketPath } from '@/utils/pairs'
 
 interface MarketsTableProps {
   asset: string
@@ -47,9 +48,9 @@ export function MarketsTable({ asset, currentPair }: MarketsTableProps) {
           const [rawBase, quote] = p.pair.split('/')
           const displayPair = `${p.base_asset_longname ?? rawBase}/${quote}`
           return (
-            <tr key={p.pair} className={`hover:bg-zinc-900 transition-colors ${isCurrent ? 'bg-zinc-900/50' : ''}`}>
+            <tr key={p.pair} className={`hover:bg-zinc-800/50 transition-colors ${isCurrent ? 'bg-zinc-900/50' : ''}`}>
               <td className="px-2 py-1.5">
-                <Link href={`/trade/${slug}`} className="text-zinc-100 font-medium hover:underline">
+                <Link href={marketPath(p.pair)} className="text-zinc-100 font-medium hover:underline">
                   {displayPair}
                 </Link>
               </td>

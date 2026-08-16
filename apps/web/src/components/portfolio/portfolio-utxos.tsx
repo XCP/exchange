@@ -5,6 +5,8 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { useUtxoBalances } from '@/lib/hooks/useUtxoBalances'
 import { useCompose } from '@/lib/wallet/useCompose'
+import { usePoolAssetInfo } from '@/lib/hooks/usePools'
+import { toBase, sanitizeAmountInput, rawErrorMessage } from '@/utils/numeric'
 import { formatAmount } from '@/utils/format-amount'
 import { XCP_IMG_BASE, COMPOSE_STATUS_LABELS } from '@/utils/constants'
 
@@ -59,7 +61,7 @@ export function PortfolioUtxos({ address }: { address: string }) {
               return (
                 <div
                   key={bal.utxo + bal.asset}
-                  className="grid grid-cols-5 gap-0 px-2 py-1.5 text-xs hover:bg-zinc-900 transition-colors items-center max-sm:grid-cols-3"
+                  className="grid grid-cols-5 gap-0 px-2 py-1.5 text-xs hover:bg-zinc-800/50 transition-colors items-center max-sm:grid-cols-3"
                 >
                   <div className="flex items-center gap-2">
                     <Image
@@ -83,7 +85,7 @@ export function PortfolioUtxos({ address }: { address: string }) {
                   <span className="max-sm:hidden"></span>
                   <div className="text-right flex items-center justify-end gap-2">
                     <Link
-                      href={`/swap/sell?utxo=${bal.utxo}&asset=${bal.asset}&qty=${bal.quantity}${bal.asset_longname ? `&longname=${bal.asset_longname}` : ''}`}
+                      href={`/atomic/sell?utxo=${bal.utxo}&asset=${bal.asset}&qty=${bal.quantity}${bal.asset_longname ? `&longname=${bal.asset_longname}` : ''}`}
                       className="px-2 py-0.5 bg-orange-600 hover:bg-orange-500 text-white text-[10px] font-bold rounded-sm transition-colors"
                     >
                       Sell
@@ -159,6 +161,13 @@ function AttachModal({
   const { status, error, txid, composeAttach, reset } = useCompose()
   const [asset, setAsset] = useState('')
   const [quantity, setQuantity] = useState('')
+  // Attach had NO divisibility handling: parseInt on the typed quantity meant
+  // "1" of a divisible asset attached one base unit — 0.00000001 — rather
+  // than one token. The asset's own flag decides the scale.
+  const { info } = usePoolAssetInfo(asset || null)
+  const divisible: boolean | undefined = info?.divisible
+  const quantityResult = toBase(quantity, divisible)
+  const quantityError = !quantityResult.ok && quantity.trim() !== '' ? quantityResult.error : null
 
   useEffect(() => {
     if (status === 'confirmed') {
@@ -168,9 +177,8 @@ function AttachModal({
   }, [status, reset, onDone])
 
   function handleAttach() {
-    const qty = parseInt(quantity, 10)
-    if (!asset || isNaN(qty) || qty <= 0) return
-    composeAttach({ asset, quantity: qty })
+    if (!asset || !quantityResult.ok || quantityResult.raw <= 0) return
+    composeAttach({ asset, quantity: quantityResult.base })
   }
 
   const buttonLabel =
@@ -202,13 +210,15 @@ function AttachModal({
           <div>
             <label className="text-[10px] text-zinc-500 mb-1 block">Quantity</label>
             <input
-              type="number"
+              inputMode="decimal"
               value={quantity}
-              onChange={(e) => setQuantity(e.target.value)}
-              placeholder="Amount to attach"
-              min={1}
+              onChange={(e) => setQuantity(sanitizeAmountInput(e.target.value, divisible))}
+              placeholder={divisible === false ? 'Whole units' : 'Amount to attach'}
               className="w-full bg-zinc-900 border border-zinc-800 rounded-sm px-2.5 py-1.5 text-xs text-zinc-200 placeholder-zinc-700 font-mono focus:outline-none focus:border-zinc-600"
             />
+            {quantityError && (
+              <p className="mt-1 text-[10px] text-amber-400">{rawErrorMessage(quantityError, asset)}</p>
+            )}
           </div>
 
           <p className="text-[10px] text-zinc-500">
@@ -218,7 +228,7 @@ function AttachModal({
           <div className="flex items-center gap-3 pt-1">
             <button
               onClick={handleAttach}
-              disabled={status !== 'idle' || !asset || !quantity}
+              disabled={status !== 'idle' || !asset || !quantityResult.ok || quantityResult.raw <= 0}
               className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-800 disabled:text-zinc-600 text-white text-xs font-bold rounded-sm transition-colors"
             >
               {buttonLabel}

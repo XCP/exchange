@@ -8,9 +8,11 @@ import { useLatestOrders, type LatestOrder } from '@/lib/hooks/useLatestOrders'
 import { useDispensersLatest, useDispensesLatest, type LatestDispenser, type LatestDispense } from '@/lib/hooks/useDispensersLatest'
 import { useSatsMode } from '@/lib/sats-context'
 import { formatPrice } from '@/utils/format-price'
+import { marketPath } from '@/utils/pairs'
 
 import { XCP_IMG_BASE } from '@/utils/constants'
 import { TogglePills } from './toggle-pills'
+import { toSats } from '@/utils/numeric'
 
 function compactTime(ts: number): string {
   const diff = Math.max(0, Math.floor(Date.now() / 1000 - ts))
@@ -100,7 +102,7 @@ function OrderRow({ order: o, satsMode, last }: { order: LatestOrder; satsMode: 
 
   return (
     <Link
-      href={`/trade/${o.pair}`}
+      href={marketPath(o.pair)}
       className={`flex items-center gap-3 px-3 py-2.5 hover:bg-zinc-800/50 transition-colors ${last ? '' : 'border-b border-zinc-800/30'}`}
     >
       <div className="relative shrink-0 w-[46px] rounded-sm overflow-hidden bg-zinc-950" style={{ aspectRatio: '5/7' }}>
@@ -194,7 +196,7 @@ function DispenserRow({ d, satsMode, last }: { d: LatestDispenser; satsMode: boo
 
   return (
     <Link
-      href={`/dispense/${encodeURIComponent(d.asset)}`}
+      href={`/buy/${encodeURIComponent(d.asset)}`}
       className={`flex items-center gap-3 px-3 py-2.5 hover:bg-zinc-800/50 transition-colors ${last ? '' : 'border-b border-zinc-800/30'}`}
     >
       <div className="relative shrink-0 w-[46px] rounded-sm overflow-hidden bg-zinc-950" style={{ aspectRatio: '5/7' }}>
@@ -235,7 +237,7 @@ function DispenseRow({ d, satsMode, last }: { d: LatestDispense; satsMode: boole
 
   return (
     <Link
-      href={`/dispense/${encodeURIComponent(d.asset)}`}
+      href={`/buy/${encodeURIComponent(d.asset)}`}
       className={`flex items-center gap-3 px-3 py-2.5 hover:bg-zinc-800/50 transition-colors ${last ? '' : 'border-b border-zinc-800/30'}`}
     >
       <div className="relative shrink-0 w-[46px] rounded-sm overflow-hidden bg-zinc-950" style={{ aspectRatio: '5/7' }}>
@@ -264,7 +266,7 @@ function DispenseRow({ d, satsMode, last }: { d: LatestDispense; satsMode: boole
         </span>
         {d.btc_amount > 0 && (
           <span className="text-[11px] text-zinc-400 font-mono tabular-nums">
-            {formatPrice(satsMode ? d.btc_amount * 1e8 : d.btc_amount, false)} {unit}
+            {formatPrice(satsMode ? toSats(d.btc_amount) : d.btc_amount, false)} {unit}
           </span>
         )}
       </div>

@@ -4,7 +4,7 @@ import { useHolders } from '@/lib/hooks/useHolders'
 
 interface HoldersTableProps {
   asset: string
-  totalSupply: number
+  totalSupply: number | string
 }
 
 export function HoldersTable({ asset, totalSupply }: HoldersTableProps) {
@@ -31,9 +31,9 @@ export function HoldersTable({ asset, totalSupply }: HoldersTableProps) {
   const remainingPct = Math.max(0, 100 - topPct)
 
   return (
-    <table className="w-full text-xs whitespace-nowrap">
+    <table className="w-full whitespace-nowrap text-xs">
       <thead className="sticky top-0 bg-zinc-950 z-10">
-        <tr className="text-zinc-500 border-b border-zinc-800">
+        <tr className="border-b border-zinc-800 text-zinc-500">
           <th className="text-left font-normal px-2 py-1.5">Address</th>
           <th className="text-right font-normal px-2 py-1.5">Balance</th>
           <th className="text-right font-normal px-2 py-1.5">% Supply</th>
@@ -41,7 +41,7 @@ export function HoldersTable({ asset, totalSupply }: HoldersTableProps) {
       </thead>
       <tbody>
         {holders.map((holder) => (
-          <tr key={holder.address} className="hover:bg-zinc-900 cursor-default">
+          <tr key={holder.address} className="hover:bg-zinc-800/50 cursor-default">
             <td className="text-zinc-400 font-mono px-2 py-1">
               {holder.address}
               {holder.tag && (

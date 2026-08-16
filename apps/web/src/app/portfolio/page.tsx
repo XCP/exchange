@@ -1,44 +1,66 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import { useWallet } from '@/lib/wallet/wallet-context'
+import { PortfolioActivity } from '@/components/portfolio/portfolio-activity'
 import { PortfolioOrders } from '@/components/portfolio/portfolio-orders'
 import { PortfolioDispensers } from '@/components/portfolio/portfolio-dispensers'
 import { PortfolioBalances } from '@/components/portfolio/portfolio-balances'
-import { PortfolioSwaps } from '@/components/portfolio/portfolio-swaps'
 import { PortfolioUtxos } from '@/components/portfolio/portfolio-utxos'
 import { WalletInstallModal } from '@/components/wallet-install-modal'
+import { BrowseHeader } from '@/components/browse-controls'
+import { Tabs, SegmentedList, SegmentedTrigger } from '@/components/ui/tabs'
 import { formatAddress } from '@/utils/format-address'
 
-type TabKey = 'orders' | 'dispensers' | 'swaps' | 'utxos' | 'balances'
+/**
+ * Everything one wallet holds, in one place.
+ *
+ * Restyled onto the site's shared chrome rather than its own: a BrowseHeader
+ * like every other listing page, the shared segmented tabs, and tables built
+ * from components/ui/data-table. It previously had a bespoke full-bleed
+ * header, a hand-rolled tab row and CSS-grid pseudo-tables, which made the
+ * same data look like a different product depending on how you arrived.
+ *
+ * Swaps is gone. The atomic-swap surface is being kept off the front end for
+ * now; the routes still exist, nothing links to them.
+ *
+ * Pools are not a tab here either — an LP token is a share of two other
+ * assets, and the number that matters is what it redeems for, which is what
+ * /positions is for. This links there rather than answering it badly.
+ */
+type TabKey = 'activity' | 'orders' | 'dispensers' | 'utxos' | 'balances'
 
-const TAB_LABELS: Record<TabKey, string> = {
-  orders: 'Orders',
-  dispensers: 'Dispensers',
-  swaps: 'Swaps',
-  utxos: 'UTXOs',
-  balances: 'Balances',
-}
+const TABS: [TabKey, string][] = [
+  // Activity first: the other tabs are all STATE — what you hold, what is
+  // still open — and "what happened" is the question asked most often.
+  ['activity', 'Activity'],
+  ['orders', 'Orders'],
+  ['dispensers', 'Dispensers'],
+  ['balances', 'Balances'],
+  ['utxos', 'UTXOs'],
+]
 
 export default function PortfolioPage() {
   const { status, address, connect, connecting } = useWallet()
-  const [activeTab, setActiveTab] = useState<TabKey>('orders')
-
+  const [activeTab, setActiveTab] = useState<TabKey>('activity')
   const [showInstall, setShowInstall] = useState(false)
 
   if (status !== 'connected' || !address) {
     return (
-      <div className="min-h-screen bg-zinc-950 text-zinc-100 flex items-center justify-center">
-        <div className="text-center space-y-4">
-          <h1 className="text-lg font-semibold">Portfolio</h1>
-          <p className="text-sm text-zinc-500">Connect your wallet to view your portfolio</p>
-          <button
-            onClick={status === 'disconnected' ? connect : () => setShowInstall(true)}
-            disabled={connecting}
-            className="rounded-sm bg-green-500 px-6 py-2 text-sm font-semibold text-zinc-950 hover:bg-green-400 transition-colors disabled:opacity-50"
-          >
-            {connecting ? 'Connecting...' : 'Connect Wallet'}
-          </button>
+      <div className="min-h-screen bg-zinc-950 text-zinc-100">
+        <div className="px-4 py-8">
+          <BrowseHeader title="Portfolio" subtitle="Everything this wallet holds on Counterparty" />
+          <div className="rounded-sm border border-zinc-800 bg-zinc-900/50 px-6 py-16 text-center">
+            <p className="text-sm text-zinc-400">Connect your wallet to view your portfolio.</p>
+            <button
+              onClick={status === 'disconnected' ? connect : () => setShowInstall(true)}
+              disabled={connecting}
+              className="mt-4 rounded-sm bg-green-500 px-6 py-2 text-sm font-semibold text-zinc-950 transition-colors hover:bg-green-400 disabled:opacity-50"
+            >
+              {connecting ? 'Connecting…' : 'Connect Wallet'}
+            </button>
+          </div>
           {showInstall && <WalletInstallModal onClose={() => setShowInstall(false)} />}
         </div>
       </div>
@@ -47,38 +69,35 @@ export default function PortfolioPage() {
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
-      {/* Header */}
-      <div className="border-b border-zinc-800 px-4 py-3">
-        <div className="flex items-center gap-3">
-          <div className="h-2 w-2 rounded-full bg-green-500" />
-          <span className="text-sm font-mono text-zinc-300">{address}</span>
-        </div>
-      </div>
-
-      {/* Tabs */}
-      <div className="flex border-b border-zinc-800">
-        {(['orders', 'dispensers', 'swaps', 'utxos', 'balances'] as const).map((tab) => (
-          <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            className={`flex-1 py-2.5 text-xs font-semibold uppercase tracking-wider transition-colors ${
-              activeTab === tab
-                ? 'text-zinc-100 border-b-2 border-green-500'
-                : 'text-zinc-500 border-b-2 border-transparent hover:text-zinc-300'
-            }`}
+      <div className="px-4 py-8">
+        <BrowseHeader title="Portfolio" subtitle={formatAddress(address)}>
+          <Link
+            href="/positions"
+            className="rounded-sm border border-zinc-800 px-2.5 py-1.5 text-[11px] font-medium text-zinc-300 transition-colors hover:border-zinc-700 hover:text-zinc-100"
           >
-            {TAB_LABELS[tab]}
-          </button>
-        ))}
-      </div>
+            Liquidity positions →
+          </Link>
+        </BrowseHeader>
 
-      {/* Tab content */}
-      <div className="mx-auto">
-        {activeTab === 'orders' && <PortfolioOrders address={address} />}
-        {activeTab === 'dispensers' && <PortfolioDispensers address={address} />}
-        {activeTab === 'swaps' && <PortfolioSwaps address={address} />}
-        {activeTab === 'utxos' && <PortfolioUtxos address={address} />}
-        {activeTab === 'balances' && <PortfolioBalances address={address} />}
+        <div className="overflow-hidden rounded-sm border border-zinc-800 bg-zinc-900/50">
+          <div className="border-b border-zinc-800 p-2">
+            <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabKey)}>
+              <SegmentedList className="w-full" tone="inPanel">
+                {TABS.map(([key, label]) => (
+                  <SegmentedTrigger key={key} value={key}>
+                    {label}
+                  </SegmentedTrigger>
+                ))}
+              </SegmentedList>
+            </Tabs>
+          </div>
+
+          {activeTab === 'activity' && <PortfolioActivity address={address} />}
+          {activeTab === 'orders' && <PortfolioOrders address={address} />}
+          {activeTab === 'dispensers' && <PortfolioDispensers address={address} />}
+          {activeTab === 'balances' && <PortfolioBalances address={address} />}
+          {activeTab === 'utxos' && <PortfolioUtxos address={address} />}
+        </div>
       </div>
     </div>
   )

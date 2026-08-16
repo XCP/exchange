@@ -1,6 +1,20 @@
-import Link from 'next/link'
+'use client'
+
+import { usePathname } from 'next/navigation'
+
+/**
+ * The trading surfaces run without a footer.
+ *
+ * They're a single card on an otherwise empty page, and a footer under it
+ * reads as the end of a document rather than the bottom of a tool — it also
+ * pulls the eye away from the one thing on screen. Every other page keeps it.
+ */
+const NO_FOOTER = ['/swap', '/limit', '/buy', '/sell']
 
 export function Footer() {
+  const pathname = usePathname()
+  if (NO_FOOTER.some((p) => pathname === p || pathname.startsWith(`${p}/`))) return null
+
   return (
     <footer className="border-t border-zinc-800 bg-zinc-950 px-4 py-4">
       <div className="mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">

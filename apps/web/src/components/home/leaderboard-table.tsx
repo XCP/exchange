@@ -20,6 +20,8 @@ export interface LeaderboardTab {
   headers: string[]
   rows: LeaderboardRow[]
   sortable?: boolean[]
+  /** Index into sortValues to sort by on first render. Defaults to 0. */
+  defaultSortIndex?: number
 }
 
 export function LeaderboardTable({
@@ -32,7 +34,10 @@ export function LeaderboardTable({
   titleExtra?: React.ReactNode
 }) {
   const [tabIndex, setTabIndex] = useState<0 | 1>(0)
-  const [sortIndices, setSortIndices] = useState<[number, number]>([0, 0])
+  const [sortIndices, setSortIndices] = useState<[number, number]>([
+    tabs[0].defaultSortIndex ?? 0,
+    tabs[1].defaultSortIndex ?? 0,
+  ])
   const active = tabs[tabIndex]
   const sortIndex = sortIndices[tabIndex]
 

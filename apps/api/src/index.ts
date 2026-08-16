@@ -10,13 +10,17 @@ import { bearerAuth } from 'hono/bearer-auth';
 import { LOCK_TIMEOUT_SECONDS } from "./lib/constants";
 import { fixScientificNotation } from "./lib/json";
 import { handleOhlc } from "./routes/ohlc";
+import { handleDispenseOhlc } from "./routes/dispense-ohlc";
+import { handlePoolLiquidity } from "./routes/pool-liquidity";
 import { handleTrades } from "./routes/trades";
 import { handlePair, handlePairs } from "./routes/pairs";
 import { handleTrending } from "./routes/trending";
 import { handleBook } from "./routes/book";
 import { handleMarkets } from "./routes/markets";
 import { handleAsset } from "./routes/asset";
+import { handleAssets } from "./routes/assets";
 import { handleAssetActivity } from "./routes/asset-activity";
+import { handleAssetTrades } from "./routes/asset-trades";
 import { handleAssetRankings } from "./routes/asset-rankings";
 import { handlePortfolioBids, handlePortfolioDispensers, handlePortfolioOrders } from "./routes/portfolio";
 import { handleDispenserStats, handleDispenserStatsList } from "./routes/dispenser-stats";
@@ -45,8 +49,8 @@ import { runCatchupAggregation, runCatchupStats, runCatchupDispenserStats, aggre
 import { backfillTrades, backfillDispenses, backfillDispensers, backfillPoolTradesFromIndexedMatches } from "./indexer/backfill";
 import { syncOrders, syncDispensers, runSnapshotStep, reindexOrders } from "./indexer/snapshot";
 import { getMode, setMode, deleteState } from "./indexer/state";
-import { updatePairStats, refreshStalePairStats, backfillMissingLongnames } from "./indexer/stats";
-import { refreshStaleDispenserStats } from "./indexer/dispenser-stats";
+import { updatePairStats, refreshStalePairStats, refreshLongWindowPairStats, backfillMissingLongnames } from "./indexer/stats";
+import { refreshStaleDispenserStats, refreshLongWindowDispenserStats } from "./indexer/dispenser-stats";
 
 export interface Env {
   DB: D1Database;
@@ -95,8 +99,11 @@ app.get('/pair/:pair', (c) => handlePair(new URL(c.req.url), c.env.DB, c.req.par
 app.get('/pairs', (c) => handlePairs(c.req.raw, c.env.DB));
 app.get('/trade-summary', (c) => handleTradeSummary(c.req.raw, c.env.DB));
 app.get('/markets', (c) => handleMarkets(c.req.raw, c.env.DB));
+app.get('/assets', (c) => handleAssets(c.req.raw, c.env.DB));
 app.get('/trending', (c) => handleTrending(c.req.raw, c.env.DB));
 app.get('/asset/:name', (c) => handleAsset(new URL(c.req.url), c.env.DB, c.req.param('name')));
+// Every fill of this asset across pairs and venues — see asset-trades.ts.
+app.get('/asset/:name/trades', (c) => handleAssetTrades(c.req.raw, c.env.DB, c.req.param('name')));
 app.get('/asset/:name/activity', (c) => handleAssetActivity(c.req.raw, c.env.DB, c.req.param('name')));
 app.get('/asset/:name/rankings', (c) => handleAssetRankings(c.req.raw, c.env.DB, c.req.param('name')));
 app.get('/portfolio/:address/bids', (c) => handlePortfolioBids(c.req.raw, c.env.DB, c.env.CP_API_BASE, c.req.param('address')));
@@ -107,6 +114,8 @@ app.get('/dispenser-stats/:asset', (c) => handleDispenserStats(new URL(c.req.url
 app.get('/orders/latest', (c) => handleOrdersLatest(c.req.raw, c.env.DB));
 app.get('/dispensers/latest', (c) => handleDispensersLatest(c.req.raw, c.env.DB));
 app.get('/dispenses/latest', (c) => handleDispensesLatest(c.req.raw, c.env.DB));
+// Same response shape as /ohlc/:pair, but priced in BTC — see dispense-ohlc.ts.
+app.get('/dispenses/ohlc/:asset', (c) => handleDispenseOhlc(c.req.raw, c.env.DB, c.req.param('asset')));
 app.get('/search', (c) => handleSearch(c.req.raw, c.env.DB));
 app.get('/analytics', (c) => handleAnalytics(c.req.raw, c.env.DB));
 app.get('/block', (c) => handleBlock(c.env.DB));
@@ -115,6 +124,8 @@ app.get('/tags/asset/:asset', (c) => handleAssetTags(c.req.raw, c.env.DB, c.req.
 app.get('/deals', (c) => handleDeals(c.req.raw, c.env.DB));
 app.get('/pools', (c) => handlePools(c.req.raw, c.env.DB));
 app.get('/pools/:lpAsset', (c) => handlePool(new URL(c.req.url), c.env.DB, c.req.param('lpAsset')));
+// Reserves over time, straight from pool_updates — see pool-liquidity.ts.
+app.get('/pools/:lpAsset/liquidity', (c) => handlePoolLiquidity(c.req.raw, c.env.DB, c.req.param('lpAsset')));
 app.get('/pools/:lpAsset/addresses/:address', (c) => handlePoolAddress(new URL(c.req.url), c.env.DB, c.req.param('lpAsset'), c.req.param('address')));
 app.get('/addresses/:address/pools', (c) => handleAddressPools(new URL(c.req.url), c.env.DB, c.req.param('address')));
 
@@ -424,6 +435,12 @@ async function scheduled(env: Env): Promise<void> {
         // rounding error; live pairs never wait on it.
         await sweepGate("pair_stats_swept_at", 3600, () => refreshStalePairStats(env.DB));
         await sweepGate("dispenser_stats_swept_at", 3600, () => refreshStaleDispenserStats(env.DB));
+        // The year window covers an order of magnitude more rows than the 30-day
+        // one, and a trade only leaves it once it is 365 days old — hourly rewrites
+        // would burn D1 writes to change nothing. Daily is well inside the drift a
+        // 365-day total can tolerate.
+        await sweepGate("pair_stats_1y_swept_at", 86400, () => refreshLongWindowPairStats(env.DB));
+        await sweepGate("dispenser_stats_1y_swept_at", 86400, () => refreshLongWindowDispenserStats(env.DB));
         // The full deal re-score exists for time decay; block-driven changes score incrementally in
         // syncBlocks. The unconditional call wiped and rebuilt the whole table every tick.
         await sweepGate("deal_scores_refreshed_at", 86400, () => refreshDealScores(env.DB));

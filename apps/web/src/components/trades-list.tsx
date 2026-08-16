@@ -85,7 +85,7 @@ export function TradesList({ market, baseSymbol, quoteSymbol }: TradesListProps)
             return (
               <tr
                 key={trade.id ?? `${trade.tx0}-${trade.tx1}`}
-                className="hover:bg-zinc-900 cursor-default"
+                className="hover:bg-zinc-800/50 cursor-default"
               >
                 <td className="text-zinc-500 font-mono px-2 py-px">
                   {trade.block_time ? compactTime(trade.block_time) : '-'}

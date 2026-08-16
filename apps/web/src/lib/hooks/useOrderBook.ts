@@ -10,6 +10,7 @@ import {
 } from '@/utils/trading-pair'
 import type { Order, OrderBookEntry } from '@/types/trading'
 import type { CounterpartyResponse } from '@/types/api'
+import { num } from '@/utils/numeric'
 
 interface OrderBookData {
   bids: OrderBookEntry[]
@@ -25,8 +26,8 @@ function processOrders(orders: Order[]): OrderBookData {
   const sellOrders = orders.filter(order => getTradingDirection(order) === 'sell')
 
   // Sort buys high to low, sells low to high
-  buyOrders.sort((a, b) => parseFloat(calculatePricePlain(b)) - parseFloat(calculatePricePlain(a)))
-  sellOrders.sort((a, b) => parseFloat(calculatePricePlain(a)) - parseFloat(calculatePricePlain(b)))
+  buyOrders.sort((a, b) => num(calculatePricePlain(b)) - num(calculatePricePlain(a)))
+  sellOrders.sort((a, b) => num(calculatePricePlain(a)) - num(calculatePricePlain(b)))
 
   const bids: OrderBookEntry[] = buyOrders.map(order => ({
     price: calculatePrice(order),
@@ -41,8 +42,8 @@ function processOrders(orders: Order[]): OrderBookData {
   }))
 
   // Calculate spread
-  const bestBid = buyOrders.length > 0 ? parseFloat(calculatePricePlain(buyOrders[0])) : 0
-  const bestAsk = sellOrders.length > 0 ? parseFloat(calculatePricePlain(sellOrders[0])) : 0
+  const bestBid = buyOrders.length > 0 ? num(calculatePricePlain(buyOrders[0])) : 0
+  const bestAsk = sellOrders.length > 0 ? num(calculatePricePlain(sellOrders[0])) : 0
   const spread = bestBid > 0 && bestAsk > 0 ? (bestAsk - bestBid).toFixed(8) : '0.00000000'
   const spreadPct = bestBid > 0 && bestAsk > 0
     ? (((bestAsk - bestBid) / bestBid) * 100).toFixed(2)

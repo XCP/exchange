@@ -1,54 +1,54 @@
-import { Suspense } from 'react'
-import type { Metadata } from 'next'
 import { permanentRedirect } from 'next/navigation'
-import { fetchPairStats } from '@/lib/api/server'
-import { buildTradePairMetadata } from '@/lib/metadata'
-import { XCP_IMG_BASE } from '@/utils/constants'
-import PairOrdersPage from './page.client'
 
-interface Props {
+/**
+ * `/trade/BASE_QUOTE` is retired. It survives only to forward its links.
+ *
+ * It was the one page that tried to be the whole exchange for a pair — book
+ * ladder, chart, form, holders, markets, pool info — and every one of those
+ * jobs now has a better home: `/swap/BASE/QUOTE` for acting on the market,
+ * `/BASE` for reading the asset, `/pool/LP` for the pool, `/explore/orders`
+ * for the book across markets. Keeping it meant maintaining a fifth,
+ * half-current copy of all four.
+ *
+ * This lives as a route rather than a `next.config` rule because the slug
+ * cannot be split by a path pattern: a base asset may itself contain
+ * underscores, so the boundary is the LAST one, not the first.
+ *
+ * @see next.config.ts for the exact-path redirects that need no parsing.
+ */
+export default async function Page({
+  params,
+  searchParams,
+}: {
   params: Promise<{ pair: string }>
   searchParams: Promise<Record<string, string | string[] | undefined>>
-}
-
-export async function generateMetadata({ params, searchParams }: Props): Promise<Metadata> {
-  const { pair: pairSlug } = await params
+}) {
+  const { pair } = await params
   const sp = await searchParams
-  const lastUnderscoreIndex = pairSlug.lastIndexOf('_')
-  const base = pairSlug.substring(0, lastUnderscoreIndex)
-  const quote = pairSlug.substring(lastUnderscoreIndex + 1)
 
-  const stats = await fetchPairStats(pairSlug)
-  const displayBase = stats?.base_asset_longname ?? base
+  const cut = pair.lastIndexOf('_')
+  // No separator means it was never a pair slug. The asset page is the
+  // closest true thing, and it 404s honestly if the name is nonsense.
+  if (cut < 1) permanentRedirect(`/${encodeURIComponent(pair.toUpperCase())}`)
 
-  const meta = buildTradePairMetadata(
-    base,
-    quote,
-    displayBase,
-    stats?.best_ask,
-    stats?.last_price,
-    stats?.price_change_24h,
-  )
+  const base = pair.slice(0, cut).toUpperCase()
+  const quote = pair.slice(cut + 1).toUpperCase()
+  const market = `/${encodeURIComponent(base)}/${encodeURIComponent(quote)}`
 
-  const icons = { icon: `${XCP_IMG_BASE}/icon/${quote}` }
-
-  const hasTradeParams = sp.side || sp.price || sp.amount
-  if (hasTradeParams) {
-    return {
-      ...meta,
-      icons,
-      alternates: { canonical: `/trade/${pairSlug}` },
-      robots: { index: false, follow: false },
-    }
+  // These params came from clicking a specific resting order, which is a
+  // request to meet a price — a limit action, not a market one. Sending
+  // that to /swap would silently drop the price the click was about.
+  const first = (k: string) => (Array.isArray(sp[k]) ? sp[k][0] : sp[k])
+  const side = first('side')
+  const price = first('price')
+  const amount = first('amount')
+  if (side || price || amount) {
+    const qs = new URLSearchParams()
+    if (side) qs.set('side', side)
+    if (price) qs.set('price', price)
+    if (amount) qs.set('amount', amount)
+    permanentRedirect(`/limit${market}?${qs}`)
   }
 
-  return { ...meta, icons }
-}
-
-export default async function Page({ params }: Props) {
-  // Canonicalize to uppercase slug (was handled by proxy.ts, unsupported on Cloudflare).
-  const { pair } = await params
-  const upper = pair.toUpperCase()
-  if (pair !== upper) permanentRedirect(`/trade/${upper}`)
-  return <Suspense><PairOrdersPage params={params} /></Suspense>
+  permanentRedirect(`/swap${market}`)
 }

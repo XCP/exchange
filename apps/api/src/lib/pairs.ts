@@ -3,7 +3,7 @@
 const QUOTE_PRIORITY: string[] = [
   "FUTURECREDIT", "MUUI", "VACUS", "WOOOOK", "FUUUUUH", "FUUUUUH.BTC",
   "RAIZER", "RAIZER.BTC", "BASSMINT", "NOMNI", "NOJAK", "POWC", "NVST",
-  "KEKO", "DABC", "SWARM", "CRONOS", "SHARPS", "BOBOCASH", "DOLLARCASH",
+  "KEKO", "DABC", "SWARM", "BOBOXX", "CRONOS", "SHARPS", "BOBOCASH", "DOLLARCASH",
   "DESANTISCASH", "DANKROSECASH", "FAKEAPECASH", "BLUEBEARCASH",
   "SHADILAYCASH", "RELICASH", "NEOCASH", "IAMCOIN", "LICKOIN",
   "MOULACOIN", "GREEEEEECOIN", "SCUDOCOIN", "PEPSTEIN.HUSHMONEY",
@@ -46,7 +46,10 @@ export function determineBaseQuote(asset1: string, asset2: string): {
   if (kw2 && !kw1) return { base: asset1, quote: asset2 };
 
   // Both or neither match keywords - alphabetical lower sorts as base.
-  return asset1 < asset2
+  // localeCompare, matching extension/src/core/tradingPair.ts, which is the
+  // standard this list is a mirror of. `<` disagrees with it on names
+  // containing an underscore.
+  return asset1.localeCompare(asset2) < 0
     ? { base: asset1, quote: asset2 }
     : { base: asset2, quote: asset1 };
 }

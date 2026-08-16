@@ -20,9 +20,40 @@ interface MempoolPrices {
   USD: number
 }
 
-interface MempoolBlock {
-  medianFee: number
-  feeRange: number[]
+/**
+ * mempool.space's fee ladder, unrounded.
+ *
+ * The `/v1/fees/recommended` sibling returns the same shape floored at 1 and
+ * rounded to integers, which at today's rates reports 1 for every tier — it
+ * cannot express the sub-1 market that actually exists. `precise` reports
+ * fastestFee 1.067 and minimumFee 0.1 for the same mempool.
+ */
+export interface PreciseFees {
+  /** Rate to land in the next block. What Auto pays. */
+  fastestFee: number
+  halfHourFee: number
+  hourFee: number
+  economyFee: number
+  /** The floor the network will still relay at. Read, never hardcoded — it
+   *  used to be 1 and is 0.1 today. */
+  minimumFee: number
+}
+
+export const PRECISE_FEES_URL = 'https://mempool.space/api/v1/fees/precise'
+
+/**
+ * The rate a transaction composed right now should pay, from a precise
+ * response. Floored by the network's own reported minimum rather than by a
+ * constant, so it tracks the relay policy instead of guessing at it.
+ */
+export function feeRateFrom(fees: PreciseFees | undefined): number | null {
+  if (!fees || !Number.isFinite(fees.fastestFee)) return null
+  const floor = Number.isFinite(fees.minimumFee) ? fees.minimumFee : 0.1
+  const rate = Math.max(fees.fastestFee, floor)
+  // Two decimals below 10, whole numbers above: at 0.42 the second digit is a
+  // fifth of the fee, at 42 it is noise. Number() drops a trailing zero so
+  // 1.10 reads as 1.1.
+  return rate < 10 ? Number(rate.toFixed(2)) : Math.round(rate)
 }
 
 interface CoinGeckoXcp {
@@ -96,16 +127,25 @@ export function useBlockHeight() {
   return data ? parseInt(data, 10) : null
 }
 
-/** Next-block fee rate in sat/vB (median, no buffer), rounded to nearest integer */
+/**
+ * Next-block fee rate in sat/vB.
+ *
+ * One SWR key for the whole app, so the header ticker and every form on screen
+ * share a single request no matter how many of them ask. That sharing is also
+ * what keeps them consistent — a form cannot show a different rate than the
+ * header, because there is only one answer in flight. The compose path reads
+ * the same URL through feeRateFrom, so what is displayed is what is signed.
+ *
+ * A minute between polls rather than thirty seconds: the header put this on
+ * every page rather than only the form pages, and a next-block estimate does
+ * not move meaningfully inside a minute when blocks are ten apart. SWR stops
+ * the interval entirely while the tab is hidden, so a parked tab costs nothing.
+ */
 export function useFeeRate() {
-  const { data } = useSWR<MempoolBlock[]>(
-    `${MEMPOOL_BASE}/v1/fees/mempool-blocks`,
+  const { data } = useSWR<PreciseFees>(
+    PRECISE_FEES_URL,
     jsonFetcher,
-    { refreshInterval: 30_000, dedupingInterval: 15_000 }
+    { refreshInterval: 60_000, dedupingInterval: 30_000 }
   )
-
-  if (!data || data.length === 0) return null
-  const fee = data[0].medianFee
-  if (fee < 1) return parseFloat(fee.toFixed(2))
-  return Math.round(fee)
+  return feeRateFrom(data)
 }

@@ -7,6 +7,7 @@ import { useFeeRate } from '@/lib/hooks/useNetworkInfo'
 import { usePoolSwapQuote } from '@/lib/hooks/usePools'
 import { COMPOSE_STATUS_LABELS } from '@/utils/constants'
 import { formatAmount } from '@/utils/format-amount'
+import { toBase, fromBaseNumber, big, num, ROUND_DOWN, DIVISIBLE_DECIMALS } from '@/utils/numeric'
 import { WalletInstallModal } from '@/components/wallet-install-modal'
 
 interface TradeFormProps {
@@ -22,9 +23,24 @@ interface TradeFormProps {
   setAmountInput: (v: string) => void
 }
 
-/** Convert a human-readable amount to the raw integer the Counterparty API expects. */
-function toRawQuantity(amount: number, divisible: boolean): number {
-  return Math.round(amount * (divisible ? 1e8 : 1))
+/**
+ * A DERIVED amount (price x size, or a quoted fill) as base units.
+ *
+ * Derived rather than typed, so excess precision is rounded DOWN to what the
+ * asset can hold rather than rejected — the user never chose those digits.
+ * Rounding down never asks for more than intended.
+ *
+ * The old `Math.round(amount * 1e8)` was wrong in the other direction: it
+ * accepted values the asset cannot represent, turning a fraction on an
+ * indivisible asset into a different whole number, and losing digits past
+ * 2^53. Null when there is no valid representation, so callers refuse.
+ */
+function toRawQuantity(amount: number, divisible: boolean | undefined): string | null {
+  if (!Number.isFinite(amount) || amount <= 0) return null
+  const decimals = divisible === undefined ? undefined : divisible ? DIVISIBLE_DECIMALS : 0
+  if (decimals === undefined) return null
+  const result = toBase(big(amount).toFixed(decimals, ROUND_DOWN), divisible)
+  return result.ok ? result.base : null
 }
 
 export function TradeForm({
@@ -49,54 +65,75 @@ export function TradeForm({
   const [orderType, setOrderType] = useLocalState<'limit' | 'market'>('limit')
 
   const handleSubmit = () => {
-    const price = parseFloat(priceInput)
-    const amount = parseFloat(amountInput?.replace(/,/g, '') || '0')
+    const price = num(priceInput)
+    const amount = num(amountInput?.replace(/,/g, ''))
     if (!amount || baseDivisible === undefined || quoteDivisible === undefined) return
+
+    // Every leg converts with its OWN asset's flag; a null means the value
+    // has no valid representation and the order must not be composed.
+    const order = (
+      giveAsset: string,
+      give: string | null,
+      getAsset: string,
+      get: string | null,
+    ) => {
+      if (!give || !get) return
+      composeOrder({
+        give_asset: giveAsset,
+        give_quantity: give,
+        get_asset: getAsset,
+        get_quantity: get,
+      })
+    }
 
     if (orderType === 'market') {
       if (!preview?.received) return
       if (tradeTab === 'buy') {
-        composeOrder({
-          give_asset: quoteSymbol,
-          give_quantity: toRawQuantity(amount, quoteDivisible),
-          get_asset: baseSymbol,
-          get_quantity: toRawQuantity(preview.received, baseDivisible),
-        })
+        order(
+          quoteSymbol,
+          toRawQuantity(amount, quoteDivisible),
+          baseSymbol,
+          toRawQuantity(preview.received, baseDivisible),
+        )
       } else {
-        composeOrder({
-          give_asset: baseSymbol,
-          give_quantity: toRawQuantity(amount, baseDivisible),
-          get_asset: quoteSymbol,
-          get_quantity: toRawQuantity(preview.received, quoteDivisible),
-        })
+        order(
+          baseSymbol,
+          toRawQuantity(amount, baseDivisible),
+          quoteSymbol,
+          toRawQuantity(preview.received, quoteDivisible),
+        )
       }
       return
     }
 
     if (!price) return
 
+    // The total is priced with BigNumber rather than `price * amount`, so the
+    // quote leg is exact before it is rounded to the asset's precision.
+    const total = num(big(price).times(amount))
+
     if (tradeTab === 'buy') {
       // Buy BASE: give QUOTE, get BASE
-      composeOrder({
-        give_asset: quoteSymbol,
-        give_quantity: toRawQuantity(price * amount, quoteDivisible),
-        get_asset: baseSymbol,
-        get_quantity: toRawQuantity(amount, baseDivisible),
-      })
+      order(
+        quoteSymbol,
+        toRawQuantity(total, quoteDivisible),
+        baseSymbol,
+        toRawQuantity(amount, baseDivisible),
+      )
     } else {
       // Sell BASE: give BASE, get QUOTE
-      composeOrder({
-        give_asset: baseSymbol,
-        give_quantity: toRawQuantity(amount, baseDivisible),
-        get_asset: quoteSymbol,
-        get_quantity: toRawQuantity(price * amount, quoteDivisible),
-      })
+      order(
+        baseSymbol,
+        toRawQuantity(amount, baseDivisible),
+        quoteSymbol,
+        toRawQuantity(total, quoteDivisible),
+      )
     }
   }
 
   const isBusy = txStatus === 'composing' || txStatus === 'signing' || txStatus === 'broadcasting'
-  const price = parseFloat(priceInput)
-  const amount = parseFloat(amountInput?.replace(/,/g, '') || '0')
+  const price = num(priceInput)
+  const amount = num(amountInput?.replace(/,/g, ''))
   const isValid = orderType === 'market' ? amount > 0 : price > 0 && amount > 0
 
   // ── Best-execution preview: quote this order against the book + pool ──
@@ -111,18 +148,20 @@ export function TradeForm({
     return () => clearTimeout(t)
   }, [priceInput])
 
-  const dAmount = parseFloat(debAmount?.replace(/,/g, '') || '0')
-  const dPrice = parseFloat(debPrice || '0')
+  const dAmount = num(debAmount?.replace(/,/g, ''))
+  const dPrice = num(debPrice)
   const receiveAsset = tradeTab === 'buy' ? baseSymbol : quoteSymbol
   const receiveDivisible = tradeTab === 'buy' ? baseDivisible : quoteDivisible
   const sellDivisible = tradeTab === 'buy' ? quoteDivisible : baseDivisible
   // What you'd sell to execute this order at market now (a buy spends price×amount of quote).
   const sellHuman = orderType === 'market' ? dAmount : tradeTab === 'buy' ? dPrice * dAmount : dAmount
-  const sellQtyRaw =
-    sellHuman > 0 && sellDivisible !== undefined ? toRawQuantity(sellHuman, sellDivisible) : 0
+  // The quote endpoint takes a number; the exact base string is what gets
+  // SIGNED, and that path goes through toRawQuantity in handleSubmit.
+  const sellQtyBase = sellHuman > 0 ? toRawQuantity(sellHuman, sellDivisible) : null
+  const sellQtyRaw = sellQtyBase ? Number(sellQtyBase) : 0
   const { quote: swapQuote } = usePoolSwapQuote(sellQtyRaw > 0 ? spendAsset : null, receiveAsset, sellQtyRaw)
 
-  const fromRaw = (raw: number, divisible: boolean) => raw / (divisible ? 1e8 : 1)
+  const fromRaw = (raw: number | string, divisible: boolean) => fromBaseNumber(raw, divisible)
   let preview: {
     received: number
     viaPool: boolean
@@ -188,7 +227,7 @@ export function TradeForm({
   const totalValue = orderType === 'market'
     ? preview?.received != null ? preview.received.toFixed(8) : '0.00000000'
     : priceInput && amountInput
-      ? (parseFloat(priceInput) * parseFloat(amountInput.replace(/,/g, ''))).toFixed(8)
+      ? big(priceInput).times(big(amountInput.replace(/,/g, ''))).toFixed(8)
       : '0.00000000'
   const totalLabel = orderType === 'market' ? `Est receive (${receiveAsset})` : `Total (${quoteSymbol})`
   const canSubmit = orderType === 'market' ? isValid && !!preview?.received : isValid

@@ -1,9 +1,9 @@
 import { INTERVAL_SECONDS, calendarBucket, nextBucket, walkBack } from "../lib/constants";
 import { cacheControl } from "../utils/cache";
 
-const VALID_INTERVALS = new Set(Object.keys(INTERVAL_SECONDS));
+export const VALID_INTERVALS = new Set(Object.keys(INTERVAL_SECONDS));
 
-interface Candle {
+export interface Candle {
   t: number;
   o: number;
   h: number;
@@ -11,6 +11,40 @@ interface Candle {
   c: number;
   v: number;
   n: number;
+}
+
+/**
+ * The window a request is asking for, in bucket timestamps.
+ *
+ * Shared with the dispense series so both answer `from`/`to`/`limit` the
+ * same way — a chart switching between the two shouldn't find that the
+ * same query string means two different spans.
+ */
+export function resolveWindow(
+  url: URL,
+  interval: string,
+  limit: number
+): { windowStart: number; windowEnd: number } {
+  const fromParam = url.searchParams.get("from");
+  const toParam = url.searchParams.get("to");
+  const nowBucket = calendarBucket(Math.floor(Date.now() / 1000), interval);
+
+  if (fromParam && toParam) {
+    const windowEnd = calendarBucket(parseInt(toParam, 10), interval);
+    // Clamp start so we don't exceed `limit` buckets
+    const requestedStart = calendarBucket(parseInt(fromParam, 10), interval);
+    const maxStart = walkBack(windowEnd, interval, limit - 1);
+    return { windowStart: requestedStart < maxStart ? maxStart : requestedStart, windowEnd };
+  }
+  if (fromParam) {
+    return { windowStart: calendarBucket(parseInt(fromParam, 10), interval), windowEnd: nowBucket };
+  }
+  if (toParam) {
+    const windowEnd = calendarBucket(parseInt(toParam, 10), interval);
+    return { windowStart: walkBack(windowEnd, interval, limit - 1), windowEnd };
+  }
+  // Default: last `limit` buckets up to now
+  return { windowStart: walkBack(nowBucket, interval, limit - 1), windowEnd: nowBucket };
 }
 
 /**
@@ -24,7 +58,7 @@ interface Candle {
  * If there's no seed price and no real candles have appeared yet in the
  * window, those leading buckets are skipped (no price to carry forward).
  */
-function buildGrid(
+export function buildGrid(
   realCandles: Candle[],
   seedClose: number | null,
   windowStart: number,
@@ -79,32 +113,7 @@ export async function handleOhlc(
     parseInt(url.searchParams.get("limit") ?? "300", 10) || 300,
     500
   );
-  const fromParam = url.searchParams.get("from");
-  const toParam = url.searchParams.get("to");
-  const now = Math.floor(Date.now() / 1000);
-  const nowBucket = calendarBucket(now, interval);
-
-  // Compute time window
-  let windowEnd: number;
-  let windowStart: number;
-
-  if (fromParam && toParam) {
-    windowEnd = calendarBucket(parseInt(toParam, 10), interval);
-    // Clamp start so we don't exceed `limit` buckets
-    const requestedStart = calendarBucket(parseInt(fromParam, 10), interval);
-    const maxStart = walkBack(windowEnd, interval, limit - 1);
-    windowStart = requestedStart < maxStart ? maxStart : requestedStart;
-  } else if (fromParam) {
-    windowStart = calendarBucket(parseInt(fromParam, 10), interval);
-    windowEnd = nowBucket;
-  } else if (toParam) {
-    windowEnd = calendarBucket(parseInt(toParam, 10), interval);
-    windowStart = walkBack(windowEnd, interval, limit - 1);
-  } else {
-    // Default: last `limit` buckets up to now
-    windowEnd = nowBucket;
-    windowStart = walkBack(nowBucket, interval, limit - 1);
-  }
+  const { windowStart, windowEnd } = resolveWindow(url, interval, limit);
 
   // Two parallel queries:
   // 1. Real candles within the window

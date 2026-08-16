@@ -1,3 +1,4 @@
+import { Suspense } from 'react'
 import type { Metadata } from 'next'
 import AnalyticsPage from '@/components/home/analytics-page'
 
@@ -12,5 +13,12 @@ export const metadata: Metadata = {
 }
 
 export default function Page() {
-  return <AnalyticsPage />
+  // The timeframe is read from the query string, which needs a boundary to
+  // keep the rest of the page statically rendered — the same wrapper every
+  // Explore page uses for the same reason.
+  return (
+    <Suspense>
+      <AnalyticsPage />
+    </Suspense>
+  )
 }

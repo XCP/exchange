@@ -1,4 +1,8 @@
 export function formatBig(n: number, decimals = 2): string {
+  // Nothing on the exchange reached a trillion until bitcoin's market cap did,
+  // which rendered as "1264.03B" — four digits into a unit that is supposed to
+  // keep numbers short.
+  if (n >= 1_000_000_000_000) return (n / 1_000_000_000_000).toFixed(decimals) + 'T'
   if (n >= 1_000_000_000) return (n / 1_000_000_000).toFixed(decimals) + 'B'
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(decimals) + 'M'
   if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K'

@@ -2,43 +2,53 @@
 
 import Link from 'next/link'
 import { usePortfolioDispensers } from '@/lib/hooks/usePortfolio'
-import { formatAmount } from '@/utils/format-amount'
+import { DataTable, Thead, Tbody, Th, Tr, Td, TableMessage } from '@/components/ui/data-table'
+import { formatPrice } from '@/utils/format-price'
+import { useSatsMode } from '@/lib/sats-context'
 
+/**
+ * Your open dispensers.
+ *
+ * Rebuilt on the shared table primitives. It was a `grid grid-cols-5` with a
+ * row of `<span>`s, which is why its columns never lined up with the same
+ * data shown anywhere else on the site — and why its hover, padding and
+ * header colour were all one-offs.
+ */
 export function PortfolioDispensers({ address }: { address: string }) {
   const { dispensers, isLoading } = usePortfolioDispensers(address)
-
-  if (isLoading) {
-    return <div className="flex items-center justify-center py-12"><span className="text-xs text-zinc-500">Loading dispensers...</span></div>
-  }
-
-  if (dispensers.length === 0) {
-    return <div className="flex items-center justify-center py-12"><span className="text-xs text-zinc-500">No open dispensers</span></div>
-  }
+  const { satsMode } = useSatsMode()
 
   return (
-    <div>
-      <div className="grid grid-cols-5 gap-0 px-3 py-1.5 text-xs text-zinc-500 border-b border-zinc-800 max-sm:grid-cols-3">
-        <span>Asset</span>
-        <span className="text-right">Price (BTC)</span>
-        <span className="text-right">Per Dispense</span>
-        <span className="text-right max-sm:hidden">Remaining</span>
-        <span className="text-right max-sm:hidden">Dispenses</span>
-      </div>
-      <div className="px-1">
+    <DataTable className="border-0 bg-transparent">
+      <Thead>
+        <Th align="left">Asset</Th>
+        <Th>Price</Th>
+        <Th>Per dispense</Th>
+        <Th className="max-sm:hidden">Remaining</Th>
+        <Th className="max-sm:hidden">Dispenses</Th>
+      </Thead>
+      <Tbody>
         {dispensers.map((d) => (
-          <Link
-            key={d.tx_hash}
-            href={`/dispense/${d.asset}`}
-            className="grid grid-cols-5 gap-0 px-2 py-1.5 text-xs hover:bg-zinc-900 transition-colors max-sm:grid-cols-3"
-          >
-            <span className="text-zinc-100 font-medium">{d.asset}</span>
-            <span className="text-right text-zinc-300 font-mono">{formatAmount(d.price_normalized)}</span>
-            <span className="text-right text-zinc-300 font-mono">{d.give_quantity_normalized}</span>
-            <span className="text-right text-zinc-500 font-mono max-sm:hidden">{d.give_remaining_normalized}</span>
-            <span className="text-right text-zinc-500 font-mono max-sm:hidden">{d.dispense_count}</span>
-          </Link>
+          <Tr key={d.tx_hash}>
+            <Td>
+              <Link href={`/buy/${d.asset}`} className="font-medium text-zinc-200 hover:text-green-400">
+                {d.asset}
+              </Link>
+            </Td>
+            {/* price_normalized — the raw `price` field is in satoshis. */}
+            <Td num>{formatPrice(d.price_normalized, satsMode)}</Td>
+            <Td num>{d.give_quantity_normalized}</Td>
+            <Td num muted className="max-sm:hidden">
+              {d.give_remaining_normalized}
+            </Td>
+            <Td num muted className="max-sm:hidden">
+              {d.dispense_count}
+            </Td>
+          </Tr>
         ))}
-      </div>
-    </div>
+        {isLoading && dispensers.length === 0 && <TableMessage cols={5}>Loading dispensers…</TableMessage>}
+        {!isLoading && dispensers.length === 0 && <TableMessage cols={5}>No open dispensers</TableMessage>}
+      </Tbody>
+    </DataTable>
   )
 }

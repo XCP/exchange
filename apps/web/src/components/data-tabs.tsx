@@ -20,7 +20,7 @@ interface DataTabsProps {
   baseSymbol: string
   quoteSymbol: string
   baseAsset: string
-  totalSupply: number
+  totalSupply: number | string
   currentPair?: string
 }
 

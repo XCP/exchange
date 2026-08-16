@@ -1,6 +1,7 @@
 import useSWR from 'swr'
 import { fetcher, dexUrl, counterpartyUrl } from '@/lib/api/client'
 import { useDexSWR } from '@/lib/api/use-dex-swr'
+import { isPositive } from '@/utils/numeric'
 
 interface PortfolioOrder {
   pair: string
@@ -71,7 +72,7 @@ export function usePortfolioBalances(address: string | null) {
     fetcher,
     { refreshInterval: 60_000 }
   )
-  const balances = (data?.result ?? []).filter((b) => parseFloat(b.quantity_normalized) > 0)
+  const balances = (data?.result ?? []).filter((b) => isPositive(b.quantity_normalized))
   return { balances, error, isLoading }
 }
 

@@ -1,6 +1,10 @@
 export const COUNTERPARTY_API_BASE = process.env.NEXT_PUBLIC_COUNTERPARTY_API_BASE ?? 'https://api.counterparty.io:4000/v2'
 export const DEX_API_BASE = process.env.NEXT_PUBLIC_DEX_API_BASE ?? 'https://api.xcpdex.com'
 export const XCP_IMG_BASE = process.env.NEXT_PUBLIC_XCP_IMG_BASE ?? 'https://cdn.xcp.io/img'
+/** xcp.fun's read layer — the XCP-69 launch index. See lib/hooks/useLaunches. */
+export const XCP_FUN_API_BASE = process.env.NEXT_PUBLIC_XCP_FUN_API_BASE ?? 'https://api.xcp.fun'
+/** Where a launch's own page lives, for the one link we cannot serve ourselves. */
+export const XCP_FUN_BASE = process.env.NEXT_PUBLIC_XCP_FUN_BASE ?? 'https://xcp.fun'
 
 export const QUOTE_ASSETS: string[] = [
   'BTC', 'XCP', 'XBTC', 'FLDC', 'SJCX', 'BITCRYSTALS', 'LTBCOIN', 'SCOTCOIN',

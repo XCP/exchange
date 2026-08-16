@@ -10,14 +10,14 @@ const VALID_POOL_SORTS = new Set([
   "opened_block_time",
   "total_fees_value",
   "fees_24h_value",
-  "fees_7d_value",
+  "fees_1y_value",
   "fees_30d_value",
   "total_volume_value",
   "volume_24h_value",
-  "volume_7d_value",
+  "volume_1y_value",
   "volume_30d_value",
   "implied_fee_apy_24h",
-  "implied_fee_apy_7d",
+  "implied_fee_apy_1y",
   "implied_fee_apy_30d",
 ]);
 
@@ -31,14 +31,14 @@ const POOL_SORT_SQL: Record<string, string> = {
   opened_block_time: "p.opened_block_time",
   total_fees_value: "total_fees_value",
   fees_24h_value: "fees_24h_value",
-  fees_7d_value: "fees_7d_value",
+  fees_1y_value: "fees_1y_value",
   fees_30d_value: "fees_30d_value",
   total_volume_value: "total_volume_value",
   volume_24h_value: "volume_24h_value",
-  volume_7d_value: "volume_7d_value",
+  volume_1y_value: "volume_1y_value",
   volume_30d_value: "volume_30d_value",
   implied_fee_apy_24h: "implied_fee_period_return_24h",
-  implied_fee_apy_7d: "implied_fee_period_return_7d",
+  implied_fee_apy_1y: "implied_fee_period_return_1y",
   implied_fee_apy_30d: "implied_fee_period_return_30d",
 };
 
@@ -71,20 +71,20 @@ interface PoolRow {
 interface PoolListRow extends PoolRow {
   fees_24h_a: number;
   fees_24h_b: number;
-  fees_7d_a: number;
-  fees_7d_b: number;
+  fees_1y_a: number;
+  fees_1y_b: number;
   fees_30d_a: number;
   fees_30d_b: number;
   volume_a: number;
   volume_b: number;
   volume_24h_a: number;
   volume_24h_b: number;
-  volume_7d_a: number;
-  volume_7d_b: number;
+  volume_1y_a: number;
+  volume_1y_b: number;
   volume_30d_a: number;
   volume_30d_b: number;
   implied_fee_period_return_24h: number | null;
-  implied_fee_period_return_7d: number | null;
+  implied_fee_period_return_1y: number | null;
   implied_fee_period_return_30d: number | null;
 }
 
@@ -194,13 +194,13 @@ export async function handlePools(request: Request, db: D1Database): Promise<Res
   );
   const now = Math.floor(Date.now() / 1000);
   const dayAgo = now - 24 * 60 * 60;
-  const weekAgo = now - 7 * 24 * 60 * 60;
+  const yearAgo = now - 365 * 24 * 60 * 60;
   const monthAgo = now - 30 * 24 * 60 * 60;
   const timeframe = url.searchParams.get("timeframe");
   const timeframeCutoff = timeframe === "24h"
     ? dayAgo
-    : timeframe === "7d"
-      ? weekAgo
+    : timeframe === "1y"
+      ? yearAgo
       : timeframe === "30d"
         ? monthAgo
         : 0;
@@ -215,16 +215,16 @@ export async function handlePools(request: Request, db: D1Database): Promise<Res
     p.updated_at,
     COALESCE(f.fees_24h_a, 0) AS fees_24h_a,
     COALESCE(f.fees_24h_b, 0) AS fees_24h_b,
-    COALESCE(f.fees_7d_a, 0) AS fees_7d_a,
-    COALESCE(f.fees_7d_b, 0) AS fees_7d_b,
+    COALESCE(f.fees_1y_a, 0) AS fees_1y_a,
+    COALESCE(f.fees_1y_b, 0) AS fees_1y_b,
     COALESCE(f.fees_30d_a, 0) AS fees_30d_a,
     COALESCE(f.fees_30d_b, 0) AS fees_30d_b,
     COALESCE(f.volume_a, 0) AS volume_a,
     COALESCE(f.volume_b, 0) AS volume_b,
     COALESCE(f.volume_24h_a, 0) AS volume_24h_a,
     COALESCE(f.volume_24h_b, 0) AS volume_24h_b,
-    COALESCE(f.volume_7d_a, 0) AS volume_7d_a,
-    COALESCE(f.volume_7d_b, 0) AS volume_7d_b,
+    COALESCE(f.volume_1y_a, 0) AS volume_1y_a,
+    COALESCE(f.volume_1y_b, 0) AS volume_1y_b,
     COALESCE(f.volume_30d_a, 0) AS volume_30d_a,
     COALESCE(f.volume_30d_b, 0) AS volume_30d_b,
     CASE
@@ -234,9 +234,9 @@ export async function handlePools(request: Request, db: D1Database): Promise<Res
     END AS fees_24h_value,
     CASE
       WHEN p.reserve_a > 0 AND p.reserve_b > 0
-      THEN COALESCE(f.fees_7d_b, 0) + COALESCE(f.fees_7d_a, 0) * (p.reserve_b / p.reserve_a)
+      THEN COALESCE(f.fees_1y_b, 0) + COALESCE(f.fees_1y_a, 0) * (p.reserve_b / p.reserve_a)
       ELSE 0
-    END AS fees_7d_value,
+    END AS fees_1y_value,
     CASE
       WHEN p.reserve_a > 0 AND p.reserve_b > 0
       THEN COALESCE(f.fees_30d_b, 0) + COALESCE(f.fees_30d_a, 0) * (p.reserve_b / p.reserve_a)
@@ -259,9 +259,9 @@ export async function handlePools(request: Request, db: D1Database): Promise<Res
     END AS volume_24h_value,
     CASE
       WHEN p.reserve_a > 0 AND p.reserve_b > 0
-      THEN COALESCE(f.volume_7d_b, 0) + COALESCE(f.volume_7d_a, 0) * (p.reserve_b / p.reserve_a)
+      THEN COALESCE(f.volume_1y_b, 0) + COALESCE(f.volume_1y_a, 0) * (p.reserve_b / p.reserve_a)
       ELSE 0
-    END AS volume_7d_value,
+    END AS volume_1y_value,
     CASE
       WHEN p.reserve_a > 0 AND p.reserve_b > 0
       THEN COALESCE(f.volume_30d_b, 0) + COALESCE(f.volume_30d_a, 0) * (p.reserve_b / p.reserve_a)
@@ -278,11 +278,11 @@ export async function handlePools(request: Request, db: D1Database): Promise<Res
     CASE
       WHEN p.reserve_a > 0 AND p.reserve_b > 0
       THEN (
-        (COALESCE(f.fees_7d_b, 0) + COALESCE(f.fees_7d_a, 0) * (p.reserve_b / p.reserve_a))
+        (COALESCE(f.fees_1y_b, 0) + COALESCE(f.fees_1y_a, 0) * (p.reserve_b / p.reserve_a))
         / (p.reserve_b + p.reserve_a * (p.reserve_b / p.reserve_a))
       )
       ELSE NULL
-    END AS implied_fee_period_return_7d,
+    END AS implied_fee_period_return_1y,
     CASE
       WHEN p.reserve_a > 0 AND p.reserve_b > 0
       THEN (
@@ -296,16 +296,16 @@ export async function handlePools(request: Request, db: D1Database): Promise<Res
     SELECT lp_asset,
            SUM(CASE WHEN fee_asset = asset_a AND block_time >= ? THEN fee_quantity ELSE 0 END) AS fees_24h_a,
            SUM(CASE WHEN fee_asset = asset_b AND block_time >= ? THEN fee_quantity ELSE 0 END) AS fees_24h_b,
-           SUM(CASE WHEN fee_asset = asset_a AND block_time >= ? THEN fee_quantity ELSE 0 END) AS fees_7d_a,
-           SUM(CASE WHEN fee_asset = asset_b AND block_time >= ? THEN fee_quantity ELSE 0 END) AS fees_7d_b,
+           SUM(CASE WHEN fee_asset = asset_a AND block_time >= ? THEN fee_quantity ELSE 0 END) AS fees_1y_a,
+           SUM(CASE WHEN fee_asset = asset_b AND block_time >= ? THEN fee_quantity ELSE 0 END) AS fees_1y_b,
            SUM(CASE WHEN fee_asset = asset_a AND block_time >= ? THEN fee_quantity ELSE 0 END) AS fees_30d_a,
            SUM(CASE WHEN fee_asset = asset_b AND block_time >= ? THEN fee_quantity ELSE 0 END) AS fees_30d_b,
            SUM(CASE WHEN forward_asset = asset_a THEN forward_quantity WHEN backward_asset = asset_a THEN backward_quantity ELSE 0 END) AS volume_a,
            SUM(CASE WHEN forward_asset = asset_b THEN forward_quantity WHEN backward_asset = asset_b THEN backward_quantity ELSE 0 END) AS volume_b,
            SUM(CASE WHEN block_time >= ? THEN CASE WHEN forward_asset = asset_a THEN forward_quantity WHEN backward_asset = asset_a THEN backward_quantity ELSE 0 END ELSE 0 END) AS volume_24h_a,
            SUM(CASE WHEN block_time >= ? THEN CASE WHEN forward_asset = asset_b THEN forward_quantity WHEN backward_asset = asset_b THEN backward_quantity ELSE 0 END ELSE 0 END) AS volume_24h_b,
-           SUM(CASE WHEN block_time >= ? THEN CASE WHEN forward_asset = asset_a THEN forward_quantity WHEN backward_asset = asset_a THEN backward_quantity ELSE 0 END ELSE 0 END) AS volume_7d_a,
-           SUM(CASE WHEN block_time >= ? THEN CASE WHEN forward_asset = asset_b THEN forward_quantity WHEN backward_asset = asset_b THEN backward_quantity ELSE 0 END ELSE 0 END) AS volume_7d_b,
+           SUM(CASE WHEN block_time >= ? THEN CASE WHEN forward_asset = asset_a THEN forward_quantity WHEN backward_asset = asset_a THEN backward_quantity ELSE 0 END ELSE 0 END) AS volume_1y_a,
+           SUM(CASE WHEN block_time >= ? THEN CASE WHEN forward_asset = asset_b THEN forward_quantity WHEN backward_asset = asset_b THEN backward_quantity ELSE 0 END ELSE 0 END) AS volume_1y_b,
            SUM(CASE WHEN block_time >= ? THEN CASE WHEN forward_asset = asset_a THEN forward_quantity WHEN backward_asset = asset_a THEN backward_quantity ELSE 0 END ELSE 0 END) AS volume_30d_a,
            SUM(CASE WHEN block_time >= ? THEN CASE WHEN forward_asset = asset_b THEN forward_quantity WHEN backward_asset = asset_b THEN backward_quantity ELSE 0 END ELSE 0 END) AS volume_30d_b
     FROM pool_matches
@@ -371,14 +371,14 @@ export async function handlePools(request: Request, db: D1Database): Promise<Res
   const binds: (string | number)[] = [
     dayAgo,
     dayAgo,
-    weekAgo,
-    weekAgo,
+    yearAgo,
+    yearAgo,
     monthAgo,
     monthAgo,
     dayAgo,
     dayAgo,
-    weekAgo,
-    weekAgo,
+    yearAgo,
+    yearAgo,
     monthAgo,
     monthAgo,
   ];
@@ -450,46 +450,46 @@ export async function handlePools(request: Request, db: D1Database): Promise<Res
           ...displayPool,
           fees_24h_a: pool.fees_24h_a,
           fees_24h_b: pool.fees_24h_b,
-          fees_7d_a: pool.fees_7d_a,
-          fees_7d_b: pool.fees_7d_b,
+          fees_1y_a: pool.fees_1y_a,
+          fees_1y_b: pool.fees_1y_b,
           fees_30d_a: pool.fees_30d_a,
           fees_30d_b: pool.fees_30d_b,
           volume_a: pool.volume_a,
           volume_b: pool.volume_b,
           volume_24h_a: pool.volume_24h_a,
           volume_24h_b: pool.volume_24h_b,
-          volume_7d_a: pool.volume_7d_a,
-          volume_7d_b: pool.volume_7d_b,
+          volume_1y_a: pool.volume_1y_a,
+          volume_1y_b: pool.volume_1y_b,
           volume_30d_a: pool.volume_30d_a,
           volume_30d_b: pool.volume_30d_b,
           implied_fees_24h_a: pool.fees_24h_a,
           implied_fees_24h_b: pool.fees_24h_b,
-          implied_fees_7d_a: pool.fees_7d_a,
-          implied_fees_7d_b: pool.fees_7d_b,
+          implied_fees_1y_a: pool.fees_1y_a,
+          implied_fees_1y_b: pool.fees_1y_b,
           implied_fees_30d_a: pool.fees_30d_a,
           implied_fees_30d_b: pool.fees_30d_b,
           display_fees_24h_base: displayPool.display_base_asset === pool.asset_a ? pool.fees_24h_a : pool.fees_24h_b,
           display_fees_24h_quote: displayPool.display_quote_asset === pool.asset_a ? pool.fees_24h_a : pool.fees_24h_b,
-          display_fees_7d_base: displayPool.display_base_asset === pool.asset_a ? pool.fees_7d_a : pool.fees_7d_b,
-          display_fees_7d_quote: displayPool.display_quote_asset === pool.asset_a ? pool.fees_7d_a : pool.fees_7d_b,
+          display_fees_1y_base: displayPool.display_base_asset === pool.asset_a ? pool.fees_1y_a : pool.fees_1y_b,
+          display_fees_1y_quote: displayPool.display_quote_asset === pool.asset_a ? pool.fees_1y_a : pool.fees_1y_b,
           display_fees_30d_base: baseFees30d,
           display_fees_30d_quote: quoteFees30d,
           display_volume_base: displayPool.display_base_asset === pool.asset_a ? pool.volume_a : pool.volume_b,
           display_volume_quote: displayPool.display_quote_asset === pool.asset_a ? pool.volume_a : pool.volume_b,
           display_volume_24h_base: displayPool.display_base_asset === pool.asset_a ? pool.volume_24h_a : pool.volume_24h_b,
           display_volume_24h_quote: displayPool.display_quote_asset === pool.asset_a ? pool.volume_24h_a : pool.volume_24h_b,
-          display_volume_7d_base: displayPool.display_base_asset === pool.asset_a ? pool.volume_7d_a : pool.volume_7d_b,
-          display_volume_7d_quote: displayPool.display_quote_asset === pool.asset_a ? pool.volume_7d_a : pool.volume_7d_b,
+          display_volume_1y_base: displayPool.display_base_asset === pool.asset_a ? pool.volume_1y_a : pool.volume_1y_b,
+          display_volume_1y_quote: displayPool.display_quote_asset === pool.asset_a ? pool.volume_1y_a : pool.volume_1y_b,
           display_volume_30d_base: displayPool.display_base_asset === pool.asset_a ? pool.volume_30d_a : pool.volume_30d_b,
           display_volume_30d_quote: displayPool.display_quote_asset === pool.asset_a ? pool.volume_30d_a : pool.volume_30d_b,
           display_implied_fees_24h_base: displayPool.display_base_asset === pool.asset_a ? pool.fees_24h_a : pool.fees_24h_b,
           display_implied_fees_24h_quote: displayPool.display_quote_asset === pool.asset_a ? pool.fees_24h_a : pool.fees_24h_b,
-          display_implied_fees_7d_base: displayPool.display_base_asset === pool.asset_a ? pool.fees_7d_a : pool.fees_7d_b,
-          display_implied_fees_7d_quote: displayPool.display_quote_asset === pool.asset_a ? pool.fees_7d_a : pool.fees_7d_b,
+          display_implied_fees_1y_base: displayPool.display_base_asset === pool.asset_a ? pool.fees_1y_a : pool.fees_1y_b,
+          display_implied_fees_1y_quote: displayPool.display_quote_asset === pool.asset_a ? pool.fees_1y_a : pool.fees_1y_b,
           display_implied_fees_30d_base: baseFees30d,
           display_implied_fees_30d_quote: quoteFees30d,
           implied_fee_apy_24h: calculateFeeApy(pool.implied_fee_period_return_24h, 24 * 60 * 60),
-          implied_fee_apy_7d: calculateFeeApy(pool.implied_fee_period_return_7d, 7 * 24 * 60 * 60),
+          implied_fee_apy_1y: calculateFeeApy(pool.implied_fee_period_return_1y, 365 * 24 * 60 * 60),
           implied_fee_apy_30d: calculateFeeApy(pool.implied_fee_period_return_30d, 30 * 24 * 60 * 60),
         };
       }),
@@ -555,7 +555,7 @@ export async function handlePool(
 
   const now = Math.floor(Date.now() / 1000);
   const dayAgo = now - 24 * 60 * 60;
-  const weekAgo = now - 7 * 24 * 60 * 60;
+  const yearAgo = now - 365 * 24 * 60 * 60;
   const monthAgo = now - 30 * 24 * 60 * 60;
 
   const [deposits, withdrawals, matches, holders, supply, feeWindows] = await Promise.all([
@@ -628,8 +628,8 @@ export async function handlePool(
         `SELECT
            COALESCE(SUM(CASE WHEN fee_asset = ? AND block_time >= ? THEN fee_quantity ELSE 0 END), 0) AS fees_24h_a,
            COALESCE(SUM(CASE WHEN fee_asset = ? AND block_time >= ? THEN fee_quantity ELSE 0 END), 0) AS fees_24h_b,
-           COALESCE(SUM(CASE WHEN fee_asset = ? AND block_time >= ? THEN fee_quantity ELSE 0 END), 0) AS fees_7d_a,
-           COALESCE(SUM(CASE WHEN fee_asset = ? AND block_time >= ? THEN fee_quantity ELSE 0 END), 0) AS fees_7d_b,
+           COALESCE(SUM(CASE WHEN fee_asset = ? AND block_time >= ? THEN fee_quantity ELSE 0 END), 0) AS fees_1y_a,
+           COALESCE(SUM(CASE WHEN fee_asset = ? AND block_time >= ? THEN fee_quantity ELSE 0 END), 0) AS fees_1y_b,
            COALESCE(SUM(CASE WHEN fee_asset = ? AND block_time >= ? THEN fee_quantity ELSE 0 END), 0) AS fees_30d_a,
            COALESCE(SUM(CASE WHEN fee_asset = ? AND block_time >= ? THEN fee_quantity ELSE 0 END), 0) AS fees_30d_b
          FROM pool_matches
@@ -641,9 +641,9 @@ export async function handlePool(
         pool.asset_b,
         dayAgo,
         pool.asset_a,
-        weekAgo,
+        yearAgo,
         pool.asset_b,
-        weekAgo,
+        yearAgo,
         pool.asset_a,
         monthAgo,
         pool.asset_b,
@@ -653,8 +653,8 @@ export async function handlePool(
       .first<{
         fees_24h_a: number;
         fees_24h_b: number;
-        fees_7d_a: number;
-        fees_7d_b: number;
+        fees_1y_a: number;
+        fees_1y_b: number;
         fees_30d_a: number;
         fees_30d_b: number;
       }>(),
@@ -662,8 +662,8 @@ export async function handlePool(
 
   const baseFees24h = displayPool.display_base_asset === pool.asset_a ? feeWindows?.fees_24h_a ?? 0 : feeWindows?.fees_24h_b ?? 0;
   const quoteFees24h = displayPool.display_quote_asset === pool.asset_a ? feeWindows?.fees_24h_a ?? 0 : feeWindows?.fees_24h_b ?? 0;
-  const baseFees7d = displayPool.display_base_asset === pool.asset_a ? feeWindows?.fees_7d_a ?? 0 : feeWindows?.fees_7d_b ?? 0;
-  const quoteFees7d = displayPool.display_quote_asset === pool.asset_a ? feeWindows?.fees_7d_a ?? 0 : feeWindows?.fees_7d_b ?? 0;
+  const baseFees1y = displayPool.display_base_asset === pool.asset_a ? feeWindows?.fees_1y_a ?? 0 : feeWindows?.fees_1y_b ?? 0;
+  const quoteFees1y = displayPool.display_quote_asset === pool.asset_a ? feeWindows?.fees_1y_a ?? 0 : feeWindows?.fees_1y_b ?? 0;
   const baseFees30d = displayPool.display_base_asset === pool.asset_a ? feeWindows?.fees_30d_a ?? 0 : feeWindows?.fees_30d_b ?? 0;
   const quoteFees30d = displayPool.display_quote_asset === pool.asset_a ? feeWindows?.fees_30d_a ?? 0 : feeWindows?.fees_30d_b ?? 0;
 
@@ -671,26 +671,26 @@ export async function handlePool(
     ...displayPool,
     fees_24h_a: feeWindows?.fees_24h_a ?? 0,
     fees_24h_b: feeWindows?.fees_24h_b ?? 0,
-    fees_7d_a: feeWindows?.fees_7d_a ?? 0,
-    fees_7d_b: feeWindows?.fees_7d_b ?? 0,
+    fees_1y_a: feeWindows?.fees_1y_a ?? 0,
+    fees_1y_b: feeWindows?.fees_1y_b ?? 0,
     fees_30d_a: feeWindows?.fees_30d_a ?? 0,
     fees_30d_b: feeWindows?.fees_30d_b ?? 0,
     implied_fees_24h_a: feeWindows?.fees_24h_a ?? 0,
     implied_fees_24h_b: feeWindows?.fees_24h_b ?? 0,
-    implied_fees_7d_a: feeWindows?.fees_7d_a ?? 0,
-    implied_fees_7d_b: feeWindows?.fees_7d_b ?? 0,
+    implied_fees_1y_a: feeWindows?.fees_1y_a ?? 0,
+    implied_fees_1y_b: feeWindows?.fees_1y_b ?? 0,
     implied_fees_30d_a: feeWindows?.fees_30d_a ?? 0,
     implied_fees_30d_b: feeWindows?.fees_30d_b ?? 0,
     display_fees_24h_base: baseFees24h,
     display_fees_24h_quote: quoteFees24h,
-    display_fees_7d_base: baseFees7d,
-    display_fees_7d_quote: quoteFees7d,
+    display_fees_1y_base: baseFees1y,
+    display_fees_1y_quote: quoteFees1y,
     display_fees_30d_base: baseFees30d,
     display_fees_30d_quote: quoteFees30d,
     display_implied_fees_24h_base: baseFees24h,
     display_implied_fees_24h_quote: quoteFees24h,
-    display_implied_fees_7d_base: baseFees7d,
-    display_implied_fees_7d_quote: quoteFees7d,
+    display_implied_fees_1y_base: baseFees1y,
+    display_implied_fees_1y_quote: quoteFees1y,
     display_implied_fees_30d_base: baseFees30d,
     display_implied_fees_30d_quote: quoteFees30d,
     implied_fee_apy_24h: calculateFeeApy(
@@ -702,14 +702,14 @@ export async function handlePool(
       ),
       24 * 60 * 60
     ),
-    implied_fee_apy_7d: calculateFeeApy(
+    implied_fee_apy_1y: calculateFeeApy(
       calculatePoolFeePeriodReturnInQuote(
         displayPool.display_base_reserve,
         displayPool.display_quote_reserve,
-        baseFees7d,
-        quoteFees7d
+        baseFees1y,
+        quoteFees1y
       ),
-      7 * 24 * 60 * 60
+      365 * 24 * 60 * 60
     ),
     implied_fee_apy_30d: calculateFeeApy(
       calculatePoolFeePeriodReturnInQuote(

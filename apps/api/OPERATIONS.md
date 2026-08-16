@@ -173,6 +173,25 @@ Once in `FOLLOWING`, the cron runs every 10 minutes and:
 
 **You don't need to do anything.** Data updates every ~10 minutes, matching Bitcoin's block time.
 
+### Rolling-Window Sweeps
+
+Pairs and assets with fresh activity are repriced inside block sync. Windows also
+drift as trades age out of them with no block involved, so gated sweeps repair the
+rest. Each gate stores its last run in `indexer_state`:
+
+| Key | Interval | Covers |
+|-----|----------|--------|
+| `pair_stats_swept_at` | 1h | 24h and 30d windows for pairs traded in the last 30 days |
+| `dispenser_stats_swept_at` | 1h | Same, for dispenser assets |
+| `pair_stats_1y_swept_at` | 24h | The 1y window for pairs traded in the last year |
+| `dispenser_stats_1y_swept_at` | 24h | Same, for dispenser assets |
+
+The year sweeps run daily on purpose: they touch an order of magnitude more rows
+than the 30-day ones, and a trade only leaves a 365-day window once it is 365 days
+old, so hourly rewrites would burn D1 writes changing nothing. To force an immediate
+full recompute of every window, set the indexer to `REFRESH_STATS` — it runs the
+catch-up stats pass and returns to `FOLLOWING` on its own.
+
 ### Reorg Handling
 
 The indexer detects two types of Bitcoin chain reorganizations:
