@@ -136,8 +136,17 @@ export function AssetTradePanel({
             // In the hero, limit is a destination rather than a second form.
             // Navigated in this tab, not a new one: unlike dispense from an
             // asset page, there is nothing here worth preserving behind it.
+            //
+            // Bare /limit, deliberately not /limit/<asset>/<quote>. The hero's
+            // asset is a default nobody chose, and its only BTC-denominated
+            // book — XCP/BTC — is one of the thinnest markets on the DEX;
+            // BTC-for-asset trade happens through dispensers instead. Carrying
+            // that pair across would open the order form on the worst possible
+            // example of itself. /limit opens on its own default with the
+            // picker ready, which is the honest starting point for "I want to
+            // rest an order" arriving from a page about something else.
             else if (m === 'limit') {
-              router.push(`/limit/${encodeURIComponent(assetLabel)}/${encodeURIComponent(quoteAsset)}`)
+              router.push('/limit')
             }
             else setMode(m as Mode)
           }}

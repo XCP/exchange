@@ -24,13 +24,16 @@ import { useXcpPrice } from '@/lib/hooks/useNetworkInfo'
  * readout of the trade being composed; coupling them would mean the price of
  * the protocol moving because someone picked a different asset to swap.
  *
- * The rail quotes BTC only because an asset cannot be its own market: the
- * limit form correctly refuses to render XCP/XCP, which is why
- * AssetTradePanel takes the quote as a prop instead of assuming XCP. The swap
- * tab inside it still follows its own rule — it appears only if XCP has a pool
- * and opens against whichever is deepest, rather than being forced to BTC,
- * because there is no XCP/BTC pool and pretending otherwise is exactly what
- * the gating was built to stop.
+ * The rail carries no quote asset. In the hero only the swap FORM renders —
+ * limit and dispense are links out — so there is no order form here needing a
+ * pair, and naming one would have implied XCP/BTC is the market to trade.
+ * It is not: it is among the thinnest books on the DEX, and BTC-denominated
+ * trade happens through dispensers, which is where the dispense tab goes.
+ *
+ * The swap tab follows its own rule — it appears only if XCP has a pool and
+ * opens against whichever is deepest. It is never forced to BTC, because
+ * there is no XCP/BTC pool and pretending otherwise is exactly what the
+ * gating was built to stop.
  */
 export function HomeTradeHero() {
   const { xcpUsd } = useXcpPrice()
@@ -52,7 +55,7 @@ export function HomeTradeHero() {
           <XcpUsdChart />
         </div>
 
-        <AssetTradePanel asset="XCP" assetLabel="XCP" quoteAsset="BTC" variant="hero" />
+        <AssetTradePanel asset="XCP" assetLabel="XCP" variant="hero" />
       </div>
     </div>
   )
