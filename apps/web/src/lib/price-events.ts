@@ -145,16 +145,15 @@ export const PRICE_EVENTS: PriceEvent[] = [
     url: 'https://solana.com/news/solana-mainnet-beta',
   },
   {
-    day: '2020-04-30',
-    label: 'Dex-Trade lists XCP',
-    note: 'First XCP into a known Dex-Trade address',
-    url: 'https://www.xcp.io/address/1LhEGAPUZnfNDbh7oFogdekUyTW8NBfW3g',
-  },
-  {
     day: '2021-01-31',
     label: 'First Emblem Vault',
     note: 'SMALLWORLD, the first asset vaulted onto Ethereum',
     url: 'https://www.xcp.io/tx/8bb11d077b88b2dffda091794392fda110c4329c6338a9978966a418c2e439d9',
+  },
+  {
+    day: '2021-03-05',
+    label: 'Dex-Trade lists XCP',
+    note: 'XCP listed on Dex-Trade',
   },
   {
     day: '2021-10-01',

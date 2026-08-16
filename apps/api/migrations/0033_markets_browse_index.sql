@@ -1,0 +1,25 @@
+-- Serve the markets browse query from an index instead of a sort.
+--
+-- The query is: filter to one quote currency, drop hidden rows, order by
+-- volume, take 50. Before this, SQLite's best option was
+-- `idx_pair_stats_hidden` — which is almost the whole table, since 12,380 of
+-- 12,443 rows have hidden = 0 — followed by USE TEMP B-TREE FOR ORDER BY.
+-- Measured: 17,187 rows read to return 50, plus 12,380 more for the
+-- pagination count that runs beside it.
+--
+-- Column order is the rule for composite indexes: equality predicates first,
+-- then the ORDER BY. `total_trade_count > 0` is a range and stays a per-row
+-- filter, which costs nothing here because rows with volume have trades, so
+-- the scan still stops at the first 50 it walks.
+--
+-- Trailing `pair` so the tiebreak is satisfied by the index too, otherwise the
+-- temp b-tree comes back just to order the ties.
+--
+-- The (quote_asset, hidden) prefix also serves the COUNT(*) beside it.
+--
+-- One index, for the ALL-TIME window only: it is the site's default, and
+-- pair_stats has a windowed volume column per timeframe. Adding all four
+-- would quadruple the index weight on every pair_stats write for windows that
+-- are browsed far less. Measure before adding more.
+CREATE INDEX IF NOT EXISTS idx_pair_stats_browse_all
+  ON pair_stats(quote_asset, hidden, total_volume DESC, pair ASC);
