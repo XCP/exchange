@@ -452,6 +452,26 @@ export function DispenseWidget({
         takingTokens={tokens}
         contested={contested}
         pinned={pinnedIndex >= 0}
+        /**
+         * Exception to "the buy ladder is read-only".
+         *
+         * Prices are normally not clickable here because clicking one implies
+         * a choice the router does not actually offer: the form routes by the
+         * amount you want, not by the row you point at, so a click that looked
+         * like it picked a dispenser would be a lie whenever a cheaper one
+         * could not fill the order.
+         *
+         * With exactly one dispenser there is no routing decision left to get
+         * wrong -- that row is where the purchase goes no matter what. The
+         * only thing still missing is an amount, so clicking fills in one lot
+         * and the quote appears. Nothing is highlighted before the buyer says
+         * what they want, which made the single-dispenser case look inert.
+         */
+        onPickDispenser={
+          dispensers.length === 1
+            ? () => setTokensInput(big(dispensers[0].give_quantity_normalized).toFixed())
+            : undefined
+        }
       />
       )}
     </div>
@@ -828,6 +848,7 @@ export function DispenserList({
   yourPrice = '',
   yourEscrow = '',
   onPickPrice,
+  onPickDispenser,
 }: {
   dispensers: Dispenser[]
   isLoading: boolean
@@ -845,6 +866,11 @@ export function DispenserList({
   /** sell: how much you're escrowing, for the marker row. */
   yourEscrow?: string
   onPickPrice?: (price: string) => void
+  /**
+   * buy: only supplied when there is exactly ONE dispenser, where there is no
+   * routing decision left for a click to misrepresent. See the call site.
+   */
+  onPickDispenser?: () => void
 }) {
   const { satsMode } = useSatsMode()
   const rows = dispensers.slice(0, ROWS)
@@ -870,6 +896,14 @@ export function DispenserList({
     // BTC field, so those rows stay read-only rather than setting a zero.
     const pick = big(d.price_normalized).toFixed(8, ROUND_DOWN)
     const pickable = mode === 'sell' && !!onPickPrice && big(pick).isGreaterThan(0)
+    /**
+     * Buy rows are clickable only in the single-dispenser case, and only while
+     * the row is still worth taking — a contested or empty one would set an
+     * amount the purchase cannot fill.
+     */
+    const takeable =
+      mode === 'buy' && !!onPickDispenser && !busy && big(d.give_remaining_normalized).isGreaterThan(0)
+    const activate = pickable ? () => onPickPrice!(pick) : takeable ? onPickDispenser : undefined
     const body = (
       <>
         <span
@@ -906,10 +940,11 @@ export function DispenserList({
     }`
     return (
       <li key={d.tx_hash}>
-        {pickable ? (
+        {activate ? (
           <button
             type="button"
-            onClick={() => onPickPrice!(pick)}
+            onClick={activate}
+            title={takeable ? 'Buy from this dispenser' : undefined}
             className={`${shell} hover:border-zinc-700 hover:bg-zinc-800/30`}
           >
             {body}
