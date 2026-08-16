@@ -31,6 +31,7 @@ import { handleSearch } from "./routes/search";
 import { handleBlock } from "./routes/block";
 import { handleTags, handleAssetTags } from "./routes/tags";
 import { handleDeals } from "./routes/deals";
+import { handleMempool } from "./routes/mempool";
 import { handleAddressPools, handleAssetPoolVenue, handlePool, handlePoolAddress, handlePools } from "./routes/pools";
 import { handleCgPairs, handleCgTickers, handleCgOrderbook, handleCgHistoricalTrades } from "./routes/coingecko";
 import { handleCmcSummary } from "./routes/coinmarketcap";
@@ -185,6 +186,11 @@ app.get('/ws/presence', (c) => {
   const id = c.env.SITE_PRESENCE.idFromName('global');
   return c.env.SITE_PRESENCE.get(id).fetch(c.req.raw);
 });
+
+// The unconfirmed side of the DEX, folded to one row per transaction and
+// served from our edge so a thousand tabs are not a thousand calls to a public
+// Counterparty node. See routes/mempool.ts.
+app.get('/mempool', (c) => handleMempool(c.req.raw, c.env));
 
 app.get('/pools', (c) => handlePools(c.req.raw, c.env.DB));
 app.get('/pools/:lpAsset', (c) => handlePool(new URL(c.req.url), c.env.DB, c.req.param('lpAsset')));

@@ -50,12 +50,12 @@ export function assetDispensesUrl(asset: string, limit: number = 50): string {
   return counterpartyUrl(`/assets/${asset}/dispenses?verbose=true&limit=${limit}`)
 }
 
-// Mempool
-export function mempoolDispensesUrl(addresses?: string): string {
-  const params = new URLSearchParams({ event_name: 'DISPENSE', verbose: 'true' })
-  if (addresses) params.set('addresses', addresses)
-  return counterpartyUrl(`/mempool/events?${params.toString()}`)
-}
+// Mempool reads deliberately do NOT live here any more. They moved behind
+// api.xcpdex.com/mempool: a hook that polls a third-party API runs once per
+// OPEN TAB, so at a 15s interval a thousand tabs was ~66 req/s aimed at
+// someone else's public node, scaling with our traffic and buying us nothing.
+// Behind our own edge-cached endpoint it is ~one upstream call per colo per
+// TTL. See lib/hooks/useMempool.ts and apps/api/src/routes/mempool.ts.
 
 // Global feeds
 export function globalDispensersUrl(limit: number = 50): string {

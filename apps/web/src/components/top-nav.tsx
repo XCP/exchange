@@ -37,6 +37,9 @@ const NAV: NavEntry[] = [
       { label: 'Orders', href: '/explore/orders', hint: 'Resting bids and asks' },
       { label: 'Dispensers', href: '/explore/dispensers', hint: 'Every open vending machine' },
       { label: 'Pools', href: '/explore/pools', hint: 'AMM liquidity and fees' },
+      // Under Explore because it is something you LOOK AT, and last because it
+      // is usually empty — the mempool fills and drains every block.
+      { label: 'Mempool', href: '/mempool', hint: 'Broadcast, not yet confirmed' },
     ],
   },
   // Top level, and not in the Explore menu or its tab row. Explore browses
