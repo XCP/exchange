@@ -41,6 +41,7 @@ import { refreshDealScores } from "./indexer/deal-scores";
 import { indexAllAssets, syncNewAssets } from "./indexer/assets";
 import { handleDispensersLatest, handleDispensesLatest } from "./routes/dispensers-latest";
 import { syncTags, syncTokenscanCollections, syncPepeWtfCollections, syncStampchainCollection, syncScannableNfts, syncKaleidoscope } from "./indexer/tags";
+import { syncLowQualityAssets } from "./indexer/low-quality";
 import { handleGetSwaps, handleGetSwap, handleCancelSwap, handlePrepareListingPsbt, handleCompleteListingPsbt, handlePrepareFill, handleCompleteFill, handlePrepareCancelSwap } from "./routes/swaps";
 import { checkPendingFills } from "./lib/swap-monitor";
 import { syncBlocks } from "./indexer/sync-block";
@@ -411,6 +412,12 @@ app.post('/indexer/sync-tags', async (c) => {
   return Response.json({ ok: true, ...await fn() });
 });
 
+// Pull xcp.io's low-quality asset list and re-apply the hidden flags. Cron runs it daily; this is
+// the manual trigger for when a market gets flagged upstream and should drop off our lists now.
+app.post('/indexer/sync-low-quality', async (c) =>
+  Response.json({ ok: true, ...await syncLowQualityAssets(c.env.DB) })
+);
+
 // Cron
 
 // The scheduled handler is separate from Hono (Workers API requirement)
@@ -490,6 +497,11 @@ async function scheduled(env: Env): Promise<void> {
         // The full deal re-score exists for time decay; block-driven changes score incrementally in
         // syncBlocks. The unconditional call wiped and rebuilt the whole table every tick.
         await sweepGate("deal_scores_refreshed_at", 86400, () => refreshDealScores(env.DB));
+        // xcp.io's low-quality list moves when a human reviews a ring-trade candidate — days apart,
+        // not minutes. Daily, and a throw here must not take the rest of the tick down with it.
+        await sweepGate("low_quality_synced_at", 86400, () =>
+          syncLowQualityAssets(env.DB).catch((e) => console.error(`low-quality sync failed: ${e}`))
+        );
         await checkPendingFills(env.DB);
         await syncNewAssets(env.DB, 2);
         await backfillMissingLongnames(env.DB, 10);

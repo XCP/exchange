@@ -9,13 +9,16 @@ export async function handleTrending(
     parseInt(url.searchParams.get("limit") ?? "10", 10) || 10,
     50
   );
+  // This route predates pair_stats.hidden being populated (migration 0032) and never picked up the
+  // filter every other market read has, so a wash market could trend on trade count alone.
+  const includeHidden = url.searchParams.get("include_hidden") === "1";
   // Get all pairs with recent activity for scoring
   const result = await db
     .prepare(
       `SELECT pair, base_asset, quote_asset, last_price, last_trade_time,
               price_change_24h, volume_24h, trade_count_24h
        FROM pair_stats
-       WHERE trade_count_24h > 0
+       WHERE trade_count_24h > 0${includeHidden ? "" : " AND hidden = 0"}
        ORDER BY trade_count_24h DESC
        LIMIT 100`
     )

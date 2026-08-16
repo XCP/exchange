@@ -185,6 +185,8 @@ rest. Each gate stores its last run in `indexer_state`:
 | `dispenser_stats_swept_at` | 1h | Same, for dispenser assets |
 | `pair_stats_1y_swept_at` | 24h | The 1y window for pairs traded in the last year |
 | `dispenser_stats_1y_swept_at` | 24h | Same, for dispenser assets |
+| `deal_scores_refreshed_at` | 24h | Full deal re-score, for time decay |
+| `low_quality_synced_at` | 24h | xcp.io's low-quality asset list → `hidden` flags |
 
 The year sweeps run daily on purpose: they touch an order of magnitude more rows
 than the 30-day ones, and a trade only leaves a 365-day window once it is 365 days
@@ -265,6 +267,7 @@ Aggregator-facing base URL: **`https://api.xcpdex.com`** (custom domain on this 
 | `POST /indexer/aggregate?offset=0&limit=100` | Manual aggregate for specific pair range |
 | `POST /indexer/full-sync` | Re-snapshot orders + dispensers (recovery) |
 | `POST /indexer/reset` | Reset to `IDLE` (for full re-index) |
+| `POST /indexer/sync-low-quality` | Re-pull xcp.io's low-quality asset list and re-apply `hidden` |
 
 ---
 
@@ -349,6 +352,13 @@ xcpdex.com frontend
 | `pair_stats` | Rolling stats per trading pair (24h volume, price change, etc.) |
 | `dispenser_stats` | Per-asset dispenser aggregates |
 | `indexer_state` | Key-value store for indexer state machine |
+| `low_quality_assets` | Wash/scam/bridge assets mirrored from xcp.io; source of the `hidden` flags |
+
+`pair_stats.hidden` and `dispenser_stats.hidden` are what every "Hide low quality" filter reads.
+Two things set them: our own self-trade rule (`self_trade_pct >= 50` over `>= 30` trades, applied on
+every stats refresh) and `low_quality_assets`, which mirrors xcp.io's flag — the only one of the two
+that sees ring trades, where a closed set of addresses passes an asset around and no single match has
+the same address on both sides. Both arms only ever set `hidden = 1`; un-hiding is a manual `UPDATE`.
 
 ### Pair Naming Convention
 
