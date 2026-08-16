@@ -49,14 +49,7 @@ export function HomeTradeHero() {
 
       <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_22rem]">
         <div className="min-w-0">
-          <XcpUsdChart height={300} />
-          <p className="mt-2 flex flex-wrap items-center gap-x-2 text-[11px] text-zinc-600">
-            <span>Counterparty&rsquo;s own token, and the quote asset for most books on the network.</span>
-            {xcpUsd != null && <span className="text-zinc-500">≈ ${xcpUsd.toFixed(2)}</span>}
-            <Link href="/XCP" className="text-zinc-500 hover:text-zinc-300">
-              XCP details →
-            </Link>
-          </p>
+          <XcpUsdChart />
         </div>
 
         <AssetTradePanel asset="XCP" assetLabel="XCP" quoteAsset="BTC" variant="hero" />
