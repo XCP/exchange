@@ -102,9 +102,16 @@ export function SitePresenceBadge() {
    * Bottom-LEFT because the wallet/connect affordances live on the right and
    * this must never sit near something clickable that matters. Fixed so it
    * never reserves layout or shifts the page when the socket answers late.
+   *
+   * Desktop only. The homepage puts its XCP/BTC toggle at `fixed bottom-4
+   * left-1/2` under `md`, and on a narrow phone that centred pill and this
+   * chip overlap. An ambient number is the thing that should yield: the toggle
+   * changes what every figure on the page means, and this changes nothing.
+   * The two breakpoints are deliberately complementary — the toggle is
+   * `md:hidden`, this is `hidden md:block`.
    */
   return (
-    <div className="pointer-events-none fixed bottom-3 left-3 z-40">
+    <div className="pointer-events-none fixed bottom-3 left-3 z-40 hidden md:block">
       <span
         className="pointer-events-auto inline-flex cursor-default items-center gap-1.5 rounded-full border border-zinc-800 bg-zinc-900/90 px-2.5 py-1 text-[11px] text-zinc-400 shadow-lg backdrop-blur"
         title="People with xcpdex.com open right now, including you. Several tabs from the same browser count once."

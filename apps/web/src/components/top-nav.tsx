@@ -88,7 +88,11 @@ export function TopNav() {
               {entry.badge && (
                 // xcp.fun's purple, which is the standard's colour rather
                 // than ours — the badge points at someone else's guarantee.
-                <span className="rounded-sm border border-purple-500/40 bg-purple-500/10 px-1 text-[9px] font-semibold leading-[1.4] tracking-wide text-purple-300">
+                // Dropped below `sm`. The header there is logo + four nav
+                // items + search + wallet with nothing else giving way, and
+                // this badge is the only element carrying no navigation — the
+                // word "Launch" is the link, the badge is a footnote on it.
+                <span className="hidden sm:inline rounded-sm border border-purple-500/40 bg-purple-500/10 px-1 text-[9px] font-semibold leading-[1.4] tracking-wide text-purple-300">
                   {entry.badge}
                 </span>
               )}
