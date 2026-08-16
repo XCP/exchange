@@ -35,9 +35,17 @@ type Mode = 'swap' | 'buy' | 'sell'
 export function AssetTradePanel({
   asset,
   assetLabel,
+  quoteAsset = 'XCP',
 }: {
   asset: string
   assetLabel: string
+  /**
+   * What the limit form quotes this asset in. XCP for every asset page, which
+   * is where nearly all Counterparty books are priced — but it has to be
+   * injectable for the one case where the asset IS XCP, since an asset cannot
+   * be its own market and the form correctly refuses to render one.
+   */
+  quoteAsset?: string
 }) {
   const router = useRouter()
 
@@ -161,8 +169,8 @@ export function AssetTradePanel({
           asset={asset}
           assetLabel={assetLabel}
           onAssetChange={goToAsset}
-          quoteAsset="XCP"
-          quoteLabel="XCP"
+          quoteAsset={quoteAsset}
+          quoteLabel={quoteAsset}
           onQuoteChange={() => {}}
           side={mode}
           expiration={expiration}

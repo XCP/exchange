@@ -1,95 +1,16 @@
 'use client'
 
 import Link from 'next/link'
-import { RiSwapLine, RiCompass3Line, RiRocketLine, RiDropLine } from 'react-icons/ri'
 import { useLaunches, useLaunchStats } from '@/lib/hooks/useLaunches'
 
-/**
- * What this site is, and the four things you can do on it.
- *
- * The homepage was titled "Dashboard" and opened on eight counter cards. That
- * is a fine second screen and a poor first one: it assumes you already know
- * what Counterparty is, that this is a DEX for it, and which of its four
- * surfaces you wanted. Someone arriving cold got metrics about a thing nobody
- * had named.
- *
- * The four cards are the nav, spelled out. They are not decoration — Trade,
- * Explore, Launch and Pool is the structure the whole site is organised by,
- * and the homepage was the only page that never said so.
+/*
+ * HomeHero and its four action cards lived here until 2026-08-16. They named
+ * the nav — Trade, Explore, Launch, Pool — which was the right answer while
+ * the homepage was a dashboard and the wrong one once it grew a chart and a
+ * trade rail: the cards then described four places to go from a page that had
+ * become somewhere to act. See home-trade-hero.tsx. Recoverable from git if
+ * the explanatory version is ever wanted back.
  */
-const ACTIONS = [
-  {
-    href: '/swap',
-    label: 'Swap',
-    detail: 'Trade any asset against XCP, through the order book and AMM pools at once.',
-    Icon: RiSwapLine,
-  },
-  {
-    href: '/explore/assets',
-    label: 'Explore',
-    detail: 'Every asset, market, order, dispenser and pool on the network.',
-    Icon: RiCompass3Line,
-  },
-  {
-    href: '/launches',
-    label: 'Launch',
-    detail: 'XCP-69 launches: fixed terms, all-or-nothing, liquidity locked forever.',
-    badge: 'XCP-69',
-    Icon: RiRocketLine,
-  },
-  {
-    href: '/liquidity/deposit',
-    label: 'Pool',
-    detail: 'Provide liquidity and earn a share of every swap the pool settles.',
-    Icon: RiDropLine,
-  },
-]
-
-export function HomeHero() {
-  return (
-    <div className="mb-6">
-      <h1 className="mb-1 text-lg font-semibold text-zinc-100">
-        Peer-to-peer trading on Bitcoin
-      </h1>
-      <p className="max-w-2xl text-xs leading-relaxed text-zinc-500">
-        Counterparty is a protocol built into Bitcoin transactions. Its exchange settles on-chain
-        with no custodian and no counterparty risk — your keys sign every trade, and nothing sits
-        with us in between.
-      </p>
-
-      <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-        {ACTIONS.map((a) => (
-          <Link
-            key={a.href}
-            href={a.href}
-            className="group flex gap-3 rounded-sm border border-zinc-800 bg-zinc-900/50 px-3 py-3 transition-colors hover:border-zinc-700"
-          >
-            {/* The card's only graphic, and the reason it is here: four
-                paragraphs of grey text was the whole of what a first-time
-                visitor saw above the fold. Muted until hover, so the row
-                reads as one object rather than four competing buttons. */}
-            <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-sm border border-zinc-800 bg-zinc-900 text-zinc-500 transition-colors group-hover:border-zinc-700 group-hover:text-green-400">
-              <a.Icon className="text-base" aria-hidden />
-            </span>
-            <span className="min-w-0">
-            <div className="mb-1 flex items-baseline gap-1.5">
-              <span className="text-sm font-semibold text-zinc-100 group-hover:text-green-400">
-                {a.label}
-              </span>
-              {a.badge && (
-                <span className="rounded-sm border border-purple-500/40 bg-purple-500/10 px-1 text-[9px] font-semibold leading-[1.4] tracking-wide text-purple-300">
-                  {a.badge}
-                </span>
-              )}
-            </div>
-            <p className="text-[11px] leading-relaxed text-zinc-500">{a.detail}</p>
-            </span>
-          </Link>
-        ))}
-      </div>
-    </div>
-  )
-}
 
 /**
  * A one-line report on the newest thing here, because nothing else on the

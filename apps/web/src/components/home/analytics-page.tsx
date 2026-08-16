@@ -21,7 +21,8 @@ import { LeaderboardTable, type LeaderboardRow } from './leaderboard-table'
 import { TopTradersTable } from './top-traders-table'
 import { MarketInfoTable, COMPARABLE_QUOTE } from '@/components/market-info-table'
 import { RecentActivity } from './recent-activity'
-import { HomeHero, LaunchStrip } from './home-hero'
+import { LaunchStrip } from './home-hero'
+import { HomeTradeHero } from './home-trade-hero'
 import { QuoteMarquee } from './quote-marquee'
 import { DispenseMarquee } from './dispense-marquee'
 import { toSats } from '@/utils/numeric'
@@ -153,7 +154,7 @@ export default function AnalyticsPage({ variant = 'home' }: { variant?: 'home' |
     <div className="px-4 py-8">
       {!isStats && (
         <>
-          <HomeHero />
+          <HomeTradeHero />
           <LaunchStrip />
         </>
       )}
