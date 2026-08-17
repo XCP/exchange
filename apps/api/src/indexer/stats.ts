@@ -231,14 +231,20 @@ export async function bulkUpdatePairStats(
       .bind(JSON.stringify(updates))
       .run();
 
-    // Backfill NULL longnames from the assets table
+    // Backfill NULL longnames from the assets table. Same guard as the
+    // unscoped copy below: test that a longname is AVAILABLE, not just that the
+    // column is null, or every plain asset in the batch is rewritten with the
+    // NULL it already held on every refresh.
     await db
       .prepare(
         `UPDATE pair_stats SET
           base_asset_longname = COALESCE(pair_stats.base_asset_longname, (SELECT asset_longname FROM assets WHERE asset = pair_stats.base_asset)),
           quote_asset_longname = COALESCE(pair_stats.quote_asset_longname, (SELECT asset_longname FROM assets WHERE asset = pair_stats.quote_asset))
         WHERE pair IN (${phFrom(1)})
-          AND (base_asset_longname IS NULL OR quote_asset_longname IS NULL)`
+          AND ((pair_stats.base_asset_longname IS NULL
+                AND (SELECT asset_longname FROM assets WHERE asset = pair_stats.base_asset) IS NOT NULL)
+            OR (pair_stats.quote_asset_longname IS NULL
+                AND (SELECT asset_longname FROM assets WHERE asset = pair_stats.quote_asset) IS NOT NULL))`
       )
       .bind(...pairs)
       .run();
@@ -541,13 +547,30 @@ export async function updateOrderBookStats(
 
   await batchExec(db, stmts);
 
-  // Backfill NULL longnames from the assets table for any newly-created rows
+  // Backfill NULL longnames from the assets table for any newly-created rows.
+  //
+  // The WHERE tests that a longname is actually AVAILABLE, not merely that the
+  // column is null. Only subassets have longnames, so for ~12,400 plain assets
+  // the lookup returns NULL too and `COALESCE(NULL, NULL)` wrote NULL over
+  // NULL -- a no-op that D1 still bills, on a row that then matched again on
+  // the next tick, forever.
+  //
+  // Measured before this guard: 12,393 rows matched the old WHERE and 0 of
+  // them could change. 138 runs/day x 12,393 = 1,710,096 rows written every
+  // day to alter nothing -- effectively the entire account's D1 write line, at
+  // ~$1.00 per million written rows.
+  //
+  // Rows read are ~1000x cheaper than rows written, which is exactly why this
+  // hid: it never looked expensive in a rows-read ranking.
   await db
     .prepare(
       `UPDATE pair_stats SET
         base_asset_longname = COALESCE(pair_stats.base_asset_longname, (SELECT asset_longname FROM assets WHERE asset = pair_stats.base_asset)),
         quote_asset_longname = COALESCE(pair_stats.quote_asset_longname, (SELECT asset_longname FROM assets WHERE asset = pair_stats.quote_asset))
-      WHERE base_asset_longname IS NULL OR quote_asset_longname IS NULL`
+      WHERE (pair_stats.base_asset_longname IS NULL
+             AND (SELECT asset_longname FROM assets WHERE asset = pair_stats.base_asset) IS NOT NULL)
+         OR (pair_stats.quote_asset_longname IS NULL
+             AND (SELECT asset_longname FROM assets WHERE asset = pair_stats.quote_asset) IS NOT NULL)`
     )
     .run();
 

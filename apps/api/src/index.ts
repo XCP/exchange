@@ -519,6 +519,23 @@ async function scheduled(env: Env): Promise<void> {
         // one, and a trade only leaves it once it is 365 days old — hourly rewrites
         // would burn D1 writes to change nothing. Daily is well inside the drift a
         // 365-day total can tolerate.
+        // Reconcile pool reserves against Counterparty's own snapshot.
+        //
+        // Reserves were reaching this database ONLY through POOL_UPDATE events
+        // in syncBlocks, with nothing ever checking the result against the
+        // authoritative figure. When those events stopped being recorded, every
+        // pool silently froze at its opening balances and no count looked wrong
+        // -- match_count kept climbing the whole time, because it is derived
+        // from a different table. That went unnoticed until someone read the
+        // page and said the number looked off.
+        //
+        // Cheap enough to be unconditional insurance: 4 pools today, one
+        // upstream page, and the sweep exists to disagree with the event
+        // stream rather than to be the primary path. Hourly matches the other
+        // stale sweeps here.
+        await sweepGate("pool_snapshot_swept_at", 3600, () =>
+          syncPools(env.DB, env.CP_API_BASE).catch((e) => console.error(`pool snapshot sweep failed: ${e}`))
+        );
         await sweepGate("pair_stats_1y_swept_at", 86400, () => refreshLongWindowPairStats(env.DB));
         await sweepGate("dispenser_stats_1y_swept_at", 86400, () => refreshLongWindowDispenserStats(env.DB));
         // The full deal re-score exists for time decay; block-driven changes score incrementally in
