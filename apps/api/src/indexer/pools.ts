@@ -250,16 +250,36 @@ export function buildPoolSnapshotStmt(
   };
 }
 
+/**
+ * POOL_UPDATE is the event that carries reserves, and it is the ONE pool event
+ * whose `params` has no `tx_hash` — upstream puts it on the event envelope
+ * instead. Every other pool event (OPEN_POOL, POOL_MATCH, NEW_POOL_DEPOSIT)
+ * carries it inside params, which is why reading `params.tx_hash` here looked
+ * consistent and was not.
+ *
+ * The consequence was silent and total: this returned null for every single
+ * POOL_UPDATE, so `pool_updates` only ever recorded opens and deposits.
+ * `rebuildPoolFromHistory` then replayed that gapped history over the correct
+ * reserves that `syncPools` had just written from the Counterparty snapshot,
+ * pinning every pool to its opening balances forever. PEPECASH/XCP showed
+ * 750,000 / 3,000 — its initial deposit — while the chain said
+ * 1,063,410.86 / 2,120.21 after nine swaps.
+ *
+ * `envelopeTxHash` is therefore required rather than optional-looking: the
+ * caller must pass `event.tx_hash`, and params is only a fallback for any
+ * caller replaying stored events that kept the old shape.
+ */
 export function processPoolUpdate(
   params: Record<string, unknown>,
   lpAsset: string,
   eventIndex: number,
   blockIndex: number,
-  blockTime: number
+  blockTime: number,
+  envelopeTxHash?: string
 ): PoolEventResult | null {
   const rawAssetA = params.asset_a as string | undefined;
   const rawAssetB = params.asset_b as string | undefined;
-  const txHash = params.tx_hash as string | undefined;
+  const txHash = (params.tx_hash as string | undefined) ?? envelopeTxHash;
   if (!rawAssetA || !rawAssetB || !txHash) return null;
 
   const [assetA, assetB] = sortPoolAssets(rawAssetA, rawAssetB);

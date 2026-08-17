@@ -1057,11 +1057,15 @@ export async function syncBlocks(
             const pair = makePoolPair(assetA, assetB);
             const lpAsset = knownPoolLpByPair.get(pair) ?? await findPoolLpAsset(db, assetA, assetB);
             if (!lpAsset) break;
-            const pool = processPoolUpdate(params, lpAsset, event.event_index, blockIndex, eventBlockTime);
+            // tx_hash lives on the envelope for this event, not in params —
+            // see processPoolUpdate. Resolved once and used for both the row
+            // and the key, so they cannot disagree.
+            const updateTxHash = (params.tx_hash as string | undefined) ?? event.tx_hash;
+            const pool = processPoolUpdate(params, lpAsset, event.event_index, blockIndex, eventBlockTime, updateTxHash);
             if (pool) {
               stmts.push(pool.stmt);
               const updateState = getPoolUpdateState(params);
-              const updateKey = poolUpdateKey(pool.pair, params.tx_hash as string | undefined);
+              const updateKey = poolUpdateKey(pool.pair, updateTxHash);
               if (updateState && updateKey) {
                 poolUpdatesByTxPair.set(updateKey, updateState);
               }
