@@ -11,6 +11,8 @@
 const CP_API_BASE = "https://api.counterparty.io:4000";
 const PAGE_LIMIT = 1000;
 const STOP_AFTER_KNOWN = 10; // Stop incremental after seeing this many known assets
+/** D1 allows 100 bound parameters per statement; 95 leaves room for other binds. */
+const KNOWN_CHUNK = 95;
 const DELAY_MS = 200; // Delay between pages to avoid rate limits
 
 interface CpAssetRow {
@@ -174,14 +176,33 @@ export async function syncNewAssets(
     const data = await fetchAssetsPage(cursor);
     if (data.result.length === 0) break;
 
-    // Check which of this page we already know
+    // Check which of this page we already know.
+    //
+    // CHUNKED because D1 caps bound parameters at 100 per statement and a page
+    // is PAGE_LIMIT (1000) assets. Unchunked this threw
+    //   D1_ERROR: variable number must be between ?1 and ?100
+    // on every single invocation -- so this function never once completed, new
+    // assets were never indexed, and the cron logged ~703 exceptions a day that
+    // nobody could read until [observability] was turned on.
+    //
+    // One batch rather than a loop of awaits: 11 statements for 1000 assets in
+    // a single round trip. See EXCHANGE.md 3a, which documents this exact cap
+    // and the BULK_CHUNK = 95 convention used elsewhere in this indexer.
     const assetNames = data.result.map((a) => a.asset);
-    const placeholders = assetNames.map((_, i) => `?${i + 1}`).join(",");
-    const known = await db
-      .prepare(`SELECT asset FROM assets WHERE asset IN (${placeholders})`)
-      .bind(...assetNames)
-      .all<{ asset: string }>();
-    const knownSet = new Set(known.results.map((r) => r.asset));
+    const nameChunks: string[][] = [];
+    for (let i = 0; i < assetNames.length; i += KNOWN_CHUNK) {
+      nameChunks.push(assetNames.slice(i, i + KNOWN_CHUNK));
+    }
+    const knownRows = await db.batch<{ asset: string }>(
+      nameChunks.map((slice) =>
+        db
+          .prepare(
+            `SELECT asset FROM assets WHERE asset IN (${slice.map((_, i) => `?${i + 1}`).join(",")})`,
+          )
+          .bind(...slice),
+      ),
+    );
+    const knownSet = new Set(knownRows.flatMap((r) => r.results.map((x) => x.asset)));
     const knownCount = knownSet.size;
 
     // Upsert only unknown assets. Re-upserting known rows rewrote a full page
