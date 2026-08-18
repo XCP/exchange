@@ -8,7 +8,11 @@ export const metadata: Metadata = {
 }
 
 // Bitcoin-derived freshness is the point of this page; never serve it stale for long.
-export const revalidate = 60
+// Every /status render costs the API seven unqualified COUNT(*)s -- about a
+// million rows -- and this page was asking for a fresh one every minute. The
+// counters it displays move on Bitcoin's cadence, roughly one block every ten
+// minutes, so a minute of freshness bought nothing and paid for it 10x over.
+export const revalidate = 600
 
 interface DexStatus {
   ok: boolean
@@ -27,7 +31,7 @@ interface CounterpartyRoot {
 
 async function load(): Promise<{ dex: DexStatus | null; network: CounterpartyRoot['result'] | null }> {
   const [dexRes, cpRes] = await Promise.allSettled([
-    fetch(`${DEX_API_BASE}/status`, { next: { revalidate: 60 } }),
+    fetch(`${DEX_API_BASE}/status`, { next: { revalidate: 600 } }),
     fetch(`${COUNTERPARTY_API_BASE.replace(/\/v2$/, '')}/v2/`, { next: { revalidate: 60 } }),
   ])
   const dex = dexRes.status === 'fulfilled' && dexRes.value.ok ? ((await dexRes.value.json()) as DexStatus) : null

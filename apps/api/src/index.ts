@@ -289,11 +289,14 @@ app.get('/status', async (c) => {
     // stores only what asks to be stored -- so every single call ran all
     // seven against D1.
     //
-    // 60s of staleness costs a diagnostics endpoint nothing. Blocks arrive
-    // about every ten minutes, so these counters barely move within a minute,
-    // and the indexer's own last_block_index is in the body for anyone who
-    // needs to know how fresh it is.
-    headers: { 'Cache-Control': 'public, max-age=60' },
+    // Staleness costs a diagnostics endpoint nothing, and the TTL is matched
+    // to Bitcoin rather than to a round number: blocks arrive about every ten
+    // minutes, so none of these counters moves meaningfully inside five, and
+    // the indexer's own last_block_index is in the body for anyone who needs
+    // to judge freshness. 60s was tried first and was the wrong shape -- the
+    // callers arrive further apart than that, so nearly every request still
+    // missed and paid the full million rows.
+    headers: { 'Cache-Control': 'public, max-age=300' },
   });
 });
 
