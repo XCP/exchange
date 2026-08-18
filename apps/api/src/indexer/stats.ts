@@ -536,7 +536,13 @@ export async function updateOrderBookStats(
            best_bid = excluded.best_bid,
            best_ask = excluded.best_ask,
            spread = excluded.spread,
-           updated_at = excluded.updated_at`
+           updated_at = excluded.updated_at
+         WHERE pair_stats.open_orders IS NOT excluded.open_orders
+            OR pair_stats.bid_count   IS NOT excluded.bid_count
+            OR pair_stats.ask_count   IS NOT excluded.ask_count
+            OR pair_stats.best_bid    IS NOT excluded.best_bid
+            OR pair_stats.best_ask    IS NOT excluded.best_ask
+            OR pair_stats.spread      IS NOT excluded.spread`
       )
       .bind(
         p.pair, p.base_asset, p.quote_asset,
@@ -544,6 +550,18 @@ export async function updateOrderBookStats(
         p.best_bid, p.best_ask, spread, now
       );
   });
+  // NOTE ON THE GUARD ABOVE. `updated_at` is deliberately NOT part of the
+  // comparison: it changes on every run by definition, so including it would
+  // make the guard never fire. That redefines the column from "last checked"
+  // to "last changed", which is the more useful meaning and is safe here --
+  // nothing selects or sorts pair_stats rows by it (refreshStalePairStats uses
+  // last_trade_time, and the web app never displays it).
+  //
+  // Measured before the guard: 78,765 runs a day writing exactly 1.0 rows
+  // each, because an unguarded upsert rewrites the row whether or not the
+  // order book moved. Most pairs have no open orders and nothing to change.
+  // D1 bills a written row ~1000x a read one, so this is worth the six
+  // comparisons.
 
   await batchExec(db, stmts);
 
