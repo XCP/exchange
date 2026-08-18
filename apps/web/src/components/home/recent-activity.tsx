@@ -293,8 +293,17 @@ function OrderRow({ order: o, satsMode, last }: { order: LatestOrder; satsMode: 
 function DispensersCard() {
   const [tab, setTab] = useState<0 | 1>(0)
   const { satsMode } = useSatsMode()
-  const { dispensers, isLoading: dispLoading } = useDispensersLatest({ status: 'open' }, CARD_COUNT)
-  const { dispenses, isLoading: dispenseLoading } = useDispensesLatest({}, CARD_COUNT)
+  // includeTotal: false -- as with the orders card above, this one renders a
+  // fixed CARD_COUNT rows and no pagination, so the exact total was 414,659
+  // rows read per call for a number that is destructured away here.
+  const { dispensers, isLoading: dispLoading } = useDispensersLatest(
+    { status: 'open', includeTotal: false },
+    CARD_COUNT
+  )
+  const { dispenses, isLoading: dispenseLoading } = useDispensesLatest(
+    { includeTotal: false },
+    CARD_COUNT
+  )
 
   const isLoading = tab === 0 ? dispLoading : dispenseLoading
 

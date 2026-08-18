@@ -95,12 +95,27 @@ export async function handleDispensersLatest(
   const countQuery = `SELECT COUNT(*) as total FROM dispensers d${whereClause}`;
 
   const dataStmt = db.prepare(dataQuery).bind(...binds, limit, offset);
-  const countStmt = binds.length > 0
-    ? db.prepare(countQuery).bind(...binds)
-    : db.prepare(countQuery);
 
-  const [dataResult, countResult] = await db.batch([dataStmt, countStmt]);
-  const total = (countResult.results[0] as { total: number })?.total ?? 0;
+  // `count=0` opts out of the exact total, the same trade as /orders/latest.
+  //
+  // Smaller than its sibling below -- dispensers holds ~18,000 rows, not the
+  // whole dispense ledger -- but the homepage card discards this total too,
+  // and a count nobody reads is worth nothing at any size.
+  const wantTotal = url.searchParams.get("count") !== "0";
+
+  let dataResult: D1Result;
+  let total: number | null = null;
+
+  if (wantTotal) {
+    const countStmt = binds.length > 0
+      ? db.prepare(countQuery).bind(...binds)
+      : db.prepare(countQuery);
+    const [data, countResult] = await db.batch([dataStmt, countStmt]);
+    dataResult = data;
+    total = (countResult.results[0] as { total: number })?.total ?? 0;
+  } else {
+    dataResult = await dataStmt.all();
+  }
 
   return Response.json(
     { dispensers: dataResult.results, total, limit, offset },
@@ -187,12 +202,32 @@ export async function handleDispensesLatest(
   const countQuery = `SELECT COUNT(*) as total FROM dispenses e${whereClause}`;
 
   const dataStmt = db.prepare(dataQuery).bind(...binds, limit, offset);
-  const countStmt = binds.length > 0
-    ? db.prepare(countQuery).bind(...binds)
-    : db.prepare(countQuery);
 
-  const [dataResult, countResult] = await db.batch([dataStmt, countStmt]);
-  const total = (countResult.results[0] as { total: number })?.total ?? 0;
+  // `count=0` opts out of the exact total, the same trade as /orders/latest.
+  //
+  // COUNT(*) here is O(matching rows) and no index removes that: every dispense
+  // with a quantity, filtered through the hidden-asset subquery, measured at
+  // 414,659 rows a run to produce a single number.
+  //
+  // The homepage's Recent Activity card asks for four rows and renders no
+  // pagination, so it was paying all of that for a total it destructs away.
+  // /explore/dispensers does page and still needs it, so the exact count stays
+  // the default and the caller that does not want it says so.
+  const wantTotal = url.searchParams.get("count") !== "0";
+
+  let dataResult: D1Result;
+  let total: number | null = null;
+
+  if (wantTotal) {
+    const countStmt = binds.length > 0
+      ? db.prepare(countQuery).bind(...binds)
+      : db.prepare(countQuery);
+    const [data, countResult] = await db.batch([dataStmt, countStmt]);
+    dataResult = data;
+    total = (countResult.results[0] as { total: number })?.total ?? 0;
+  } else {
+    dataResult = await dataStmt.all();
+  }
 
   return Response.json(
     { dispenses: dataResult.results, total, limit, offset },

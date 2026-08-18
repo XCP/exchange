@@ -44,6 +44,13 @@ export interface DispenserFilters {
   offset?: number
   includeHidden?: boolean
   sort?: string
+  /**
+   * Skip the exact result total. COUNT(*) over the dispense ledger is
+   * O(matching rows) and cannot be indexed away -- it reads 414,659 rows to
+   * produce one number. Pass false from anywhere that shows a fixed number of
+   * rows and no pagination.
+   */
+  includeTotal?: boolean
 }
 
 function buildDispensersUrl(filters?: DispenserFilters, limit: number = 250): string {
@@ -56,6 +63,7 @@ function buildDispensersUrl(filters?: DispenserFilters, limit: number = 250): st
   if (filters?.offset) params.set('offset', String(filters.offset))
   if (filters?.includeHidden) params.set('include_hidden', '1')
   if (filters?.sort) params.set('sort', filters.sort)
+  if (filters?.includeTotal === false) params.set('count', '0')
   const qs = params.toString()
   return dexUrl(`/dispensers/latest?${qs}`)
 }
@@ -68,6 +76,7 @@ function buildDispensesUrl(filters?: DispenserFilters, limit: number = 250): str
   if (filters?.offset) params.set('offset', String(filters.offset))
   if (filters?.includeHidden) params.set('include_hidden', '1')
   if (filters?.sort) params.set('sort', filters.sort)
+  if (filters?.includeTotal === false) params.set('count', '0')
   const qs = params.toString()
   return dexUrl(`/dispenses/latest?${qs}`)
 }
