@@ -282,6 +282,18 @@ app.get('/status', async (c) => {
         .filter((r) => !['aggregation_offset'].includes(r.key))
         .map((r) => [r.key, r.value])
     ),
+  }, {
+    // Seven unqualified COUNT(*)s, each O(table): ~1M rows read per call, of
+    // which candles alone is 523,780 and was measured at 557ms. This route
+    // sent no Cache-Control at all, and the cache middleware deliberately
+    // stores only what asks to be stored -- so every single call ran all
+    // seven against D1.
+    //
+    // 60s of staleness costs a diagnostics endpoint nothing. Blocks arrive
+    // about every ten minutes, so these counters barely move within a minute,
+    // and the indexer's own last_block_index is in the body for anyone who
+    // needs to know how fresh it is.
+    headers: { 'Cache-Control': 'public, max-age=60' },
   });
 });
 
