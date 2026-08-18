@@ -42,6 +42,26 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="dark">
+      <head>
+        {/* Every page's data comes from origins the document never references,
+            so the browser cannot discover them until React has hydrated and a
+            hook fires — measured at 1560ms on the homepage, at which point each
+            one pays a cold DNS + TCP + TLS handshake before its first byte.
+            Opening the sockets while the JS is still downloading takes that
+            handshake off the critical path.
+
+            Only origins used on EVERY page belong here: a preconnect the page
+            does not use holds a socket open for ten seconds for nothing. These
+            four are all reached from the root layout — the DEX API everywhere,
+            mempool.space and api.xcp.io from TopBar's useNetworkInfo, and
+            Counterparty from WalletProvider's balance calls. api.xcp.fun is
+            homepage-only, so it gets the cheaper DNS-only hint. */}
+        <link rel="preconnect" href="https://api.xcpdex.com" crossOrigin="anonymous" />
+        <link rel="preconnect" href="https://mempool.space" crossOrigin="anonymous" />
+        <link rel="preconnect" href="https://api.xcp.io" crossOrigin="anonymous" />
+        <link rel="preconnect" href="https://api.counterparty.io:4000" crossOrigin="anonymous" />
+        <link rel="dns-prefetch" href="https://api.xcp.fun" />
+      </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-zinc-950 text-zinc-100`}
       >

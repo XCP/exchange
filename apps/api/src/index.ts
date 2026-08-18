@@ -71,6 +71,26 @@ const app = new Hono<{ Bindings: Bindings }>();
 app.use('*', cors());
 
 /**
+ * Let the browser report timing for our own responses.
+ *
+ * Resource Timing zeroes `requestStart`/`responseStart` for cross-origin
+ * responses unless the server opts in, and the site is served from xcpdex.com
+ * while the API answers from api.xcpdex.com — so every measurement taken in a
+ * real browser collapsed to a single opaque `duration`. A 1,150ms homepage
+ * call could not be split into "queued behind the JS download" and "the worker
+ * was slow", which are opposite problems with opposite fixes.
+ *
+ * Only timing is exposed, never headers or bodies, and every route here is
+ * public and unauthenticated. Registered ahead of the cache middleware so it
+ * also lands on responses served straight from the colo cache, which return
+ * early and never reach the handler.
+ */
+app.use('*', async (c, next) => {
+  await next();
+  c.res.headers.set('Timing-Allow-Origin', '*');
+});
+
+/**
  * Serve GETs from the colo's cache before the handler runs.
  *
  * Every read route already sets `cache-control`, and that header was doing

@@ -1,0 +1,29 @@
+-- /orders/latest: let the status filter and the sort share one index.
+--
+-- The route filters `o.status = ?` and sorts `ORDER BY o.block_index DESC`,
+-- and only idx_orders_status(status) and idx_orders_block(block_index) existed
+-- -- so SQLite could serve one or the other, never both. Measured plan:
+--
+--   SEARCH o USING INDEX idx_orders_status (status=?)
+--   SEARCH ps USING INDEX sqlite_autoindex_pair_stats_1 (pair=?) LEFT-JOIN
+--   USE TEMP B-TREE FOR ORDER BY
+--
+-- That last line is the cost. `status='filled'` matches 259,993 of the
+-- 564,000 rows in the table, so the homepage's Recent Activity card was
+-- reading every one of them, doing a pair_stats lookup for each to evaluate
+-- the `hidden` filter, sorting the lot in a temp B-tree, and returning ten.
+-- Measured at 860,237 rows read and 358ms per call, 43% of the whole
+-- database's daily reads.
+--
+-- Column order follows the rule in EXCHANGE.md 3f: when the filtered set is
+-- far larger than the page, index the ORDER BY, because the win is stopping
+-- the scan early rather than eliminating rows. status leads because it is an
+-- equality; block_index follows so the index is already in sort order within
+-- each status and the temp B-tree disappears.
+--
+-- DESC is deliberate and not cosmetic. Every caller sorts newest-first, and a
+-- DESC index lets SQLite walk forward and stop at LIMIT. 'open' (1,779 rows)
+-- was never the problem and is unaffected; this is for filled/expired/
+-- cancelled, which are 557,000 rows between them.
+CREATE INDEX IF NOT EXISTS idx_orders_status_block
+  ON orders(status, block_index DESC);
