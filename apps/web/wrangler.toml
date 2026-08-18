@@ -7,9 +7,14 @@ compatibility_flags = ["nodejs_compat"]
 # highest per-request of any worker on the account) could be measured but not
 # explained, and the API's ~708 unhandled exceptions a day could be counted
 # but not read. Both sibling repos have had it since they were written.
+#
+# 2026-08-18: back down to 0.05. The exceptions this was raised for have been
+# at zero since 01:00 UTC, after months at a flat 24-38/hr. The analytics
+# count of scriptThrewException is NOT head-sampled, so a recurrence stays
+# fully visible either way; only the log bodies are now 1-in-20.
 [observability]
 enabled = true
-head_sampling_rate = 1
+head_sampling_rate = 0.05
 
 [assets]
 directory = ".open-next/assets"
