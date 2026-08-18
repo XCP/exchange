@@ -42,6 +42,13 @@ export interface OrderFilters {
   sort?: string
   offset?: number
   includeHidden?: boolean
+  /**
+   * Skip the exact result total. COUNT(*) over a status is O(matching rows)
+   * and cannot be indexed away -- 'filled' costs 519,986 rows read and 309ms
+   * to produce one number. Pass false from anywhere that shows a fixed number
+   * of rows and no pagination.
+   */
+  includeTotal?: boolean
 }
 
 function buildUrl(tab: OrderTab, filters?: OrderFilters): string {
@@ -83,6 +90,9 @@ function buildUrl(tab: OrderTab, filters?: OrderFilters): string {
   }
   if (filters?.includeHidden) {
     params.set('include_hidden', '1')
+  }
+  if (filters?.includeTotal === false) {
+    params.set('count', '0')
   }
 
   const qs = params.toString()

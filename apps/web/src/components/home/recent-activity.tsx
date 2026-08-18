@@ -202,8 +202,11 @@ function MempoolCard() {
 function OrdersCard() {
   const [tab, setTab] = useState<0 | 1>(0)
   const { satsMode } = useSatsMode()
-  const { orders: openOrders, isLoading: openLoading } = useLatestOrders('open')
-  const { orders: filledOrders, isLoading: filledLoading } = useLatestOrders('filled')
+  // includeTotal: false -- this card slices to CARD_COUNT and renders no
+  // pagination, so the exact total was 519,986 rows read per call to produce a
+  // number that is destructured away here.
+  const { orders: openOrders, isLoading: openLoading } = useLatestOrders('open', { includeTotal: false })
+  const { orders: filledOrders, isLoading: filledLoading } = useLatestOrders('filled', { includeTotal: false })
 
   const orders = tab === 0 ? openOrders.slice(0, CARD_COUNT) : filledOrders.slice(0, CARD_COUNT)
   const isLoading = tab === 0 ? openLoading : filledLoading

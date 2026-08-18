@@ -17,7 +17,7 @@ import { marketPath } from '@/utils/pairs'
  */
 export function AssetOrdersTable({ asset }: { asset: string }) {
   const { address } = useWallet()
-  const { orders, isLoading } = useLatestOrders('open', { asset })
+  const { orders, isLoading } = useLatestOrders('open', { asset, includeTotal: false })
   const { status, error, composeCancel } = useCompose()
   const cancelling = status === 'composing' || status === 'signing' || status === 'broadcasting'
 

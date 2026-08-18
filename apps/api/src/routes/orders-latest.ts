@@ -139,12 +139,34 @@ export async function handleOrdersLatest(
   const countQuery = `SELECT COUNT(*) as total FROM orders o LEFT JOIN pair_stats ps ON o.pair = ps.pair${whereClause}`;
 
   const dataStmt = db.prepare(dataQuery).bind(...binds, limit, offset);
-  const countStmt = binds.length > 0
-    ? db.prepare(countQuery).bind(...binds)
-    : db.prepare(countQuery);
 
-  const [dataResult, countResult] = await db.batch([dataStmt, countStmt]);
-  const total = (countResult.results[0] as { total: number })?.total ?? 0;
+  // `count=0` opts out of the exact total.
+  //
+  // COUNT(*) over a status is O(matching rows) and no index removes that --
+  // 'filled' matches 259,993 orders, and counting them through the pair_stats
+  // join to evaluate `hidden` reads 519,986 rows in 309ms to produce a single
+  // number. Once idx_orders_status_block dropped the data query to 20 rows,
+  // this became essentially the entire cost of the endpoint.
+  //
+  // The homepage's Recent Activity card asks for ten rows and renders no
+  // pagination, so it was paying half a million rows for a total it destructs
+  // away. The explore page does page and still needs it, so the exact count
+  // stays the default and the caller that does not want it says so.
+  const wantTotal = url.searchParams.get("count") !== "0";
+
+  let dataResult: D1Result;
+  let total: number | null = null;
+
+  if (wantTotal) {
+    const countStmt = binds.length > 0
+      ? db.prepare(countQuery).bind(...binds)
+      : db.prepare(countQuery);
+    const [data, countResult] = await db.batch([dataStmt, countStmt]);
+    dataResult = data;
+    total = (countResult.results[0] as { total: number })?.total ?? 0;
+  } else {
+    dataResult = await dataStmt.all();
+  }
 
   return Response.json(
     { orders: dataResult.results, total, limit, offset },
