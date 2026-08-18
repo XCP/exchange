@@ -4,14 +4,32 @@ const MEMPOOL_BASE = 'https://mempool.space/api'
 const COINGECKO_BASE = 'https://api.coingecko.com/api/v3'
 const XCPIO_PRICE_TICKER = 'https://api.xcp.io/v2/price/ticker'
 
+/**
+ * Every fetch in this file crosses to a third party we do not operate, and
+ * none of them had a deadline. A stalled host is the common failure, not a
+ * broken one -- mempool.space/v1/fees/precise was measured at 3,623ms in a
+ * normal page load -- and a fetch with no signal waits on the browser default,
+ * minutes away, with the UI showing a spinner the whole time.
+ *
+ * Worse, it made the fallbacks unreachable. xcpPriceFetcher catches a throw to
+ * fall back to CoinGecko and useCompose keeps a hardcoded fee rate for when
+ * mempool.space is unreachable, but neither runs if the request never settles.
+ * A timeout is what converts "slow" into the "failed" case they already
+ * handle.
+ */
+const THIRD_PARTY_TIMEOUT_MS = 8_000
+
+/** Shorter, so a primary that stalls still leaves room for its fallback. */
+const PRIMARY_WITH_FALLBACK_TIMEOUT_MS = 5_000
+
 async function jsonFetcher<T>(url: string): Promise<T> {
-  const res = await fetch(url)
+  const res = await fetch(url, { signal: AbortSignal.timeout(THIRD_PARTY_TIMEOUT_MS) })
   if (!res.ok) throw new Error(`Fetch error: ${res.status}`)
   return res.json()
 }
 
 async function textFetcher(url: string): Promise<string> {
-  const res = await fetch(url)
+  const res = await fetch(url, { signal: AbortSignal.timeout(THIRD_PARTY_TIMEOUT_MS) })
   if (!res.ok) throw new Error(`Fetch error: ${res.status}`)
   return res.text()
 }
@@ -79,7 +97,9 @@ export function useBtcPrice() {
 
 async function xcpPriceFetcher(): Promise<{ btc: number; usd: number }> {
   try {
-    const res = await fetch(XCPIO_PRICE_TICKER)
+    const res = await fetch(XCPIO_PRICE_TICKER, {
+      signal: AbortSignal.timeout(PRIMARY_WITH_FALLBACK_TIMEOUT_MS),
+    })
     if (res.ok) {
       const data: XcpIoPriceTicker = await res.json()
       const xcpUsd = data.result.xcp?.usd
@@ -98,7 +118,8 @@ async function xcpPriceFetcher(): Promise<{ btc: number; usd: number }> {
   } catch {}
   // Fallback to CoinGecko
   const res = await fetch(
-    `${COINGECKO_BASE}/simple/price?ids=counterparty&vs_currencies=btc,usd`
+    `${COINGECKO_BASE}/simple/price?ids=counterparty&vs_currencies=btc,usd`,
+    { signal: AbortSignal.timeout(THIRD_PARTY_TIMEOUT_MS) }
   )
   if (!res.ok) throw new Error(`Fetch error: ${res.status}`)
   const data: CoinGeckoXcp = await res.json()

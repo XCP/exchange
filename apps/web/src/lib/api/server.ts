@@ -1,12 +1,25 @@
 import type { PairStats } from '@/lib/hooks/usePairStats'
 import type { DispenserStats } from '@/lib/hooks/useDispenserStats'
 
+/**
+ * Deadline for server-side fetches.
+ *
+ * These run inside the Worker while rendering a page, so a third party that
+ * stalls does not just delay a widget -- it holds the request open, burns wall
+ * time against the invocation, and delays the HTML for everyone hitting that
+ * route until the ISR entry is written. Every one of these already returns
+ * null on failure; without a signal none of them ever reaches that branch when
+ * the failure is a stall rather than an error.
+ */
+const SSR_FETCH_TIMEOUT_MS = 8_000
+
 const DEX_API_BASE = process.env.NEXT_PUBLIC_DEX_API_BASE ?? 'https://api.xcpdex.com'
 const COUNTERPARTY_API_BASE = process.env.NEXT_PUBLIC_COUNTERPARTY_API_BASE ?? 'https://api.counterparty.io:4000/v2'
 
 export async function fetchPairStats(pairSlug: string): Promise<PairStats | null> {
   try {
     const res = await fetch(`${DEX_API_BASE}/pair/${pairSlug}`, {
+      signal: AbortSignal.timeout(SSR_FETCH_TIMEOUT_MS),
       next: { revalidate: 60 },
     })
     if (!res.ok) return null
@@ -29,7 +42,7 @@ export interface PoolMetaResult {
 /** One pool, for generateMetadata. Null on any failure — metadata must never 500 a page. */
 export async function fetchPool(lpAsset: string): Promise<PoolMetaResult | null> {
   try {
-    const res = await fetch(`${DEX_API_BASE}/pools/${lpAsset}`, { next: { revalidate: 300 } })
+    const res = await fetch(`${DEX_API_BASE}/pools/${lpAsset}`, { signal: AbortSignal.timeout(SSR_FETCH_TIMEOUT_MS), next: { revalidate: 300 } })
     if (!res.ok) return null
     const body = await res.json()
     return (body?.pool ?? body) as PoolMetaResult
@@ -53,7 +66,7 @@ export interface CoinPrices {
  */
 export async function fetchCoinPrices(): Promise<CoinPrices | null> {
   try {
-    const res = await fetch('https://api.xcp.io/v2/price', { next: { revalidate: 900 } })
+    const res = await fetch('https://api.xcp.io/v2/price', { signal: AbortSignal.timeout(SSR_FETCH_TIMEOUT_MS), next: { revalidate: 900 } })
     if (!res.ok) return null
     const r = (await res.json())?.result
     const last = r?.history?.[r.history.length - 1]
@@ -70,6 +83,7 @@ export async function fetchCoinPrices(): Promise<CoinPrices | null> {
 export async function fetchDispenserStats(asset: string): Promise<DispenserStats | null> {
   try {
     const res = await fetch(`${DEX_API_BASE}/dispenser-stats/${asset}`, {
+      signal: AbortSignal.timeout(SSR_FETCH_TIMEOUT_MS),
       next: { revalidate: 300 },
     })
     if (!res.ok) return null
@@ -103,6 +117,7 @@ export interface AssetInfoResult {
 export async function assetExists(asset: string): Promise<'yes' | 'no' | 'unknown'> {
   try {
     const res = await fetch(`${COUNTERPARTY_API_BASE}/assets/${asset}?verbose=true`, {
+      signal: AbortSignal.timeout(SSR_FETCH_TIMEOUT_MS),
       next: { revalidate: 3600 },
     })
     if (res.status === 404) return 'no'
@@ -120,6 +135,7 @@ export async function assetExists(asset: string): Promise<'yes' | 'no' | 'unknow
 export async function fetchAssetInfo(asset: string): Promise<AssetInfoResult | null> {
   try {
     const res = await fetch(`${COUNTERPARTY_API_BASE}/assets/${asset}?verbose=true`, {
+      signal: AbortSignal.timeout(SSR_FETCH_TIMEOUT_MS),
       next: { revalidate: 3600 },
     })
     if (!res.ok) return null

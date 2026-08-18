@@ -14,8 +14,24 @@ import { parseJsonLossless } from '@/lib/api/lossless-json'
  * number. Anything doing arithmetic on such a field should go through
  * utils/numeric, which is exact with strings.
  */
+/**
+ * Deadline for every SWR read in the app.
+ *
+ * This fetcher is shared by use-dex-swr (all of api.xcpdex.com) and by
+ * useBtcBalance (mempool.space), and had no deadline on either. A fetch with
+ * no signal waits on the browser default, minutes away, so a host that stalls
+ * rather than fails leaves the component spinning with no error for SWR to
+ * retry from or for an error branch to render.
+ *
+ * 10s is well clear of the real numbers -- the slowest measured api.xcpdex.com
+ * response was 897ms before the orders index, and 93ms after -- so this only
+ * fires when something is genuinely wrong, and turns it into a normal SWR
+ * error that retries on the next interval.
+ */
+const FETCH_TIMEOUT_MS = 10_000
+
 export async function fetcher<T>(url: string): Promise<T> {
-  const res = await fetch(url)
+  const res = await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) })
   if (!res.ok) {
     throw new Error(`API error: ${res.status} ${res.statusText}`)
   }
