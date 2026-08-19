@@ -49,7 +49,7 @@ interface Quote {
   pool_output: number
   book_output: number
   book_orders_matched?: number
-  /** Input left unfilled — non-zero means the book ran out before your size did. */
+  /** Input not consumed by the quote, including deliberately refunded pool rounding dust. */
   give_remaining?: number
   /** Output over the amount ASKED for, so it understates a partial fill. Not used. */
   effective_price?: number
@@ -169,9 +169,12 @@ export function SwapWidget({
   const noMarket = !samePair && !!quote?.message
   // Core knows the pair but couldn't fill anything at this size.
   const noLiquidity = !samePair && !quote?.message && !!quote && outRaw === 0 && giveRaw > 0
-  // Book ran dry mid-fill: the rest would rest as an order rather than swap.
+  // A book-only route can genuinely run dry mid-fill. When the pool contributes,
+  // Core deliberately trims the input to the cheapest quantity that produces the
+  // same integer output; its tiny give_remaining is refunded rounding dust, not a
+  // liquidity shortfall (for example 0.00001164 token on a one-token live quote).
   const unfilledRaw = quote?.give_remaining ?? 0
-  const partial = outRaw > 0 && unfilledRaw > 0
+  const partial = outRaw > 0 && unfilledRaw > 0 && (quote?.pool_output ?? 0) === 0
   const filledRaw = Math.max(0, giveRaw - unfilledRaw)
   const blocked = samePair || noMarket || noLiquidity
 
