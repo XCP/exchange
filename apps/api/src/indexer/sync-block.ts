@@ -1256,7 +1256,10 @@ export async function syncBlocks(
         console.error(
           `Block ${blockIdx}: failed to process ${event.event} (event_index=${event.event_index}):`, e
         );
-        // Skip this event, continue processing the rest of the block
+        // Never advance the block checkpoint past a relevant event we failed
+        // to understand. Retrying an idempotent block is recoverable; silently
+        // omitting an order, fill, dispense, or pool mutation is not.
+        throw e;
       }
     }
 

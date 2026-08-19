@@ -1,8 +1,10 @@
 /** Abort signal timeout for Counterparty API requests (ms) */
 export const API_TIMEOUT_MS = 15000;
 
-/** Advisory lock staleness threshold (seconds) */
-export const LOCK_TIMEOUT_SECONDS = 120;
+/** Advisory lock staleness threshold (seconds). Longer than the Worker's
+ * 300-second CPU allowance so a two-minute cron tick cannot steal a lease
+ * from an invocation that is still processing a dense block. */
+export const LOCK_TIMEOUT_SECONDS = 15 * 60;
 
 /** Safety ceiling for cursor pagination loops */
 export const MAX_PAGINATION_PAGES = 500;
