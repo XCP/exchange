@@ -10,7 +10,8 @@ import { ConnectCTA } from '@/components/connect-cta'
 import { useWallet } from '@/lib/wallet/wallet-context'
 import { useCompose } from '@/lib/wallet/useCompose'
 import { useBalance } from '@/lib/hooks/useBalance'
-import { usePoolAssetInfo, usePoolByPair } from '@/lib/hooks/usePools'
+import { usePoolByPair } from '@/lib/hooks/usePools'
+import { useAssetInfo } from '@/lib/hooks/useAssetInfo'
 import { useDebounced } from '@/lib/hooks/useDebounced'
 import { useXcpPrice, useBtcPrice, useFeeRate } from '@/lib/hooks/useNetworkInfo'
 import { fetcher, counterpartyUrl } from '@/lib/api/client'
@@ -122,10 +123,24 @@ export function SwapWidget({
   // side — a pool can pair any two assets, and until a flag arrives the
   // conversion reports unknown and the form refuses to submit. A wrong guess
   // here is a 100-million-fold error, not a rounding one.
-  const { info: giveInfo } = usePoolAssetInfo(giveAsset || null)
-  const { info: getInfo } = usePoolAssetInfo(getAsset || null)
+  const {
+    info: giveInfo,
+    error: giveInfoError,
+    notFound: giveInfoNotFound,
+  } = useAssetInfo(giveAsset || null)
+  const {
+    info: getInfo,
+    error: getInfoError,
+    notFound: getInfoNotFound,
+  } = useAssetInfo(getAsset || null)
   const giveDivisible: boolean | undefined = giveInfo?.divisible
   const getDivisible: boolean | undefined = getInfo?.divisible
+  const detailsUnavailableAsset =
+    giveAsset && (!!giveInfoError || giveInfoNotFound)
+      ? giveAsset
+      : getAsset && (!!getInfoError || getInfoNotFound)
+        ? getAsset
+        : null
 
   const { balance, balanceNormalized } = useBalance(address, giveAsset)
   const amountNum = num(amount)
@@ -168,7 +183,8 @@ export function SwapWidget({
   const samePair = !incomplete && giveAsset === getAsset
   const noMarket = !samePair && !!quote?.message
   // Core knows the pair but couldn't fill anything at this size.
-  const noLiquidity = !samePair && !quote?.message && !!quote && outRaw === 0 && giveRaw > 0
+  const noLiquidity =
+    !detailsUnavailableAsset && !samePair && !quote?.message && !!quote && outRaw === 0 && giveRaw > 0
   // A book-only route can genuinely run dry mid-fill. When the pool contributes,
   // Core deliberately trims the input to the cheapest quantity that produces the
   // same integer output; its tiny give_remaining is refunded rounding dust, not a
@@ -480,7 +496,18 @@ export function SwapWidget({
         )}
 
         <PanelSection className="space-y-2">
-          {amountError && <FormNotice tone="error">{rawErrorMessage(amountError, giveAsset)}</FormNotice>}
+          {amountError && (
+            <FormNotice tone="error">
+              {amountError === 'unknown-divisibility' && detailsUnavailableAsset === giveAsset
+                ? `Couldn't load ${giveAsset}'s details. Check the asset name or try again.`
+                : rawErrorMessage(amountError, giveAsset)}
+            </FormNotice>
+          )}
+          {detailsUnavailableAsset && detailsUnavailableAsset !== giveAsset && (
+            <FormNotice tone="error">
+              Couldn&apos;t load {detailsUnavailableAsset}&apos;s details. Check the asset name or try again.
+            </FormNotice>
+          )}
           {samePair && (
             <FormNotice tone="error">
               {giveLabel} is both sides of this trade. Pick a different asset to swap it against.

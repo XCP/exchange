@@ -211,17 +211,6 @@ export interface AddressPoolSummary extends PoolSummary {
   implied_fees_b: number
 }
 
-export interface PoolAssetInfo {
-  asset: string
-  divisible: boolean
-  supply: number
-  supply_normalized: string
-}
-
-interface CounterpartyAssetResponse {
-  result: PoolAssetInfo
-}
-
 export interface PoolDepositQuote {
   first_deposit: boolean
   asset_a: string
@@ -447,19 +436,6 @@ export function useAddressPools(address: string | null) {
 
   return {
     pools: data?.pools ?? [],
-    error,
-    isLoading,
-  }
-}
-
-export function usePoolAssetInfo(asset: string | null) {
-  const { data, error, isLoading } = useSWR<CounterpartyAssetResponse>(
-    asset ? counterpartyUrl(`/assets/${encodeURIComponent(asset)}?verbose=true`) : null,
-    fetcher,
-  )
-
-  return {
-    info: data?.result ?? null,
     error,
     isLoading,
   }

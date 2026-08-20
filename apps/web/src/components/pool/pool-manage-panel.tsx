@@ -4,8 +4,8 @@ import { useState } from 'react'
 import { useBalance } from '@/lib/hooks/useBalance'
 import { useCompose } from '@/lib/wallet/useCompose'
 import { useConnectFlow } from '@/lib/wallet/useConnectFlow'
+import { useAssetInfo } from '@/lib/hooks/useAssetInfo'
 import {
-  usePoolAssetInfo,
   usePoolDepositQuote,
   usePoolWithdrawQuote,
   type PoolAddressPosition,
@@ -156,8 +156,16 @@ export function PoolManagePanel({
    * on withdraw directly, because those already name a pool.
    */
   const tab: PoolManageTab = pool ? askedTab : 'deposit'
-  const { info: assetAInfo } = usePoolAssetInfo(assetA || null)
-  const { info: assetBInfo } = usePoolAssetInfo(assetB)
+  const {
+    info: assetAInfo,
+    error: assetAInfoError,
+    notFound: assetAInfoNotFound,
+  } = useAssetInfo(assetA || null)
+  const {
+    info: assetBInfo,
+    error: assetBInfoError,
+    notFound: assetBInfoNotFound,
+  } = useAssetInfo(assetB)
   const { balance: balanceA } = useBalance(address, assetA || null)
   const { balance: balanceB } = useBalance(address, assetB)
   const { status, txid, error, composePoolDeposit, composePoolWithdraw, reset } = useCompose()
@@ -167,6 +175,12 @@ export function PoolManagePanel({
   // assumed divisible, which would be a 1e8 error on an indivisible one.
   const assetADivisible: boolean | undefined = assetAInfo?.divisible
   const assetBDivisible: boolean | undefined = assetBInfo?.divisible
+  const detailsUnavailableAsset =
+    assetA && (!!assetAInfoError || assetAInfoNotFound)
+      ? assetA
+      : assetB && (!!assetBInfoError || assetBInfoNotFound)
+        ? assetB
+        : null
   const depositAResult = toRawAmount(depositA, assetADivisible)
   const depositARaw = depositAResult?.raw ?? 0
   const { quote: depositQuote, isLoading: depositQuoteLoading } = usePoolDepositQuote(
@@ -487,6 +501,11 @@ export function PoolManagePanel({
             )}
 
             <PanelSection className="space-y-2">
+              {detailsUnavailableAsset && (
+                <FormNotice tone="error">
+                  Couldn&apos;t load {detailsUnavailableAsset}&apos;s details. Check the asset name or try again.
+                </FormNotice>
+              )}
               {status === 'error' && error && <FormNotice tone="error">{error}</FormNotice>}
               {status === 'confirmed' && txid && <TxBroadcast txid={txid} onReset={reset} />}
               {cta(pool ? 'Deposit liquidity' : 'Create pool & deposit', !depositValid, submitDeposit)}

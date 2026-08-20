@@ -4,7 +4,8 @@ import { use, useState, useMemo } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
 import useSWR from 'swr'
-import { fetcher, counterpartyUrl, dexUrl } from '@/lib/api/client'
+import { fetcher, dexUrl } from '@/lib/api/client'
+import { useAssetInfo } from '@/lib/hooks/useAssetInfo'
 import { useAllAssetMarkets, type PairEntry } from '@/lib/hooks/useAssetMarkets'
 import { useAssetDispensers } from '@/lib/hooks/useAssetDispensers'
 import { useHolders } from '@/lib/hooks/useHolders'
@@ -28,13 +29,6 @@ import { marketPath } from '@/utils/pairs'
 
 const ActivityChart = dynamic(() => import('@/components/activity-chart').then(m => ({ default: m.ActivityChart })), { ssr: false })
 
-interface AssetInfo {
-  asset: string; asset_longname: string | null; description: string
-  issuer: string | null; divisible: boolean; locked: boolean
-  supply: number; supply_normalized: string; owner: string | null
-  first_issuance_block_index: number | null; first_issuance_block_time: number | null
-}
-
 interface RankEntry {
   metric: string; label: string; value: number
   rank: number; total: number; percentile: number
@@ -50,13 +44,6 @@ interface RankingsData {
   asset: string; rankings: RankEntry[]; quote_pair_count: number
   dex: DexAgg | null
   collection: { slug: string; name: string; total_assets: number } | null
-}
-
-function useAssetInfo(asset: string) {
-  const { data, isLoading } = useSWR<{ result: AssetInfo }>(
-    asset ? counterpartyUrl(`/assets/${asset}?verbose=true`) : null, fetcher,
-  )
-  return { info: data?.result ?? null, isLoading }
 }
 
 function useRankings(asset: string) {

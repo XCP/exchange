@@ -1,27 +1,9 @@
 import useSWR from 'swr'
 import { fetcher, dexUrl, counterpartyUrl } from '@/lib/api/client'
 import { useDexSWR } from '@/lib/api/use-dex-swr'
+import { useAssetInfo, type AssetInfo } from '@/lib/hooks/useAssetInfo'
 import type { CounterpartyResponse } from '@/types/api'
 import type { PairStats } from './usePairStats'
-
-interface CounterpartyAssetInfo {
-  asset: string
-  asset_longname: string | null
-  description: string
-  issuer: string | null
-  divisible: boolean
-  locked: boolean
-  /** Above 2^53 this arrives as a string — see lib/api/lossless-json. */
-  supply: number | string
-  supply_normalized: string
-  owner: string | null
-  first_issuance_block_index: number | null
-  first_issuance_block_time: number | null
-}
-
-interface CounterpartyAssetResponse {
-  result: CounterpartyAssetInfo
-}
 
 export interface TradingPairData {
   // From DEX API /pair
@@ -57,7 +39,7 @@ export interface TradingPairData {
   all_time_high: number | null
   all_time_low: number | null
   // From CP API /assets
-  asset_info: CounterpartyAssetInfo | null
+  asset_info: AssetInfo | null
   holders_count: number | null
 }
 
@@ -68,10 +50,7 @@ export function useTradingPair(pairSlug: string) {
     pairSlug ? dexUrl(`/pair/${pairSlug}`) : null
   )
 
-  const { data: assetData, error: assetError, isLoading: assetLoading } = useSWR<CounterpartyAssetResponse>(
-    baseSymbol ? counterpartyUrl(`/assets/${baseSymbol}?verbose=true`) : null,
-    fetcher,
-  )
+  const { info: assetInfo, error: assetError, isLoading: assetLoading } = useAssetInfo(baseSymbol || null)
 
   const { data: holdersData, error: holdersError } = useSWR<CounterpartyResponse<unknown[]>>(
     baseSymbol ? counterpartyUrl(`/assets/${baseSymbol}/balances?limit=1`) : null,
@@ -80,7 +59,7 @@ export function useTradingPair(pairSlug: string) {
 
   const data: TradingPairData | undefined = pairStats ? {
     ...pairStats,
-    asset_info: assetData?.result ?? null,
+    asset_info: assetInfo,
     holders_count: holdersData?.result_count ?? null,
   } : undefined
 

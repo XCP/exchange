@@ -8,7 +8,8 @@ import { ConnectCTA } from '@/components/connect-cta'
 import { useWallet } from '@/lib/wallet/wallet-context'
 import { useCompose } from '@/lib/wallet/useCompose'
 import { useBalance } from '@/lib/hooks/useBalance'
-import { useTradingPair } from '@/lib/hooks/useTradingPair'
+import { useAssetInfo } from '@/lib/hooks/useAssetInfo'
+import { usePairStats } from '@/lib/hooks/usePairStats'
 import { useOrderBook } from '@/lib/hooks/useOrderBook'
 import { OrderBookLadder } from '@/components/order-book-ladder'
 import { useXcpPrice } from '@/lib/hooks/useNetworkInfo'
@@ -88,20 +89,31 @@ export function LimitWidget({
   /** Which leg the asset picker is choosing for. */
   const [selectorLeg, setSelectorLeg] = useState<'base' | 'quote' | null>(null)
 
-  const { data: pairData } = useTradingPair(asset ? `${asset}_${quoteAsset}` : '')
-  // The quote asset's own divisibility, fetched rather than assumed — it is
-  // only XCP by default, and a non-XCP quote (PEPECASH, BITCRYSTALS…) can be
-  // indivisible. Hardcoding this to true was a 1e8 error waiting for the
-  // first non-XCP market.
-  const { data: quotePairData } = useTradingPair(
-    quoteAsset && quoteAsset !== 'XCP' ? `${quoteAsset}_XCP` : '',
-  )
+  // A missing pair is a normal state here: this order may create it. Read the
+  // optional last price without the combined market hook's asset/holder calls,
+  // and do not retry an expected 404 in the background.
+  const { data: pairData } = usePairStats(asset ? `${asset}_${quoteAsset}` : '', {
+    shouldRetryOnError: false,
+  })
+  // Divisibility belongs to each asset, not to a market. A limit order may be
+  // the first event that creates a pair, so a 404 from /pair is expected and
+  // must not prevent either leg from resolving.
+  const {
+    info: baseInfo,
+    error: baseInfoError,
+    notFound: baseInfoNotFound,
+  } = useAssetInfo(asset || null)
+  const {
+    info: quoteInfo,
+    error: quoteInfoError,
+    notFound: quoteInfoNotFound,
+  } = useAssetInfo(quoteAsset && quoteAsset !== 'XCP' ? quoteAsset : null)
   // useOrderBook takes the display market ("BASE/QUOTE") and reverses it
   // itself for core — the underscore slug is the site's own URL format.
   const { bids, asks, spread, spreadPct, isLoading: bookLoading } = useOrderBook(asset ? `${asset}/${quoteAsset}` : '')
-  const baseDivisible: boolean | undefined = pairData?.asset_info?.divisible
+  const baseDivisible: boolean | undefined = baseInfo?.divisible
   const quoteDivisible: boolean | undefined =
-    quoteAsset === 'XCP' ? true : quotePairData?.asset_info?.divisible
+    quoteAsset === 'XCP' ? true : quoteInfo?.divisible
 
   /**
    * An asset can't be its own market. Reachable straight from the URL —
@@ -133,6 +145,10 @@ export function LimitWidget({
       : !totalResult.ok && price.trim() !== '' && amount.trim() !== ''
         ? { error: totalResult.error, asset: quoteAsset }
         : null
+  const inputDetailsUnavailable =
+    inputError?.error === 'unknown-divisibility' &&
+    ((inputError.asset === asset && (!!baseInfoError || baseInfoNotFound)) ||
+      (inputError.asset === quoteAsset && (!!quoteInfoError || quoteInfoNotFound)))
 
   const busy = txStatus === 'composing' || txStatus === 'signing' || txStatus === 'broadcasting'
   const insufficient = spendAmount > balance
@@ -348,7 +364,9 @@ export function LimitWidget({
           )}
           {inputError && (
             <FormNotice tone="error">
-              {rawErrorMessage(inputError.error, inputError.asset)}
+              {inputDetailsUnavailable
+                ? `Couldn't load ${inputError.asset}'s details. Check the asset name or try again.`
+                : rawErrorMessage(inputError.error, inputError.asset)}
             </FormNotice>
           )}
           {/* An indivisible quote asset has no fractions to round into, so a

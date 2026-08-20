@@ -5,7 +5,7 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { useUtxoBalances } from '@/lib/hooks/useUtxoBalances'
 import { useCompose } from '@/lib/wallet/useCompose'
-import { usePoolAssetInfo } from '@/lib/hooks/usePools'
+import { useAssetInfo } from '@/lib/hooks/useAssetInfo'
 import { toBase, sanitizeAmountInput, rawErrorMessage } from '@/utils/numeric'
 import { formatAmount } from '@/utils/format-amount'
 import { XCP_IMG_BASE, COMPOSE_STATUS_LABELS } from '@/utils/constants'
@@ -164,7 +164,7 @@ function AttachModal({
   // Attach had NO divisibility handling: parseInt on the typed quantity meant
   // "1" of a divisible asset attached one base unit — 0.00000001 — rather
   // than one token. The asset's own flag decides the scale.
-  const { info } = usePoolAssetInfo(asset || null)
+  const { info, error: infoError, notFound: infoNotFound } = useAssetInfo(asset || null)
   const divisible: boolean | undefined = info?.divisible
   const quantityResult = toBase(quantity, divisible)
   const quantityError = !quantityResult.ok && quantity.trim() !== '' ? quantityResult.error : null
@@ -217,7 +217,13 @@ function AttachModal({
               className="w-full bg-zinc-900 border border-zinc-800 rounded-sm px-2.5 py-1.5 text-xs text-zinc-200 placeholder-zinc-700 font-mono focus:outline-none focus:border-zinc-600"
             />
             {quantityError && (
-              <p className="mt-1 text-[10px] text-amber-400">{rawErrorMessage(quantityError, asset)}</p>
+              <p className="mt-1 text-[10px] text-amber-400">
+                {quantityError === 'unknown-divisibility' && infoNotFound
+                  ? `${asset} was not found.`
+                  : quantityError === 'unknown-divisibility' && infoError
+                    ? `Couldn't load ${asset}'s details. Try again.`
+                    : rawErrorMessage(quantityError, asset)}
+              </p>
             )}
           </div>
 

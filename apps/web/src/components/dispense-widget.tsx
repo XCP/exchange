@@ -9,7 +9,7 @@ import { ConnectCTA } from '@/components/connect-cta'
 import { useWallet } from '@/lib/wallet/wallet-context'
 import { useBalance } from '@/lib/hooks/useBalance'
 import { useCompose } from '@/lib/wallet/useCompose'
-import { useTradingPair } from '@/lib/hooks/useTradingPair'
+import { useAssetInfo } from '@/lib/hooks/useAssetInfo'
 import { useAddressDispensers } from '@/lib/hooks/useAssetDispensers'
 import { useMempoolDispenses } from '@/lib/hooks/useMempool'
 import { useBtcBalance } from '@/lib/hooks/useBtcBalance'
@@ -92,7 +92,15 @@ export function DispenseWidget({
   const [tokensInput, setTokensInput] = useState('')
   const [selectorOpen, setSelectorOpen] = useState(false)
 
-  const { data: pairData } = useTradingPair(asset ? `${asset}_BTC` : '')
+  const {
+    info: assetInfo,
+    error: assetInfoError,
+    notFound: assetInfoNotFound,
+  } = useAssetInfo(asset || null)
+  // Existing dispensers already carry verbose asset info, so buying can stay
+  // usable through a transient metadata outage. Creating the first dispenser
+  // has no such fallback and waits for the asset endpoint, never for a market.
+  const divisible = assetInfo?.divisible ?? dispensers[0]?.asset_info?.divisible
 
   /**
    * Routing: cheapest dispenser that can fill the whole order.
@@ -260,7 +268,8 @@ export function DispenseWidget({
       <CreateDispenser
         asset={asset}
         assetLabel={assetLabel}
-        divisible={pairData?.asset_info?.divisible}
+        divisible={divisible}
+        detailsUnavailable={!!assetInfoError || assetInfoNotFound}
         onAssetChange={onAssetChange}
         dispensers={dispensers}
         dispensersLoading={dispensersLoading}
@@ -283,7 +292,7 @@ export function DispenseWidget({
             <AmountField
               label="You receive"
               value={tokensInput}
-              onChange={(v) => setTokensInput(sanitizeAmountInput(v, pairData?.asset_info?.divisible))}
+              onChange={(v) => setTokensInput(sanitizeAmountInput(v, divisible))}
               chip={
                 <AssetChip
                   asset={asset}
@@ -520,6 +529,7 @@ function CreateDispenser({
   asset,
   assetLabel,
   divisible,
+  detailsUnavailable,
   feeRate,
   onAssetChange,
   dispensers,
@@ -534,6 +544,7 @@ function CreateDispenser({
   asset: string
   assetLabel: string
   divisible: boolean | undefined
+  detailsUnavailable: boolean
   onAssetChange?: (asset: string, longname: string | null) => void
   dispensers: Dispenser[]
   dispensersLoading: boolean
@@ -723,7 +734,9 @@ function CreateDispenser({
           <PanelSection className="space-y-2">
             {inputError && (
               <FormNotice tone="error">
-                {rawErrorMessage(inputError, asset)}
+                {inputError === 'unknown-divisibility' && detailsUnavailable
+                  ? `Couldn't load ${asset}'s details. Check the asset name or try again.`
+                  : rawErrorMessage(inputError, asset)}
               </FormNotice>
             )}
             {overBalance && (
