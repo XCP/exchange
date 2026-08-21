@@ -561,7 +561,14 @@ function CreateDispenser({
   const [price, setPrice] = useState('')
   const [escrow, setEscrow] = useState('')
   const [selectorOpen, setSelectorOpen] = useState(false)
-  const { balance, balanceNormalized } = useBalance(address, asset)
+  const {
+    balance,
+    balanceNormalized,
+    balanceError,
+    balanceLoading,
+    refreshBalance,
+  } = useBalance(address, asset)
+  const balanceKnown = balance !== null && balanceNormalized !== null
 
   const priceNum = num(price)
   const escrowNum = num(escrow)
@@ -638,7 +645,7 @@ function CreateDispenser({
   }
 
   const busy = txStatus === 'composing' || txStatus === 'signing' || txStatus === 'broadcasting'
-  const overBalance = escrowNum > balance
+  const overBalance = balanceKnown && escrowNum > balance
   const ready =
     lotResult.ok &&
     escrowResult.ok &&
@@ -646,6 +653,7 @@ function CreateDispenser({
     rateResult.ok &&
     rateSats > 0 &&
     priceNum > 0 &&
+    balanceKnown &&
     !overBalance &&
     !escrowBelowOneLot &&
     !busy
@@ -718,13 +726,17 @@ function CreateDispenser({
                 />
               }
               meta={
-                address ? (
+                address && balanceKnown ? (
                   <button
                     onClick={() => setEscrow(balanceNormalized)}
                     className="text-xs text-zinc-500 transition-colors hover:text-zinc-300"
                   >
                     Available: {formatAmount(balance)}
                   </button>
+                ) : address ? (
+                  <span className="text-xs text-zinc-500">
+                    Available: {balanceLoading ? 'loading…' : 'unavailable'}
+                  </span>
                 ) : undefined
               }
               sub={dispenses > 0 ? `${dispenses} dispense${dispenses === 1 ? '' : 's'}` : undefined}
@@ -737,6 +749,15 @@ function CreateDispenser({
                 {inputError === 'unknown-divisibility' && detailsUnavailable
                   ? `Couldn't load ${asset}'s details. Check the asset name or try again.`
                   : rawErrorMessage(inputError, asset)}
+              </FormNotice>
+            )}
+            {balanceError && (
+              <FormNotice tone="error">
+                Couldn&apos;t load your spendable {assetLabel} balance.{' '}
+                <button className="underline" onClick={() => void refreshBalance()}>
+                  Retry
+                </button>
+                .
               </FormNotice>
             )}
             {overBalance && (
@@ -769,7 +790,13 @@ function CreateDispenser({
             {txStatus === 'confirmed' && txid && <TxBroadcast txid={txid} onReset={reset} />}
 
             <ConnectCTA onClick={submit} disabled={!ready} tone="sell">
-              {busy ? COMPOSE_STATUS_LABELS[txStatus] ?? 'Working…' : 'Open dispenser'}
+              {busy
+                ? COMPOSE_STATUS_LABELS[txStatus] ?? 'Working…'
+                : address && !balanceKnown
+                  ? balanceError
+                    ? 'Balance unavailable'
+                    : 'Checking balance…'
+                  : 'Open dispenser'}
             </ConnectCTA>
             <p className="text-center text-[11px] text-zinc-500">
               Escrowed tokens leave your balance until the dispenser is emptied or closed.

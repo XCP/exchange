@@ -166,8 +166,20 @@ export function PoolManagePanel({
     error: assetBInfoError,
     notFound: assetBInfoNotFound,
   } = useAssetInfo(assetB)
-  const { balance: balanceA } = useBalance(address, assetA || null)
-  const { balance: balanceB } = useBalance(address, assetB)
+  const {
+    balance: balanceA,
+    balanceNormalized: balanceANormalized,
+    balanceError: balanceAError,
+    balanceLoading: balanceALoading,
+    refreshBalance: refreshBalanceA,
+  } = useBalance(address, assetA || null)
+  const {
+    balance: balanceB,
+    balanceNormalized: balanceBNormalized,
+    balanceError: balanceBError,
+    balanceLoading: balanceBLoading,
+    refreshBalance: refreshBalanceB,
+  } = useBalance(address, assetB)
   const { status, txid, error, composePoolDeposit, composePoolWithdraw, reset } = useCompose()
   const { xcpUsd } = useXcpPrice()
 
@@ -283,8 +295,20 @@ export function PoolManagePanel({
    * the creation.
    */
   const canonicalA = depositQuote?.asset_a ?? pool?.asset_a ?? null
+  const balanceAReady = balanceA !== null && balanceANormalized !== null
+  const balanceBReady = balanceB !== null && balanceBNormalized !== null
+  const depositAOverBalance = balanceAReady && num(depositA) > balanceA
+  const depositBOverBalance = balanceBReady && num(depositBValue) > balanceB
   const depositValid =
-    !!canonicalA && !!depositAResult && !!depositBResult && depositARaw > 0 && depositBRaw > 0
+    !!canonicalA &&
+    !!depositAResult &&
+    !!depositBResult &&
+    depositARaw > 0 &&
+    depositBRaw > 0 &&
+    balanceAReady &&
+    balanceBReady &&
+    !depositAOverBalance &&
+    !depositBOverBalance
   const withdrawValid = !!pool && withdrawRaw > 0 && withdrawRaw <= lpBalanceRaw
 
   const submitDeposit = () => {
@@ -372,24 +396,27 @@ export function PoolManagePanel({
 
   /** Fiat left, balance right — the sub-row rhythm every other form uses. */
   const balanceLine = (
-    balance: number,
+    balance: number | null,
     onMax: (() => void) | null,
     usd = '',
     asset: string | null = '',
+    loading = false,
   ) => (
     <div className="flex items-center justify-between gap-2">
       <span>{usd}</span>
       {/* No asset, no balance. "Balance: 0" on an unpicked leg reads as a
           fact about your wallet rather than about the empty slot. */}
-      {asset !== null &&
-        address &&
-        (onMax ? (
+      {asset !== null && address && balance === null ? (
+        <span>Balance: {loading ? 'loading…' : 'unavailable'}</span>
+      ) : asset !== null && address && balance !== null ? (
+        onMax ? (
           <button onClick={onMax} className="transition-colors hover:text-zinc-300">
             Balance: {formatAmount(balance)}
           </button>
         ) : (
           <span>Balance: {formatAmount(balance)}</span>
-        ))}
+        )
+      ) : null}
     </div>
   )
 
@@ -435,7 +462,13 @@ export function PoolManagePanel({
                 value={depositA}
                 onChange={(v) => setDepositA(sanitizeAmountInput(v, assetADivisible))}
                 chip={<AssetChip asset={assetA} onClick={onSelectAsset && (() => onSelectAsset('a'))} />}
-                sub={balanceLine(balanceA, () => setDepositA(String(balanceA)), usdText('a'))}
+                sub={balanceLine(
+                  balanceA,
+                  balanceANormalized === null ? null : () => setDepositA(balanceANormalized),
+                  usdText('a'),
+                  '',
+                  balanceALoading,
+                )}
               />
             </PanelSection>
 
@@ -466,9 +499,15 @@ export function PoolManagePanel({
                 }
                 sub={
                   isFirstDeposit
-                    ? balanceLine(balanceB, () => setDepositB(String(balanceB)), usdText('b'), assetB)
+                    ? balanceLine(
+                        balanceB,
+                        balanceBNormalized === null ? null : () => setDepositB(balanceBNormalized),
+                        usdText('b'),
+                        assetB,
+                        balanceBLoading,
+                      )
                     : // Not click-to-fill: the ratio owns this field.
-                      balanceLine(balanceB, null, usdText('b'), assetB)
+                      balanceLine(balanceB, null, usdText('b'), assetB, balanceBLoading)
                 }
               />
             </PanelSection>
@@ -504,6 +543,23 @@ export function PoolManagePanel({
               {detailsUnavailableAsset && (
                 <FormNotice tone="error">
                   Couldn&apos;t load {detailsUnavailableAsset}&apos;s details. Check the asset name or try again.
+                </FormNotice>
+              )}
+              {(balanceAError || balanceBError) && (
+                <FormNotice tone="error">
+                  Couldn&apos;t load your spendable {balanceAError ? assetA : assetB} balance.{' '}
+                  <button
+                    className="underline"
+                    onClick={() => void (balanceAError ? refreshBalanceA() : refreshBalanceB())}
+                  >
+                    Retry
+                  </button>
+                  .
+                </FormNotice>
+              )}
+              {(depositAOverBalance || depositBOverBalance) && (
+                <FormNotice tone="error">
+                  Not enough {depositAOverBalance ? assetA : assetB} for this deposit.
                 </FormNotice>
               )}
               {status === 'error' && error && <FormNotice tone="error">{error}</FormNotice>}

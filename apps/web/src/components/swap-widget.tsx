@@ -142,7 +142,14 @@ export function SwapWidget({
         ? getAsset
         : null
 
-  const { balance, balanceNormalized } = useBalance(address, giveAsset)
+  const {
+    balance,
+    balanceNormalized,
+    balanceError,
+    balanceLoading,
+    refreshBalance,
+  } = useBalance(address, giveAsset)
+  const balanceKnown = balance !== null && balanceNormalized !== null
   const amountNum = num(amount)
   // Each leg converts with its own flag — a div/indiv pair uses both scales.
   const giveResult = toBase(amount, giveDivisible)
@@ -195,7 +202,7 @@ export function SwapWidget({
   const blocked = samePair || noMarket || noLiquidity
 
   const busy = txStatus === 'composing' || txStatus === 'signing' || txStatus === 'broadcasting'
-  const insufficient = amountNum > balance
+  const insufficient = balanceKnown && amountNum > balance
   const ready =
     !!giveAsset &&
     !!getAsset &&
@@ -204,6 +211,7 @@ export function SwapWidget({
     outRaw > 0 &&
     getDivisible !== undefined &&
     !busy &&
+    balanceKnown &&
     !insufficient &&
     !blocked
 
@@ -346,7 +354,7 @@ export function SwapWidget({
    * a preset must never propose spending more than is held.
    */
   const setPercent = (pct: number) => {
-    if (giveDivisible === undefined) return
+    if (giveDivisible === undefined || balanceNormalized === null) return
     const share = big(balanceNormalized).times(pct).dividedBy(100)
     setAmount(trimZeros(share.toFixed(giveDivisible ? DIVISIBLE_DECIMALS : 0, ROUND_DOWN)))
     setPriceMoved(false)
@@ -380,7 +388,7 @@ export function SwapWidget({
             sub={
               <div className="flex items-center justify-between gap-2">
                 <span>{usdLabel}</span>
-                {address && (
+                {address && giveAsset && balanceKnown ? (
                   // Click-to-fill, exact: balanceNormalized is the string the
                   // API gave, so Max never round-trips through a float.
                   <button
@@ -391,7 +399,11 @@ export function SwapWidget({
                   >
                     Balance: {formatAmount(balance)}
                   </button>
-                )}
+                ) : address && giveAsset ? (
+                  <span className="text-zinc-500">
+                    Balance: {balanceLoading ? 'loading…' : 'unavailable'}
+                  </span>
+                ) : null}
               </div>
             }
           />
@@ -544,6 +556,15 @@ export function SwapWidget({
               The rate moved while you were reading it. Check the new quote and submit again.
             </FormNotice>
           )}
+          {balanceError && (
+            <FormNotice tone="error">
+              Couldn&apos;t load your spendable {giveLabel} balance.{' '}
+              <button className="underline" onClick={() => void refreshBalance()}>
+                Retry
+              </button>
+              .
+            </FormNotice>
+          )}
           {insufficient && amountNum > 0 && (
             <FormNotice tone="error">
               Not enough {giveLabel} — you have {formatAmount(balance)}.
@@ -568,6 +589,10 @@ export function SwapWidget({
                 ? 'Select a token'
                 : blocked
                   ? 'Not tradeable here'
+                  : address && !balanceKnown
+                    ? balanceError
+                      ? 'Balance unavailable'
+                      : 'Checking balance…'
                   : amountNum === 0
                     ? 'Enter an amount'
                     : insufficient

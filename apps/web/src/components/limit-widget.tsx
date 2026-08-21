@@ -134,7 +134,14 @@ export function LimitWidget({
 
   // Buying spends the quote asset, selling spends the base.
   const spendAsset = side === 'buy' ? quoteAsset : asset
-  const { balance, balanceNormalized } = useBalance(address, spendAsset)
+  const {
+    balance,
+    balanceNormalized,
+    balanceError,
+    balanceLoading,
+    refreshBalance,
+  } = useBalance(address, spendAsset)
+  const balanceKnown = balance !== null && balanceNormalized !== null
   const spendAmount = side === 'buy' ? total : amountNum
 
   const amountResult = toBase(amount, baseDivisible)
@@ -151,7 +158,7 @@ export function LimitWidget({
       (inputError.asset === quoteAsset && (!!quoteInfoError || quoteInfoNotFound)))
 
   const busy = txStatus === 'composing' || txStatus === 'signing' || txStatus === 'broadcasting'
-  const insufficient = spendAmount > balance
+  const insufficient = balanceKnown && spendAmount > balance
   const ready =
     !!asset &&
     !samePair &&
@@ -161,6 +168,7 @@ export function LimitWidget({
     totalResult.ok &&
     totalResult.raw > 0 &&
     !busy &&
+    balanceKnown &&
     !insufficient
 
   const totalUsd = xcpUsd && quoteAsset === 'XCP' ? total * xcpUsd : null
@@ -215,7 +223,7 @@ export function LimitWidget({
     isPositive(balanceNormalized) &&
     (side === 'sell' || priceNum > 0)
   const applyBalancePreset = (pct: number) => {
-    if (!canPreset) return
+    if (!canPreset || balanceNormalized === null) return
     if (side === 'sell' && pct === 100) {
       setAmount(balanceNormalized)
       return
@@ -284,7 +292,9 @@ export function LimitWidget({
                     field — the swap form puts a balance under the field whose
                     asset it belongs to, not wherever there is room. */}
                 {address && side === 'buy' && (
-                  <span className="text-zinc-500">Available: {formatAmount(balance)}</span>
+                  <span className="text-zinc-500">
+                    Available: {balanceKnown ? formatAmount(balance) : balanceLoading ? 'loading…' : 'unavailable'}
+                  </span>
                 )}
               </div>
             }
@@ -311,14 +321,16 @@ export function LimitWidget({
               // rendered visibly shorter than the rest of the card.
               <div className="flex items-center justify-between gap-2">
                 <span>{totalUsd != null ? `≈ $${totalUsd.toFixed(2)}` : ''}</span>
-                {address && side === 'sell' && (
+                {address && spendAsset && side === 'sell' && balanceKnown ? (
                   <button
                     onClick={() => setAmount(balanceNormalized)}
                     className="transition-colors hover:text-zinc-300"
                   >
                     Available: {formatAmount(balance)}
                   </button>
-                )}
+                ) : address && spendAsset && side === 'sell' ? (
+                  <span>Available: {balanceLoading ? 'loading…' : 'unavailable'}</span>
+                ) : null}
               </div>
             }
           />
@@ -349,7 +361,9 @@ export function LimitWidget({
               sub={totalUsd != null ? `≈ $${totalUsd.toFixed(2)}` : undefined}
               meta={
                 address && side === 'buy' ? (
-                  <span className="text-xs text-zinc-500">Available: {formatAmount(balance)}</span>
+                  <span className="text-xs text-zinc-500">
+                    Available: {balanceKnown ? formatAmount(balance) : balanceLoading ? 'loading…' : 'unavailable'}
+                  </span>
                 ) : undefined
               }
             />
@@ -378,6 +392,15 @@ export function LimitWidget({
               price or the amount.
             </FormNotice>
           )}
+          {balanceError && (
+            <FormNotice tone="error">
+              Couldn&apos;t load your spendable {spendAsset} balance.{' '}
+              <button className="underline" onClick={() => void refreshBalance()}>
+                Retry
+              </button>
+              .
+            </FormNotice>
+          )}
           {insufficient && spendAmount > 0 && (
             <FormNotice tone="error">
               Not enough {spendAsset} — you have {formatAmount(balance)}.
@@ -397,6 +420,10 @@ export function LimitWidget({
                 ? 'Select a token'
                 : samePair
                   ? 'Pick a different pair'
+                  : address && !balanceKnown
+                    ? balanceError
+                      ? 'Balance unavailable'
+                      : 'Checking balance…'
                   : `${side === 'buy' ? 'Buy' : 'Sell'} ${assetLabel}`}
           </ConnectCTA>
         </PanelSection>
