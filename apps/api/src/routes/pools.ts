@@ -566,7 +566,7 @@ export async function handlePool(
                 quantity_a_raw, quantity_b_raw, quantity_minted_raw, is_restart, status
          FROM pool_deposits
          WHERE lp_asset = ?
-         ORDER BY block_time DESC, tx_index DESC
+         ORDER BY block_time DESC, tx_index DESC, event_index DESC
          LIMIT ?`
       )
       .bind(asset, limit)
@@ -578,7 +578,7 @@ export async function handlePool(
                 quantity_destroyed_raw, quantity_a_raw, quantity_b_raw, status
          FROM pool_withdrawals
          WHERE lp_asset = ?
-         ORDER BY block_time DESC, tx_index DESC
+         ORDER BY block_time DESC, tx_index DESC, event_index DESC
          LIMIT ?`
       )
       .bind(asset, limit)
@@ -594,7 +594,7 @@ export async function handlePool(
                 order_tx_hash, status
          FROM pool_matches
          WHERE lp_asset = ?
-         ORDER BY block_time DESC, tx_index DESC
+         ORDER BY block_time DESC, tx_index DESC, event_index DESC
          LIMIT ?`
       )
       .bind(asset, limit)
