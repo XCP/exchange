@@ -99,17 +99,22 @@ export async function handleDispenseOhlc(
   );
   const { windowStart, windowEnd } = resolveWindow(url, interval, limit);
 
-  // `price` is BTC per whole token, already normalized for divisibility at
-  // index time. Zero means the per-unit price rounded below a satoshi, which
-  // is a storage artefact rather than a real sale price — charting it would
-  // draw a spike to the floor.
+  // Protocol-priced: the dispenser's own rate when its row is on file, the
+  // stored per-row price otherwise. The stored price is btc_amount / qty and
+  // one BTC payment hitting N dispensers is stamped in FULL on each row — so
+  // charting it directly drew an N× wick on every shared payment
+  // (market-summary.ts refuses this column for exactly that reason). Zero
+  // still means the per-unit price rounded below a satoshi, a storage
+  // artefact rather than a real sale price — charting it would draw a spike
+  // to the floor.
   const [rowsResult, seedResult] = await Promise.all([
     db
       .prepare(
-        `SELECT block_time, price, dispense_quantity
-         FROM dispenses
-         WHERE asset = ? AND price > 0 AND block_time >= ? AND block_time < ?
-         ORDER BY block_time DESC, id DESC
+        `SELECT d.block_time, COALESCE(p.price, d.price) AS price, d.dispense_quantity
+         FROM dispenses d LEFT JOIN dispensers p ON p.tx_hash = d.dispenser_tx_hash
+         WHERE d.asset = ? AND COALESCE(p.price, d.price) > 0
+           AND d.block_time >= ? AND d.block_time < ?
+         ORDER BY d.block_time DESC, d.id DESC
          LIMIT ?`
       )
       // `windowEnd` is the last bucket's START, so the scan has to reach the
@@ -124,9 +129,10 @@ export async function handleDispenseOhlc(
       .all<DispenseRow>(),
     db
       .prepare(
-        `SELECT price FROM dispenses
-         WHERE asset = ? AND price > 0 AND block_time < ?
-         ORDER BY block_time DESC, id DESC LIMIT 1`
+        `SELECT COALESCE(p.price, d.price) AS price
+         FROM dispenses d LEFT JOIN dispensers p ON p.tx_hash = d.dispenser_tx_hash
+         WHERE d.asset = ? AND COALESCE(p.price, d.price) > 0 AND d.block_time < ?
+         ORDER BY d.block_time DESC, d.id DESC LIMIT 1`
       )
       .bind(asset, windowStart)
       .first<{ price: number }>(),

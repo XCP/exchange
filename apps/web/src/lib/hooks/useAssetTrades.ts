@@ -15,6 +15,9 @@ export interface AssetTrade {
   price: number
   quote_asset: string
   counterparty: string | null
+  /** Source-table rowid — unique within a kind, so (kind, id) identifies a
+   *  row where tx_hash cannot: one tx can carry several fills. */
+  id: number
 }
 
 export type AssetVenue = 'all' | 'dex' | 'dispensers'

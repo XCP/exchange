@@ -40,6 +40,10 @@ interface FeedRow {
   price: number;
   quote_asset: string;
   counterparty: string | null;
+  /** Source-table rowid; unique WITHIN a kind, and the pagination tiebreak.
+   *  (kind, id) is the stable per-row identity — tx_hash is not, since one
+   *  transaction can carry several fills. */
+  id: number;
 }
 
 export async function handleAssetTrades(
@@ -81,7 +85,7 @@ export async function handleAssetTrades(
                    THEN price
                    ELSE (CASE WHEN price > 0 THEN 1.0 / price ELSE 0 END) END AS price,
               CASE WHEN base_asset = ? THEN quote_asset ELSE base_asset END AS quote_asset,
-              taker AS counterparty
+              taker AS counterparty, id
        FROM trades
        WHERE base_asset = ? OR quote_asset = ?`
     );
@@ -89,21 +93,31 @@ export async function handleAssetTrades(
   }
 
   if (wantDispenses) {
-    // A dispense is always the buyer acquiring the asset for BTC.
+    // A dispense is always the buyer acquiring the asset for BTC. The price
+    // is the dispenser's own rate when its row is on file: the stored
+    // per-row price carries the FULL payment of a shared multi-dispenser
+    // hit, inflated by however many dispensers the payment touched.
     parts.push(
       `SELECT 'dispense' AS kind, block_time, block_index, tx_hash,
-              'buy' AS side, dispense_quantity AS amount, price,
-              'BTC' AS quote_asset, destination AS counterparty
+              'buy' AS side, dispense_quantity AS amount,
+              COALESCE((SELECT dp.price FROM dispensers dp
+                         WHERE dp.tx_hash = dispenses.dispenser_tx_hash), price) AS price,
+              'BTC' AS quote_asset, destination AS counterparty, id
        FROM dispenses
        WHERE asset = ?`
     );
     binds.push(asset);
   }
 
+  // (kind, id) makes the sort a TOTAL order. Every fill in a block shares
+  // block_time AND block_index, so the old sort left whole-block tie groups
+  // whose internal order SQLite may pick differently per query — and with
+  // OFFSET pagination, differently per PAGE, duplicating or skipping fills
+  // across the boundary. `id` also gives clients a stable row key.
   const rows = await db
     .prepare(
       `${parts.join(" UNION ALL ")}
-       ORDER BY block_time DESC, block_index DESC
+       ORDER BY block_time DESC, block_index DESC, kind ASC, id DESC
        LIMIT ? OFFSET ?`
     )
     .bind(...binds, limit, offset)

@@ -82,7 +82,9 @@ export function AssetTradeHistory({ asset }: { asset: string }) {
             </thead>
             <tbody>
               {trades.map((t) => (
-                <tr key={`${t.tx_hash}-${t.block_index}-${t.kind}`} className="border-b border-zinc-900 last:border-b-0">
+                // (kind, id), not tx_hash: one tx can carry several fills —
+                // two same-tx pool sweeps collided under the old key.
+                <tr key={`${t.kind}-${t.id}`} className="border-b border-zinc-900 last:border-b-0">
                   <td className="px-3 py-1.5 text-zinc-400">{formatTimeAgo(t.block_time)}</td>
                   <td className="px-3 py-1.5 text-zinc-400">{KIND_LABEL[t.kind] ?? t.kind}</td>
                   <td className="px-3 py-1.5">
