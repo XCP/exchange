@@ -381,7 +381,7 @@ function processOpenOrder(
   blockIndex: number,
   blockTime: number,
   now: number
-): (db: D1Database) => D1PreparedStatement {
+): { stmt: (db: D1Database) => D1PreparedStatement; pair: string } {
   const order: Order = {
     tx_hash: params.tx_hash as string,
     tx_index: params.tx_index as number,
@@ -405,7 +405,7 @@ function processOpenOrder(
 
   const o = normalizeOrder(order);
 
-  return (db) => buildOrderUpsertStmt(db, o, now);
+  return { stmt: (db) => buildOrderUpsertStmt(db, o, now), pair: o.pair };
 }
 
 function processOrderPartialFill(
@@ -833,6 +833,9 @@ export async function syncBlocks(
     { base: string; quote: string; baseLongname: string | null; quoteLongname: string | null; earliestTime: number }
   >();
   const affectedDispenseAssets = new Map<string, string | null>();
+  /** Pairs whose BOOK changed this run — a new listing to deal-score even
+   *  when nothing traded in that pair (affectedPairs only sees fills). */
+  const newOrderPairs = new Set<string>();
   const affectedPools = new Set<string>();
   const knownPoolLpByPair = new Map<string, string>();
   const knownPoolPairByLp = new Map<string, string>();
@@ -885,7 +888,14 @@ export async function syncBlocks(
 
     const stmts: ((db: D1Database) => D1PreparedStatement)[] = [];
     const pendingPoolBalances: PendingPoolBalances = new Map();
-    const poolUpdatesByTxPair = new Map<string, PoolReserveState>();
+    // A QUEUE per (pair, tx), not a single slot: one routed order can sweep
+    // the same pool several times in one transaction (block 963242, tx
+    // 3172909 — two POOL_MATCH events, one tx_hash), each preceded by its
+    // own POOL_UPDATE. A single slot let the second update clobber the
+    // first, handing at least one match a snapshot from the wrong moment
+    // and silently corrupting its reserve/price execution context. FIFO
+    // pairs each match with the update that described ITS after-state.
+    const poolUpdatesByTxPair = new Map<string, PoolReserveState[]>();
 
     for (const event of events) {
       try {
@@ -937,8 +947,17 @@ export async function syncBlocks(
               console.error(`Block ${blockIdx}: skipping OPEN_ORDER - no block_time`);
               break;
             }
-            stmts.push(processOpenOrder(params, blockIndex, eventBlockTime, now));
+            const opened = processOpenOrder(params, blockIndex, eventBlockTime, now);
+            stmts.push(opened.stmt);
             result.orders_upserted++;
+            // Deal scoring exists to catch a bargain the moment it is LISTED,
+            // but affectedPairs is fed only by the fill handlers — so a rare
+            // card listed under fair value in a pair where nothing traded
+            // that block (the normal case for collectibles) stayed off
+            // /deals until an unrelated fill or the daily sweep found it.
+            // The dispenser arm registers its asset on OPEN_DISPENSER for
+            // exactly this reason; this is the order-book half of that.
+            newOrderPairs.add(opened.pair);
             break;
           }
 
@@ -1067,7 +1086,9 @@ export async function syncBlocks(
               const updateState = getPoolUpdateState(params);
               const updateKey = poolUpdateKey(pool.pair, updateTxHash);
               if (updateState && updateKey) {
-                poolUpdatesByTxPair.set(updateKey, updateState);
+                const queue = poolUpdatesByTxPair.get(updateKey);
+                if (queue) queue.push(updateState);
+                else poolUpdatesByTxPair.set(updateKey, [updateState]);
               }
               affectedPools.add(pool.lpAsset);
               knownPoolLpByPair.set(pool.pair, pool.lpAsset);
@@ -1142,9 +1163,11 @@ export async function syncBlocks(
             const lpAsset = knownPoolLpByPair.get(pair) ?? await findPoolLpAsset(db, assetA, assetB);
             if (!lpAsset) break;
             const updateKey = poolUpdateKey(pair, params.tx_hash as string | undefined);
+            // shift(), not get(): consume this match's own snapshot so the
+            // next same-tx match reads the next one instead of this one.
             const executionContext = computePoolMatchExecutionContext(
               params,
-              updateKey ? poolUpdatesByTxPair.get(updateKey) ?? null : null
+              updateKey ? poolUpdatesByTxPair.get(updateKey)?.shift() ?? null : null
             );
             const match = processPoolMatch(
               params,
@@ -1317,10 +1340,12 @@ export async function syncBlocks(
     await updateOrderBookStats(db, now);
   }
 
-  // Incremental deal scoring for affected orders/dispensers
-  if (affectedPairs.size > 0 || affectedDispenseAssets.size > 0) {
+  // Incremental deal scoring for affected orders/dispensers. Fills AND fresh
+  // listings: scoreNewOrders scores all open sells for a pair, so a pair
+  // qualifies when either its book or its tape moved.
+  if (affectedPairs.size > 0 || newOrderPairs.size > 0 || affectedDispenseAssets.size > 0) {
     try {
-      const orderPairs = [...affectedPairs.keys()];
+      const orderPairs = [...new Set([...affectedPairs.keys(), ...newOrderPairs])];
       const dispAssets = [...affectedDispenseAssets.keys()];
       const [orderDeals, dispDeals] = await Promise.all([
         orderPairs.length > 0 ? scoreNewOrders(db, orderPairs) : 0,
