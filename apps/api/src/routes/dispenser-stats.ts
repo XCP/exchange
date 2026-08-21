@@ -55,7 +55,7 @@ export async function handleDispenserStatsList(
       `SELECT
          (SELECT COUNT(*) FROM dispensers d WHERE d.status < 10${includeHidden ? "" : " AND NOT EXISTS (SELECT 1 FROM dispenser_stats s WHERE s.asset = d.asset AND s.hidden = 1)"}) AS total_dispensers,
          (SELECT COUNT(*) FROM dispenses p${includeHidden ? "" : " WHERE NOT EXISTS (SELECT 1 FROM dispenser_stats s WHERE s.asset = p.asset AND s.hidden = 1)"}) AS total_dispenses,
-         (SELECT COALESCE(SUM(p.btc_amount), 0) FROM dispenses p${includeHidden ? "" : " WHERE NOT EXISTS (SELECT 1 FROM dispenser_stats s WHERE s.asset = p.asset AND s.hidden = 1)"}) AS total_btc_volume,
+         (SELECT COALESCE(SUM(p.dispense_quantity * COALESCE((SELECT dp.price FROM dispensers dp WHERE dp.tx_hash = p.dispenser_tx_hash), p.price)), 0) FROM dispenses p${includeHidden ? "" : " WHERE NOT EXISTS (SELECT 1 FROM dispenser_stats s WHERE s.asset = p.asset AND s.hidden = 1)"}) AS total_btc_volume,
          (SELECT COUNT(DISTINCT p.destination) FROM dispenses p${includeHidden ? "" : " WHERE NOT EXISTS (SELECT 1 FROM dispenser_stats s WHERE s.asset = p.asset AND s.hidden = 1)"}) AS unique_buyers`
     ),
   ]);

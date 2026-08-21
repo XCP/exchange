@@ -20,6 +20,15 @@ export async function handleAnalytics(
   const dispenseHidden = includeHidden ? "" : " AND asset NOT IN (SELECT asset FROM dispenser_stats WHERE hidden = 1)";
   const orderTradeOnly = " AND source_type = 'order'";
 
+  // Protocol-priced dispense notional (market-summary.ts's rule): one BTC
+  // payment can hit several dispensers and is stamped in FULL on every
+  // resulting dispense row, so SUM(btc_amount) double-counts and a buyer who
+  // touched a twenty-dispenser address was credited twenty times their
+  // spend. A correlated point lookup rather than a join, so the unqualified
+  // filter fragments above keep resolving against `dispenses` alone.
+  const dispenseNotional =
+    "(dispense_quantity * COALESCE((SELECT dp.price FROM dispensers dp WHERE dp.tx_hash = dispenses.dispenser_tx_hash), price))";
+
   // Collection tag filter subquery (each usage adds 1 bound ? param)
   const tagSub = `(SELECT ta.asset FROM tag_assets ta JOIN tags t ON ta.tag_id = t.id WHERE t.slug = ?)`;
   const psTagFilt = tag ? ` AND base_asset IN ${tagSub}` : "";
@@ -244,7 +253,7 @@ export async function handleAnalytics(
       ),
       db.prepare(
         `SELECT (block_time / 86400) * 86400 AS timestamp,
-                SUM(btc_amount) AS volume,
+                SUM(${dispenseNotional}) AS volume,
                 COUNT(*) AS dispenses
          FROM dispenses
          WHERE 1=1${timeFilt}${dispenseHidden}
@@ -289,7 +298,7 @@ export async function handleAnalytics(
            FROM trades WHERE quote_asset = 'BTC'${timeFilt}${tradeHidden}
            GROUP BY taker
            UNION ALL
-           SELECT destination AS address, SUM(btc_amount) AS volume, COUNT(*) AS trades
+           SELECT destination AS address, SUM(${dispenseNotional}) AS volume, COUNT(*) AS trades
            FROM dispenses WHERE 1=1${timeFilt}${dispenseHidden}
            GROUP BY destination
          ) GROUP BY address ORDER BY volume DESC LIMIT 21`
@@ -300,7 +309,7 @@ export async function handleAnalytics(
            FROM trades WHERE quote_asset = 'BTC'${timeFilt}${tradeHidden}${orderTradeOnly}
            GROUP BY maker
            UNION ALL
-           SELECT source AS address, SUM(btc_amount) AS volume, COUNT(*) AS trades
+           SELECT source AS address, SUM(${dispenseNotional}) AS volume, COUNT(*) AS trades
            FROM dispenses WHERE 1=1${timeFilt}${dispenseHidden}
            GROUP BY source
          ) GROUP BY address ORDER BY volume DESC LIMIT 21`

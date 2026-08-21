@@ -4,6 +4,22 @@ import { batchExec } from "../lib/batch";
 const BULK_CHUNK = 95;
 
 /**
+ * Protocol-priced per-unit dispense price — the same expression
+ * market-summary.ts and the aggregator feeds already use, for the same
+ * reason: one BTC payment can trigger dispensers for several assets at one
+ * address, and Counterparty stamps the FULL payment on every resulting
+ * dispense row. Summing stored btc_amount therefore double-counts (the
+ * methodology doc's regression case is one output hitting twenty
+ * dispensers), and the stored per-row price (btc/qty) is inflated on every
+ * shared row. The dispenser's own rate is the truth when its row is still on
+ * file; the stored price only ever differs by overpayment on single-asset
+ * rows, which the rate rightly excludes.
+ */
+const DISPENSE_PRICE = `COALESCE(p.price, d.price)`;
+const DISPENSE_NOTIONAL = `(d.dispense_quantity * ${DISPENSE_PRICE})`;
+const DISPENSES_PRICED = `dispenses d LEFT JOIN dispensers p ON p.tx_hash = d.dispenser_tx_hash`;
+
+/**
  * Bulk-update dispenser_stats for many assets at once using set-based SQL.
  * Uses 7 queries per chunk of 95 assets (6 reads batched + 1 JSON write)
  * instead of 7 queries per individual asset.
@@ -28,28 +44,31 @@ export async function bulkUpdateDispenserStats(
     // Batch 6 read queries in one round trip
     const [statsRes, lastRes, p24Res, p30Res, p1yRes, dispenserRes] =
       await db.batch([
-        // Q1: Windowed + all-time stats from dispenses (?1=t24h, ?2=t30d, ?3=t1y)
+        // Q1: Windowed + all-time stats from dispenses (?1=t24h, ?2=t30d, ?3=t1y).
+        // Volume is protocol-priced notional and prices are the protocol
+        // price — see DISPENSE_PRICE. Counts and buyers still count rows:
+        // a fill is a fill however its payment was shared.
         db
           .prepare(
-            `SELECT asset,
-              COALESCE(SUM(btc_amount), 0) as total_btc,
-              COALESCE(SUM(dispense_quantity), 0) as total_qty,
+            `SELECT d.asset,
+              COALESCE(SUM(${DISPENSE_NOTIONAL}), 0) as total_btc,
+              COALESCE(SUM(d.dispense_quantity), 0) as total_qty,
               COUNT(*) as total_cnt,
-              COUNT(DISTINCT destination) as unique_buyers,
-              COALESCE(SUM(CASE WHEN block_time >= ?1 THEN btc_amount END), 0) as vol_24h,
-              COALESCE(SUM(CASE WHEN block_time >= ?2 THEN btc_amount END), 0) as vol_30d,
-              COALESCE(SUM(CASE WHEN block_time >= ?3 THEN btc_amount END), 0) as vol_1y,
-              SUM(CASE WHEN block_time >= ?1 THEN 1 ELSE 0 END) as cnt_24h,
-              SUM(CASE WHEN block_time >= ?2 THEN 1 ELSE 0 END) as cnt_30d,
-              SUM(CASE WHEN block_time >= ?3 THEN 1 ELSE 0 END) as cnt_1y,
-              MAX(CASE WHEN block_time >= ?1 THEN price END) as hi_24h,
-              MIN(CASE WHEN block_time >= ?1 THEN price END) as lo_24h,
-              MAX(CASE WHEN block_time >= ?2 THEN price END) as hi_30d,
-              MIN(CASE WHEN block_time >= ?2 THEN price END) as lo_30d,
-              MAX(CASE WHEN block_time >= ?3 THEN price END) as hi_1y,
-              MIN(CASE WHEN block_time >= ?3 THEN price END) as lo_1y
-            FROM dispenses WHERE asset IN (${phFrom(4)})
-            GROUP BY asset`
+              COUNT(DISTINCT d.destination) as unique_buyers,
+              COALESCE(SUM(CASE WHEN d.block_time >= ?1 THEN ${DISPENSE_NOTIONAL} END), 0) as vol_24h,
+              COALESCE(SUM(CASE WHEN d.block_time >= ?2 THEN ${DISPENSE_NOTIONAL} END), 0) as vol_30d,
+              COALESCE(SUM(CASE WHEN d.block_time >= ?3 THEN ${DISPENSE_NOTIONAL} END), 0) as vol_1y,
+              SUM(CASE WHEN d.block_time >= ?1 THEN 1 ELSE 0 END) as cnt_24h,
+              SUM(CASE WHEN d.block_time >= ?2 THEN 1 ELSE 0 END) as cnt_30d,
+              SUM(CASE WHEN d.block_time >= ?3 THEN 1 ELSE 0 END) as cnt_1y,
+              MAX(CASE WHEN d.block_time >= ?1 THEN ${DISPENSE_PRICE} END) as hi_24h,
+              MIN(CASE WHEN d.block_time >= ?1 THEN ${DISPENSE_PRICE} END) as lo_24h,
+              MAX(CASE WHEN d.block_time >= ?2 THEN ${DISPENSE_PRICE} END) as hi_30d,
+              MIN(CASE WHEN d.block_time >= ?2 THEN ${DISPENSE_PRICE} END) as lo_30d,
+              MAX(CASE WHEN d.block_time >= ?3 THEN ${DISPENSE_PRICE} END) as hi_1y,
+              MIN(CASE WHEN d.block_time >= ?3 THEN ${DISPENSE_PRICE} END) as lo_1y
+            FROM ${DISPENSES_PRICED} WHERE d.asset IN (${phFrom(4)})
+            GROUP BY d.asset`
           )
           .bind(t24h, t30d, t1y, ...chunk),
 
@@ -57,10 +76,10 @@ export async function bulkUpdateDispenserStats(
         db
           .prepare(
             `SELECT asset, last_price, last_time, first_time FROM (
-              SELECT asset, price as last_price, block_time as last_time,
-                MIN(block_time) OVER (PARTITION BY asset) as first_time,
-                ROW_NUMBER() OVER (PARTITION BY asset ORDER BY block_time DESC, rowid DESC) as rn
-              FROM dispenses WHERE asset IN (${phFrom(1)})
+              SELECT d.asset, ${DISPENSE_PRICE} as last_price, d.block_time as last_time,
+                MIN(d.block_time) OVER (PARTITION BY d.asset) as first_time,
+                ROW_NUMBER() OVER (PARTITION BY d.asset ORDER BY d.block_time DESC, d.rowid DESC) as rn
+              FROM ${DISPENSES_PRICED} WHERE d.asset IN (${phFrom(1)})
             ) WHERE rn = 1`
           )
           .bind(...chunk),
@@ -68,10 +87,10 @@ export async function bulkUpdateDispenserStats(
         // Q3: Price 24h ago
         db
           .prepare(
-            `SELECT asset, price as price_ago FROM (
-              SELECT asset, price,
-                ROW_NUMBER() OVER (PARTITION BY asset ORDER BY block_time DESC) as rn
-              FROM dispenses WHERE asset IN (${phFrom(1)}) AND block_time <= ?${n + 1}
+            `SELECT asset, price_ago FROM (
+              SELECT d.asset, ${DISPENSE_PRICE} as price_ago,
+                ROW_NUMBER() OVER (PARTITION BY d.asset ORDER BY d.block_time DESC) as rn
+              FROM ${DISPENSES_PRICED} WHERE d.asset IN (${phFrom(1)}) AND d.block_time <= ?${n + 1}
             ) WHERE rn = 1`
           )
           .bind(...chunk, t24h),
@@ -79,10 +98,10 @@ export async function bulkUpdateDispenserStats(
         // Q4: Price 30d ago
         db
           .prepare(
-            `SELECT asset, price as price_ago FROM (
-              SELECT asset, price,
-                ROW_NUMBER() OVER (PARTITION BY asset ORDER BY block_time DESC) as rn
-              FROM dispenses WHERE asset IN (${phFrom(1)}) AND block_time <= ?${n + 1}
+            `SELECT asset, price_ago FROM (
+              SELECT d.asset, ${DISPENSE_PRICE} as price_ago,
+                ROW_NUMBER() OVER (PARTITION BY d.asset ORDER BY d.block_time DESC) as rn
+              FROM ${DISPENSES_PRICED} WHERE d.asset IN (${phFrom(1)}) AND d.block_time <= ?${n + 1}
             ) WHERE rn = 1`
           )
           .bind(...chunk, t30d),
@@ -90,10 +109,10 @@ export async function bulkUpdateDispenserStats(
         // Q5: Price 1y ago
         db
           .prepare(
-            `SELECT asset, price as price_ago FROM (
-              SELECT asset, price,
-                ROW_NUMBER() OVER (PARTITION BY asset ORDER BY block_time DESC) as rn
-              FROM dispenses WHERE asset IN (${phFrom(1)}) AND block_time <= ?${n + 1}
+            `SELECT asset, price_ago FROM (
+              SELECT d.asset, ${DISPENSE_PRICE} as price_ago,
+                ROW_NUMBER() OVER (PARTITION BY d.asset ORDER BY d.block_time DESC) as rn
+              FROM ${DISPENSES_PRICED} WHERE d.asset IN (${phFrom(1)}) AND d.block_time <= ?${n + 1}
             ) WHERE rn = 1`
           )
           .bind(...chunk, t1y),
@@ -264,26 +283,28 @@ export async function updateDispenserStats(
   const t30d = now - 2592000;
   const t1y = now - 31536000;
 
-  // Single consolidated query for latest, first, and windowed stats
+  // Single consolidated query for latest, first, and windowed stats —
+  // protocol-priced, same as the bulk path above.
   const stats = await db
     .prepare(
       `SELECT
-        (SELECT price FROM dispenses WHERE asset = ?1 ORDER BY block_time DESC LIMIT 1) as last_price,
+        (SELECT ${DISPENSE_PRICE} FROM ${DISPENSES_PRICED}
+          WHERE d.asset = ?1 ORDER BY d.block_time DESC LIMIT 1) as last_price,
         (SELECT block_time FROM dispenses WHERE asset = ?1 ORDER BY block_time DESC LIMIT 1) as last_time,
         (SELECT block_time FROM dispenses WHERE asset = ?1 ORDER BY block_time ASC LIMIT 1) as first_time,
-        COALESCE(SUM(CASE WHEN block_time >= ?2 THEN btc_amount ELSE 0 END), 0) as vol_24h,
-        COALESCE(SUM(CASE WHEN block_time >= ?3 THEN btc_amount ELSE 0 END), 0) as vol_30d,
-        COALESCE(SUM(CASE WHEN block_time >= ?4 THEN btc_amount ELSE 0 END), 0) as vol_1y,
-        SUM(CASE WHEN block_time >= ?2 THEN 1 ELSE 0 END) as cnt_24h,
-        SUM(CASE WHEN block_time >= ?3 THEN 1 ELSE 0 END) as cnt_30d,
-        SUM(CASE WHEN block_time >= ?4 THEN 1 ELSE 0 END) as cnt_1y,
-        MAX(CASE WHEN block_time >= ?2 THEN price END) as hi_24h,
-        MIN(CASE WHEN block_time >= ?2 THEN price END) as lo_24h,
-        MAX(CASE WHEN block_time >= ?3 THEN price END) as hi_30d,
-        MIN(CASE WHEN block_time >= ?3 THEN price END) as lo_30d,
-        MAX(CASE WHEN block_time >= ?4 THEN price END) as hi_1y,
-        MIN(CASE WHEN block_time >= ?4 THEN price END) as lo_1y
-       FROM dispenses WHERE asset = ?1 AND block_time >= ?4`
+        COALESCE(SUM(CASE WHEN d.block_time >= ?2 THEN ${DISPENSE_NOTIONAL} ELSE 0 END), 0) as vol_24h,
+        COALESCE(SUM(CASE WHEN d.block_time >= ?3 THEN ${DISPENSE_NOTIONAL} ELSE 0 END), 0) as vol_30d,
+        COALESCE(SUM(CASE WHEN d.block_time >= ?4 THEN ${DISPENSE_NOTIONAL} ELSE 0 END), 0) as vol_1y,
+        SUM(CASE WHEN d.block_time >= ?2 THEN 1 ELSE 0 END) as cnt_24h,
+        SUM(CASE WHEN d.block_time >= ?3 THEN 1 ELSE 0 END) as cnt_30d,
+        SUM(CASE WHEN d.block_time >= ?4 THEN 1 ELSE 0 END) as cnt_1y,
+        MAX(CASE WHEN d.block_time >= ?2 THEN ${DISPENSE_PRICE} END) as hi_24h,
+        MIN(CASE WHEN d.block_time >= ?2 THEN ${DISPENSE_PRICE} END) as lo_24h,
+        MAX(CASE WHEN d.block_time >= ?3 THEN ${DISPENSE_PRICE} END) as hi_30d,
+        MIN(CASE WHEN d.block_time >= ?3 THEN ${DISPENSE_PRICE} END) as lo_30d,
+        MAX(CASE WHEN d.block_time >= ?4 THEN ${DISPENSE_PRICE} END) as hi_1y,
+        MIN(CASE WHEN d.block_time >= ?4 THEN ${DISPENSE_PRICE} END) as lo_1y
+       FROM ${DISPENSES_PRICED} WHERE d.asset = ?1 AND d.block_time >= ?4`
     )
     .bind(asset, t24h, t30d, t1y)
     .first<{
@@ -308,32 +329,32 @@ export async function updateDispenserStats(
   const [price24hAgo, price30dAgo, price1yAgo, allTime, dispenserInfo] = await Promise.all([
     db
       .prepare(
-        `SELECT price FROM dispenses
-         WHERE asset = ? AND block_time <= ? ORDER BY block_time DESC LIMIT 1`
+        `SELECT ${DISPENSE_PRICE} as price FROM ${DISPENSES_PRICED}
+         WHERE d.asset = ? AND d.block_time <= ? ORDER BY d.block_time DESC LIMIT 1`
       )
       .bind(asset, t24h)
       .first<{ price: number }>(),
     db
       .prepare(
-        `SELECT price FROM dispenses
-         WHERE asset = ? AND block_time <= ? ORDER BY block_time DESC LIMIT 1`
+        `SELECT ${DISPENSE_PRICE} as price FROM ${DISPENSES_PRICED}
+         WHERE d.asset = ? AND d.block_time <= ? ORDER BY d.block_time DESC LIMIT 1`
       )
       .bind(asset, t30d)
       .first<{ price: number }>(),
     db
       .prepare(
-        `SELECT price FROM dispenses
-         WHERE asset = ? AND block_time <= ? ORDER BY block_time DESC LIMIT 1`
+        `SELECT ${DISPENSE_PRICE} as price FROM ${DISPENSES_PRICED}
+         WHERE d.asset = ? AND d.block_time <= ? ORDER BY d.block_time DESC LIMIT 1`
       )
       .bind(asset, t1y)
       .first<{ price: number }>(),
     db
       .prepare(
-        `SELECT COALESCE(SUM(btc_amount), 0) as total_btc,
-                COALESCE(SUM(dispense_quantity), 0) as total_qty,
+        `SELECT COALESCE(SUM(${DISPENSE_NOTIONAL}), 0) as total_btc,
+                COALESCE(SUM(d.dispense_quantity), 0) as total_qty,
                 COUNT(*) as total_cnt,
-                COUNT(DISTINCT destination) as buyers
-         FROM dispenses WHERE asset = ?`
+                COUNT(DISTINCT d.destination) as buyers
+         FROM ${DISPENSES_PRICED} WHERE d.asset = ?`
       )
       .bind(asset)
       .first<{ total_btc: number; total_qty: number; total_cnt: number; buyers: number }>(),
