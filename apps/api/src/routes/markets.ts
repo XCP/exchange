@@ -64,6 +64,21 @@ export async function handleMarkets(
   }
   const where = `WHERE ${conditions.join(" AND ")}`;
 
+  // Only nine of 12,466 pairs satisfy `trade_count_24h > 0 AND hidden = 0`, but SQLite costs
+  // idx_pair_stats_browse_24h (migration 0048) above idx_pair_stats_hidden and scanned 12,268 rows
+  // per call to find them — 42.3M rows a day across this route's two statements, 13.7% of the whole
+  // database's reads. The planner keeps that choice with correct statistics in place: sqlite_stat1
+  // records the partial index at nine rows and it still declines, so the hint is what moves it.
+  // No plan does better unaided either — LIMIT cannot stop early when only nine rows can ever
+  // match, so every alternative walks the table to prove there is no tenth.
+  //
+  // Applied only where the query's WHERE implies the index's exactly. include_hidden=1 drops
+  // `hidden = 0`, and the other windows filter a different trade_count column; either would make
+  // this a "no query solution" error rather than a slow query, so the guard is load-bearing.
+  // Dropping idx_pair_stats_browse_24h means removing this hint in the same change.
+  const forcedIndex =
+    tf === "24h" && !includeHidden ? " INDEXED BY idx_pair_stats_browse_24h" : "";
+
   const [result, countResult] = await Promise.all([
     db
       .prepare(
@@ -76,7 +91,7 @@ export async function handleMarkets(
                 ${highCol} AS high,
                 ${lowCol} AS low,
                 open_orders, best_bid, best_ask, spread
-         FROM pair_stats
+         FROM pair_stats${forcedIndex}
          ${where}
          ORDER BY ${sortCol} ${order}, pair ASC
          LIMIT ? OFFSET ?`
@@ -84,7 +99,7 @@ export async function handleMarkets(
       .bind(...binds, limit, offset)
       .all(),
     db
-      .prepare(`SELECT COUNT(*) as total FROM pair_stats ${where}`)
+      .prepare(`SELECT COUNT(*) as total FROM pair_stats${forcedIndex} ${where}`)
       .bind(...binds)
       .first<{ total: number }>(),
   ]);

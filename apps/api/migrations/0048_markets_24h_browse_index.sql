@@ -1,0 +1,39 @@
+-- Serve the default markets browse from an index instead of a full scan.
+--
+-- 0033 added a browse index for the ALL-TIME window and closed with "measure
+-- before adding more". This is that measurement, taken from d1 insights over
+-- 24h on the production xcpdex database:
+--
+--   SELECT COUNT(*) ... WHERE trade_count_24h > 0 AND hidden = 0
+--     21,248,176 rows read over 1,732 runs  (12,268 per run)
+--   SELECT pair, ... ORDER BY volume_24h DESC, pair ASC LIMIT ? OFFSET ?
+--     21,098,886 rows read over 1,718 runs  (12,281 per run)
+--
+-- 42.3M rows read a day — 13.7% of the whole database's read volume — for a
+-- predicate that matches NINE of 12,466 rows. /markets defaults to
+-- timeframe=24h with no quote, so this is the site's most common market read
+-- and the one shape 0033's index cannot serve: its leading column is
+-- quote_asset, absent here, and it orders on total_volume rather than
+-- volume_24h.
+--
+-- A partial index inverts the cost. Both statements above become index-only
+-- work over the nine qualifying entries: the COUNT stops at the entry count
+-- and the page walks them already ordered, so ORDER BY needs no temp b-tree.
+--
+-- 0033 rightly worried that windowed browse indexes "would quadruple the index
+-- weight on every pair_stats write". That objection does not apply to a
+-- partial index this selective: it holds only rows that traded in the last
+-- 24 hours, so it carries ~9 entries against 12,466 table rows, and a write
+-- touches it only when a pair crosses the traded/not-traded boundary.
+--
+-- Deliberately only the 24h window. Selectivity of the others, same snapshot:
+-- 30d matches 91 rows and 1y matches 1,219, both plausible future candidates,
+-- but insights recorded zero runs for either — and ALL-TIME matches 10,292 of
+-- 12,466, where a partial index would save nothing. Measure before adding more.
+--
+-- include_hidden=1 drops the `hidden = 0` term, so that variant no longer
+-- implies this index's WHERE clause and correctly falls back to a scan. It is
+-- an operator escape hatch, not a browsed path.
+CREATE INDEX IF NOT EXISTS idx_pair_stats_browse_24h
+  ON pair_stats(volume_24h DESC, pair ASC)
+  WHERE trade_count_24h > 0 AND hidden = 0;
