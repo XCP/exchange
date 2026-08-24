@@ -11,8 +11,8 @@ declare module "node:assert/strict" {
 
 declare module "node:test" {
   export function describe(name: string, fn: () => void): void;
-  export function it(name: string, fn: () => void): void;
-  export function test(name: string, fn: () => void): void;
+  export function it(name: string, fn: () => void | Promise<void>): void;
+  export function test(name: string, fn: () => void | Promise<void>): void;
 }
 
 declare module "node:sqlite" {
@@ -33,4 +33,9 @@ declare module "node:sqlite" {
     prepare(sql: string): StatementSync;
     close(): void;
   }
+}
+
+declare module "node:fs" {
+  export function readdirSync(path: string): string[];
+  export function readFileSync(path: string, encoding: "utf8"): string;
 }
