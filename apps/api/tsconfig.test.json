@@ -12,6 +12,7 @@
     "src/lib/pool-math.ts",
     "src/routes/defillama.ts",
     "src/routes/dispense-ohlc.ts",
+    "src/routes/markets.ts",
     "src/routes/ohlc.ts",
     "tests/node-test.d.ts",
     "tests/**/*.test.ts"
