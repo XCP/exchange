@@ -83,6 +83,33 @@ change, not a tuning pass.
 terms. Every cheap fix measured either changed the numbers or cost more. Shipping a speculative
 one would have traded correctness or spend for the appearance of progress.
 
+
+### Diagnosed: the `/analytics` market summary (18.5M rows/day)
+
+The aggregate over `pair_stats` is not the cost — that table is 12,466 rows. Almost all of the
+840,901 comes from one field:
+
+```sql
+(SELECT COUNT(*) FROM (
+   SELECT maker AS a FROM trades WHERE pair NOT IN (SELECT pair FROM pair_stats WHERE hidden = 1)
+   UNION
+   SELECT taker      FROM trades WHERE pair NOT IN (SELECT pair FROM pair_stats WHERE hidden = 1)
+ )) AS tf_unique_traders
+```
+
+`trades` is 194,238 rows and it is scanned **twice**, then de-duplicated by the UNION.
+
+It cannot simply be dropped: `tf_unique_traders` renders as an "N addresses" stat on
+`/explore/markets`, `/explore/orders` and the analytics home page.
+
+No index helps — this is a full distinct-aggregate, the same shape as `unique_buyers` in the
+dispenser summary above, and for the same reason it cannot be maintained incrementally as written.
+A `traders(address)` set updated on trade insert would reduce the read to `COUNT(*)` over a much
+smaller table, but the `pair NOT IN (hidden)` term makes the set non-monotonic — hiding a pair can
+remove a trader who traded nothing else — so it needs a real design decision about whether the
+hidden-pair exclusion belongs in this stat at all. That question is cheaper to answer than the
+projection is to build.
+
 ## Other reads worth knowing about
 
 | Rows read/day | Runs | Per run | Query |
