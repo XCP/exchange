@@ -216,7 +216,32 @@ export async function bulkUpdateDispenserStats(
           avg_dispense_btc = json_extract(j.value, '$.ab'),
           updated_at = json_extract(j.value, '$.ua')
         FROM json_each(?) AS j
-        WHERE dispenser_stats.asset = json_extract(j.value, '$.a')`
+        WHERE dispenser_stats.asset = json_extract(j.value, '$.a')
+          AND ( dispenser_stats.last_dispense_price      IS NOT json_extract(j.value, '$.lp')
+             OR dispenser_stats.last_dispense_time       IS NOT json_extract(j.value, '$.lt')
+             OR dispenser_stats.first_dispense_time      IS NOT json_extract(j.value, '$.ft')
+             OR dispenser_stats.price_change_24h         IS NOT json_extract(j.value, '$.pc24')
+             OR dispenser_stats.price_change_30d         IS NOT json_extract(j.value, '$.pc30')
+             OR dispenser_stats.price_change_1y          IS NOT json_extract(j.value, '$.pc1y')
+             OR dispenser_stats.volume_24h               IS NOT json_extract(j.value, '$.v24')
+             OR dispenser_stats.volume_30d               IS NOT json_extract(j.value, '$.v30')
+             OR dispenser_stats.volume_1y                IS NOT json_extract(j.value, '$.v1y')
+             OR dispenser_stats.high_24h                 IS NOT json_extract(j.value, '$.h24')
+             OR dispenser_stats.low_24h                  IS NOT json_extract(j.value, '$.l24')
+             OR dispenser_stats.high_30d                 IS NOT json_extract(j.value, '$.h30')
+             OR dispenser_stats.low_30d                  IS NOT json_extract(j.value, '$.l30')
+             OR dispenser_stats.high_1y                  IS NOT json_extract(j.value, '$.h1y')
+             OR dispenser_stats.low_1y                   IS NOT json_extract(j.value, '$.l1y')
+             OR dispenser_stats.dispense_count_24h       IS NOT json_extract(j.value, '$.c24')
+             OR dispenser_stats.dispense_count_30d       IS NOT json_extract(j.value, '$.c30')
+             OR dispenser_stats.dispense_count_1y        IS NOT json_extract(j.value, '$.c1y')
+             OR dispenser_stats.total_btc_spent          IS NOT json_extract(j.value, '$.tb')
+             OR dispenser_stats.total_dispensed          IS NOT json_extract(j.value, '$.td')
+             OR dispenser_stats.total_dispense_count     IS NOT json_extract(j.value, '$.tc')
+             OR dispenser_stats.unique_buyers            IS NOT json_extract(j.value, '$.ub')
+             OR dispenser_stats.unique_sellers           IS NOT json_extract(j.value, '$.us')
+             OR dispenser_stats.total_dispensers_created IS NOT json_extract(j.value, '$.dc')
+             OR dispenser_stats.avg_dispense_btc         IS NOT json_extract(j.value, '$.ab'))`
       )
       .bind(JSON.stringify(updates))
       .run();
@@ -488,7 +513,10 @@ export async function refreshStaleDispenserStats(
   const t30d = now - 2592000;
 
   // Refresh all assets that had any dispense in the last 30 days or have
-  // non-zero rolling stats — ensures updated_at stays current
+  // non-zero rolling stats. Selection keys off last_dispense_time and the
+  // rolling counts, NOT updated_at — which matters, because the bulk update
+  // below is delta-guarded and so leaves updated_at alone on rows that did not
+  // change. The column means "last changed", not "last checked".
   const staleAssets = await db
     .prepare(
       `SELECT asset FROM dispenser_stats
