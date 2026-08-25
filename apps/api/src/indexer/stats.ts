@@ -103,13 +103,29 @@ export async function bulkUpdatePairStats(
         .bind(...pairs, t1y),
 
       // Q7: Self-trade share per pair — the fraction of matches with the same
-      // address on both sides. It manufactures volume and price without
-      // moving value, and it is what `hidden` is derived from. Computed here
-      // because these are the same trade rows Q6 is already reading.
+      // address on both sides, which manufactures volume and price without
+      // moving value. Computed here because these are the same trade rows Q6
+      // is already reading.
+      //
+      // BOOK TRADES ONLY. An AMM swap's counterparty is the pool, which has no
+      // address, so the indexer writes the trader into BOTH maker and taker and
+      // every pool swap reads as a wash trade. Measured 2026-08-25 across the
+      // whole table: order-book trades are 3.2% self (194,028 rows), pool
+      // trades are 100.0% (259 rows) — every pool swap ever recorded, without
+      // exception. Dividing by COUNT(*) therefore reported a market's POOL
+      // SHARE and called it wash trading.
+      //
+      // COALESCE to 0 rather than NULL: a pair with no book trades has no
+      // evidence of self-dealing, and absence of evidence must not read as an
+      // unknown that downstream tests then treat as suspicious.
       db
         .prepare(
           `SELECT pair,
-                  SUM(CASE WHEN maker = taker THEN 1.0 ELSE 0 END) * 100.0 / COUNT(*) AS self_trade_pct
+                  COALESCE(
+                    SUM(CASE WHEN source_type <> 'pool' AND maker = taker THEN 1.0 ELSE 0 END) * 100.0
+                      / NULLIF(SUM(CASE WHEN source_type <> 'pool' THEN 1 ELSE 0 END), 0),
+                    0
+                  ) AS self_trade_pct
            FROM trades WHERE pair IN (${phFrom(1)}) GROUP BY pair`
         )
         .bind(...pairs),
@@ -212,16 +228,25 @@ export async function bulkUpdatePairStats(
           total_trade_count = json_extract(j.value, '$.tc'),
           unique_traders = json_extract(j.value, '$.ut'),
           self_trade_pct = json_extract(j.value, '$.stp'),
-          -- Hides, never un-hides. The rule can only ADD to what is hidden:
-          -- a handful of pairs were flagged by hand and an automatic ELSE 0
-          -- would silently un-hide them on the next refresh. It also cannot
-          -- reverse itself by accident — self_trade_pct is an all-time ratio,
-          -- so a market that has been washed does not become clean, it only
-          -- gets diluted. Mirrors the explorer's rule (see migration 0032).
-          hidden = CASE
-            WHEN json_extract(j.value, '$.stp') >= 50
-             AND json_extract(j.value, '$.tc') >= 30 THEN 1
-            ELSE pair_stats.hidden END,
+          -- hidden is NOT derived here any more. It is carried forward
+          -- untouched, so manual flags and the asset-level rule in
+          -- low-quality.ts survive, and nothing is ever un-hidden by accident.
+          --
+          -- This used to auto-hide on self_trade_pct >= 50 AND tc >= 30. The
+          -- ratio was wrong (it counted every AMM swap as a wash trade — see
+          -- Q7), but the rule was also carrying no weight even in principle.
+          -- Measured 2026-08-25: of 199 hidden pairs, 196 are explained by a
+          -- low-quality asset on one leg. The remaining 3 were hidden by this
+          -- rule alone, and all 3 were false positives — CAPTAINDAN_XCP,
+          -- PEPEMEMECOIN_XCP and STOLEYERGIRL_XCP, whose real book self-trade
+          -- rate is 0.0%. Zero true positives in the whole table, against three
+          -- launchpad graduates hidden from /explore/pools, analytics, the
+          -- DefiLlama feed and deal scores at the moment they started working.
+          --
+          -- Asset quality is judged where the evidence lives: xcp.io rates the
+          -- ASSET and low-quality.ts propagates that to both legs. A pair-level
+          -- threshold on top of it was a second opinion with worse data.
+          hidden = pair_stats.hidden,
           all_time_high = json_extract(j.value, '$.ath'),
           all_time_low = json_extract(j.value, '$.atl'),
           updated_at = json_extract(j.value, '$.ua')
