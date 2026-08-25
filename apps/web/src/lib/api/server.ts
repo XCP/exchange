@@ -66,7 +66,26 @@ export interface CoinPrices {
  */
 export async function fetchCoinPrices(): Promise<CoinPrices | null> {
   try {
-    const res = await fetch('https://api.xcp.io/v2/price', { signal: AbortSignal.timeout(SSR_FETCH_TIMEOUT_MS), next: { revalidate: 900 } })
+    /**
+     * `no-store`, NOT `next: { revalidate: 900 }`, and the difference is three
+     * days of wrong numbers.
+     *
+     * The revalidate hint puts this response in Next's data cache, which
+     * OpenNext backs with the R2 incremental bucket — the same store whose
+     * staleness is documented in open-next.config.ts. It does not reliably
+     * revalidate here. Measured 2026-08-25: the page itself was rendering
+     * dynamically (`no-store` on the response) and STILL served XCP at $1.78
+     * and BTC at $77,477 while the upstream said $2.4182 and $80,606.78 —
+     * both frozen together at the 08-22 deploy, because one stale cache entry
+     * backs the whole call.
+     *
+     * A page-level `revalidate` export would not have fixed it; the page was
+     * already re-rendering per request and re-reading the same stale entry.
+     *
+     * The upstream is a Worker behind Cloudflare's own edge cache, so going
+     * uncached here costs an edge hit, not a cold origin round trip.
+     */
+    const res = await fetch('https://api.xcp.io/v2/price', { signal: AbortSignal.timeout(SSR_FETCH_TIMEOUT_MS), cache: 'no-store' })
     if (!res.ok) return null
     const r = (await res.json())?.result
     const last = r?.history?.[r.history.length - 1]

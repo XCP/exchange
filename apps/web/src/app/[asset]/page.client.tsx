@@ -23,7 +23,7 @@ import { TradeChart } from '@/components/trade-chart'
 import { AssetTradeHistory } from '@/components/asset/asset-trade-history'
 import { AssetTradePanel } from '@/components/asset/asset-trade-panel'
 import { useXcpPrice } from '@/lib/hooks/useNetworkInfo'
-import { type ChartTimeframe } from '@/lib/hooks/useTradeSeries'
+import { canBlendVenues, type ChartTimeframe } from '@/lib/hooks/useTradeSeries'
 import dynamic from 'next/dynamic'
 import { marketPath } from '@/utils/pairs'
 
@@ -240,10 +240,15 @@ export default function AssetPage({ params }: { params: Promise<{ asset: string 
           // formed, so the action belongs beside it rather than a URL away.
           <div className="mb-6 grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_22rem]">
             <div className="min-w-0">
+            {/* A BTC-quoted pair charts BOTH on-chain venues, because both
+                already price in bitcoin. For XCP/BTC the book saw six fills in
+                a year against the dispensers' 1,635 — 'market' alone was
+                drawing 3% of the market. Any other quote asset stays
+                book-only; the API will not invent a cross-rate. */}
             <TradeChart
-              venue="market"
+              venue={canBlendVenues(primary.pair) ? 'all' : 'market'}
               pairSlug={primary.pair}
-              asset={null}
+              asset={primary.pair.endsWith('_BTC') ? primary.pair.split('_')[0]! : null}
               title={primary.pair.replace('_', ' / ')}
               quoteLabel={primary.quote_asset}
               timeframe={chartTf ?? 'All'}

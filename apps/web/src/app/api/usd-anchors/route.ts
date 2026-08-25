@@ -43,9 +43,14 @@ export async function GET(request: Request) {
   )
 
   try {
+    // Same reason as fetchCoinPrices: the revalidate hint routes this through
+    // the R2-backed data cache, which held a three-day-old copy of this exact
+    // URL. This route sets its OWN cache-control below (300s browser / 900s
+    // edge), so freshness is still bounded here — it just isn't bounded by a
+    // store that stops revalidating.
     const res = await fetch(UPSTREAM, {
       signal: AbortSignal.timeout(8000),
-      next: { revalidate: 900 },
+      cache: 'no-store',
     })
     if (!res.ok) return NextResponse.json({ anchors: [], stats: null })
 

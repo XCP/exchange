@@ -40,6 +40,11 @@ import { big, num, DIVISIBLE_DECIMALS } from '@/utils/numeric'
  * a dispenser series is priced in bitcoin. Those are different numbers about
  * the same asset, and a chart that didn't say which would be the most
  * misleading thing on the page.
+ *
+ * 'all' is a third label and needs its own, not a fallback: a BTC-quoted pair
+ * merges both on-chain venues, and letting it fall through to 'Dispensers'
+ * would put a wrong name under a real series — the exact failure this label
+ * exists to prevent.
  */
 export function TradeChart({
   venue,
@@ -353,7 +358,7 @@ export function TradeChart({
             </button>
           )}
           <span className="text-[10px] uppercase tracking-wide text-zinc-600">
-            {venue === 'market' ? 'DEX + pool' : 'Dispensers'}
+            {venue === 'all' ? 'DEX + pool + dispensers' : venue === 'market' ? 'DEX + pool' : 'Dispensers'}
           </span>
         </div>
       </div>

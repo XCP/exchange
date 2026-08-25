@@ -11,6 +11,7 @@ import { LOCK_TIMEOUT_SECONDS } from "./lib/constants";
 import { fixScientificNotation } from "./lib/json";
 import { handleOhlc } from "./routes/ohlc";
 import { handleDispenseOhlc } from "./routes/dispense-ohlc";
+import { handleCombinedOhlc } from "./routes/combined-ohlc";
 import { handlePoolLiquidity } from "./routes/pool-liquidity";
 import { handleTrades } from "./routes/trades";
 import { handlePair, handlePairs } from "./routes/pairs";
@@ -166,7 +167,12 @@ app.use('/indexer/*', async (c, next) => {
 
 // Public Routes
 
-app.get('/ohlc/:pair', (c) => handleOhlc(c.req.raw, c.env.DB, c.req.param('pair')));
+// `?venue=all` merges the BTC-quoted order book with dispenser sales — see
+// combined-ohlc.ts for why that is only defined when the quote asset is BTC.
+app.get('/ohlc/:pair', (c) =>
+  new URL(c.req.raw.url).searchParams.get('venue') === 'all'
+    ? handleCombinedOhlc(c.req.raw, c.env.DB, c.req.param('pair'))
+    : handleOhlc(c.req.raw, c.env.DB, c.req.param('pair')));
 app.get('/trades/:pair', (c) => handleTrades(c.req.raw, c.env.DB, c.req.param('pair')));
 app.get('/book/:pair', (c) => handleBook(c.req.raw, c.env.DB, c.req.param('pair')));
 app.get('/pair/:pair', (c) => handlePair(new URL(c.req.url), c.env.DB, c.req.param('pair')));

@@ -6,18 +6,30 @@ import type { OhlcCandle } from '@/lib/hooks/useOhlc'
 /**
  * Price history for the panel beside a trading form.
  *
- * Two venues, deliberately kept apart rather than blended. A DEX pair is
- * priced in its quote asset and already merges the order book with the AMM
- * pool; a dispenser sale is priced in BITCOIN. Putting them on one axis would
- * need a BTC↔XCP rate our own data can't supply — the XCP/BTC book has two
- * real trade days in the last year — so the panel charts one or the other and
- * says which.
+ * Three venues. A DEX pair is priced in its quote asset and already merges the
+ * order book with the AMM pool; a dispenser sale is priced in BITCOIN. For most
+ * pairs those two cannot share an axis without a BTC↔XCP rate our own data
+ * can't supply, so the panel charts one or the other and says which.
+ *
+ * `all` is the exception, and only for BTC-QUOTED pairs. There the denominations
+ * already agree — an XCP/BTC match and an XCP dispense are both BTC-per-XCP —
+ * so the two merge with nothing converted and nothing invented. The API refuses
+ * the blend for any other quote asset rather than fabricate a cross-rate.
+ *
+ * It matters most exactly where the old comment said blending was impossible.
+ * Over the 365 days to 2026-08-25 the XCP/BTC book saw 5 days and SIX fills;
+ * dispensers saw 325 days and 1,635 fills, 30x the volume. 'market' alone drew
+ * 3% of that market and left the rest behind a toggle.
  *
  * Separate from `useOhlc`, which carries pagination and history accumulation
  * for the full-page chart. A panel shows a fixed window and never scrolls
  * back, so none of that machinery earns its place here.
  */
-export type ChartVenue = 'market' | 'dispensers'
+export type ChartVenue = 'market' | 'dispensers' | 'all'
+
+/** Blending is defined only where both venues already price in bitcoin. */
+export const canBlendVenues = (pairSlug: string | null | undefined) =>
+  !!pairSlug && pairSlug.endsWith('_BTC')
 
 export const CHART_TIMEFRAMES = ['1D', '1W', '1M', '1Y', 'All'] as const
 export type ChartTimeframe = (typeof CHART_TIMEFRAMES)[number]
@@ -78,11 +90,16 @@ export function useTradeSeries({
   timeframe: ChartTimeframe
 }) {
   const { interval, limit } = TIMEFRAME_SPEC[timeframe]
-  const target = venue === 'market' ? pairSlug : asset
-  const path =
-    venue === 'market'
-      ? `/ohlc/${target}?interval=${interval}&limit=${limit}`
-      : `/dispenses/ohlc/${target}?interval=${interval}&limit=${limit}`
+  // 'all' reads the pair like 'market' does; the merge happens server-side so
+  // the carry-forward grid is built once, over both venues, rather than two
+  // grids being stitched in the browser.
+  const blended = venue === 'all' && canBlendVenues(pairSlug)
+  const target = venue === 'dispensers' ? asset : pairSlug
+  const path = blended
+    ? `/ohlc/${target}?interval=${interval}&limit=${limit}&venue=all`
+    : venue === 'dispensers'
+      ? `/dispenses/ohlc/${target}?interval=${interval}&limit=${limit}`
+      : `/ohlc/${target}?interval=${interval}&limit=${limit}`
 
   const { data, error, isLoading } = useDexSWR<SeriesResponse>(
     target ? dexUrl(path) : null,
