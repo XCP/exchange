@@ -7,6 +7,7 @@ import { parseTxInputs, type TxInput } from './raw-tx'
 import { msSinceLastSpend, recentlySpentUtxos, registerSpentUtxos } from './spent-utxos'
 import { quantityParam } from '@/utils/quantity-param'
 import { COUNTERPARTY_API_BASE } from '@/utils/constants'
+import { relayingFetch } from '@/lib/counterparty-relay'
 import { PRECISE_FEES_URL, feeRateFrom } from '@/lib/hooks/useNetworkInfo'
 import { trackTx } from '@/lib/analytics'
 
@@ -224,7 +225,10 @@ async function composeRequest(
   qp.set('verbose', 'true')
 
   const url = `${COUNTERPARTY_API_BASE}/${path}/compose/${type}?${qp.toString()}`
-  const res = await fetch(url, { signal: AbortSignal.timeout(30_000) })
+  // Through the relay: composing is the one call a user cannot route around.
+  // When the node stops talking to a browser, everything else degrades to
+  // stale numbers, but this degrades to "you cannot transact".
+  const res = await relayingFetch(url, 30_000)
   const body = await res.text()
   let data: { error?: unknown; result?: { rawtransaction?: string } } = {}
   try {

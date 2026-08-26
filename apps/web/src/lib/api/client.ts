@@ -1,5 +1,6 @@
 import { COUNTERPARTY_API_BASE, DEX_API_BASE } from '@/utils/constants'
 import { parseJsonLossless } from '@/lib/api/lossless-json'
+import { relayingFetch } from '@/lib/counterparty-relay'
 
 /**
  * Every API read goes through here, which is the only place a quantity can
@@ -31,7 +32,9 @@ import { parseJsonLossless } from '@/lib/api/lossless-json'
 const FETCH_TIMEOUT_MS = 10_000
 
 export async function fetcher<T>(url: string): Promise<T> {
-  const res = await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) })
+  // relayingFetch is a no-op for anything that is not Counterparty, so
+  // api.xcpdex.com and mempool.space read exactly as they always have.
+  const res = await relayingFetch(url, FETCH_TIMEOUT_MS)
   if (!res.ok) {
     throw new Error(`API error: ${res.status} ${res.statusText}`)
   }
