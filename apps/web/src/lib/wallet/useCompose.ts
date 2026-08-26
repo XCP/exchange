@@ -228,7 +228,7 @@ async function composeRequest(
   // Through the relay: composing is the one call a user cannot route around.
   // When the node stops talking to a browser, everything else degrades to
   // stale numbers, but this degrades to "you cannot transact".
-  const res = await relayingFetch(url, 30_000)
+  const res = await relayingFetch(url, 30_000, { essential: true })
   const body = await res.text()
   let data: { error?: unknown; result?: { rawtransaction?: string } } = {}
   try {

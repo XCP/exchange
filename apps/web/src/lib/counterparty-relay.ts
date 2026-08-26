@@ -15,11 +15,7 @@ import { COUNTERPARTY_API_BASE } from '@/utils/constants'
  * the response is Cloud Armor's own, carries no CORS headers, and the browser
  * refuses to expose it. What reaches script is a bare TypeError: no status, no
  * body, and nothing in the network tab. Error handling keyed on a status code
- * never fires, because there is no status. This was diagnosed on xcp.fun,
- * where balances and mempool reads died in the browser while the identical
- * requests from the same IP by curl answered 200 with correct headers — the
- * node looked healthy from everywhere except a browser, because CORS is a
- * browser rule and nothing else enforces it.
+ * never fires, because there is no status.
  *
  * There is no second public node to ask — dev.counterparty.io:4000 is gone and
  * nothing else answers — so the fallback is a host we run, and it is the SAME
@@ -44,16 +40,10 @@ import { COUNTERPARTY_API_BASE } from '@/utils/constants'
 
 /** Same-origin, so it is reachable exactly when the page is. */
 const RELAY_BASE = '/api/cp'
-
 /**
  * Where a Counterparty read goes when the node will not talk to this browser,
  * and null for any other URL. Only this one upstream is relayed: a route that
  * forwarded anywhere would be an open proxy wearing our own origin.
- *
- * Compared against COUNTERPARTY_API_BASE rather than a hardcoded host, so a
- * deployment pointing NEXT_PUBLIC_COUNTERPARTY_API_BASE at its own node keeps
- * working — its reads simply stop being relayable, which is correct, because
- * the relay only knows how to reach the node the constant names.
  */
 export function counterpartyRelay(url: string): string | null {
   if (!url.startsWith(COUNTERPARTY_API_BASE)) return null
@@ -74,6 +64,147 @@ export function counterpartyRelay(url: string): string | null {
  * doubles the traffic to learn what we already know.
  */
 const relayable = (status: number) => status >= 500 || status === 403 || status === 429
+/**
+ * Knowing we are throttled, and acting like it.
+ *
+ * A rate limiter counts the requests it REJECTS. So the obvious behaviour —
+ * always try direct, fall back when it fails — is the one that keeps the door
+ * shut: every read during a throttle spends another rejected request against
+ * the same window, and a page with a handful of pollers can hold itself out
+ * indefinitely without a single one of them succeeding.
+ *
+ * We cannot see the limit. Cloud Armor's rules are not ours to read, there is
+ * no quota header to watch, and a denial arrives with no status at all. But we
+ * do not need the number: we can see the moment we cross it. After that, going
+ * straight to the relay stops feeding the limiter, which is the only thing
+ * that lets the window drain — and it is faster for the user, because it skips
+ * an attempt already known to fail.
+ *
+ * The flag is shared across tabs through localStorage, which matters more than
+ * it sounds: several tabs open on this site are several independent sets of
+ * pollers against one per-IP budget, and they are how a person gets throttled
+ * in the first place. One tab discovering it should stand the others down too.
+ */
+const THROTTLE_KEY = 'xcpdex:cp-throttled-until'
+/** Long enough for a per-minute window to drain, short enough that a false
+ *  positive — being offline, say — costs one quiet minute and no more. */
+const THROTTLE_MS = 60_000
+let throttledUntil = 0
+function throttled(): boolean {
+  try {
+    // Storage is the shared truth, read every time and in both directions. A
+    // sibling tab that learned it should stand this one down; a sibling that
+    // RECOVERED should let it back up, and an in-memory flag that outranked
+    // storage would make this tab sit out the rest of a timer that is no
+    // longer true for anyone.
+    const stored = Number(localStorage.getItem(THROTTLE_KEY) ?? 0)
+    throttledUntil = Number.isFinite(stored) ? stored : 0
+  } catch {
+    // No storage: the in-memory flag is all this tab has, and it still
+    // stands this tab down on its own.
+  }
+  return Date.now() < throttledUntil
+}
+
+function noteThrottled(): void {
+  throttledUntil = Date.now() + THROTTLE_MS
+  try {
+    localStorage.setItem(THROTTLE_KEY, String(throttledUntil))
+  } catch {
+    // Guarded deliberately: a throw here reaches whatever called the read.
+  }
+}
+
+/** A direct read that worked means the window has drained — say so at once
+ *  rather than sitting out the rest of a timer that is no longer true. */
+function noteRecovered(): void {
+  if (throttledUntil === 0) return
+  throttledUntil = 0
+  try {
+    localStorage.removeItem(THROTTLE_KEY)
+  } catch {
+    // Nothing to undo.
+  }
+}
+
+/**
+ * A ceiling on what one browser may push through the relay.
+ *
+ * Rerouting demand is not managing it. Every relayed visitor shares ONE egress
+ * IP upstream, so a throttled page that simply redirects its full poll rate at
+ * us is trading a limit it hit alone for one it would hit on everybody's
+ * behalf — and a relay that is itself rate limited is worth nothing to anyone.
+ * The relay is a lifeboat, and a lifeboat has a capacity.
+ *
+ * So background reads get a budget and user-driven ones do not. That split is
+ * the whole design: a poller refreshing a number that is already on screen can
+ * wait a cycle and nobody notices, while a person who pressed a button is
+ * doing the one thing the site exists for. Under a throttle the pollers stand
+ * down and the buttons keep working, which is the right way round — and it is
+ * also what drains the window, because the traffic that caused it was never
+ * the buttons.
+ *
+ * Counted per rolling minute and shared across tabs, for the same reason the
+ * throttle flag is: several tabs are several sets of pollers against one
+ * budget, and they are how someone gets throttled in the first place.
+ */
+const BUDGET_KEY = 'xcpdex:cp-relay-budget'
+const BUDGET_WINDOW_MS = 60_000
+/** Enough for a page to fill itself and keep its most important number
+ *  current, far short of what its pollers would send unprompted. */
+const BUDGET_PER_WINDOW = 8
+interface Budget {
+  windowStart: number
+  used: number
+}
+
+function readBudget(): Budget {
+  const fresh = { windowStart: Date.now(), used: 0 }
+  try {
+    const raw = localStorage.getItem(BUDGET_KEY)
+    if (!raw) return fresh
+    const parsed = JSON.parse(raw) as Partial<Budget>
+    if (
+      typeof parsed.windowStart !== 'number' ||
+      typeof parsed.used !== 'number' ||
+      Date.now() - parsed.windowStart >= BUDGET_WINDOW_MS
+    ) {
+      return fresh
+    }
+    return { windowStart: parsed.windowStart, used: parsed.used }
+  } catch {
+    // No storage: this tab keeps its own budget, which still bounds it.
+    return fresh
+  }
+}
+
+/** True when this read may use the relay, and spends one from the budget if
+ *  so. User-driven reads never ask. */
+function claimBudget(): boolean {
+  const budget = readBudget()
+  if (budget.used >= BUDGET_PER_WINDOW) return false
+  budget.used += 1
+  try {
+    localStorage.setItem(BUDGET_KEY, JSON.stringify(budget))
+  } catch {
+    // Guarded: a throw here would reach whatever called the read.
+  }
+  return true
+}
+
+/**
+ * What a background read gets when the relay is closed to it.
+ *
+ * A rejection rather than an empty result, because empty is a lie that
+ * renders: SWR holds the value it already had and retries on its own
+ * schedule, which is exactly the backing-off we want, while a fabricated
+ * empty answer would paint a zero balance over a real one.
+ */
+export class RelayBudgetExhausted extends Error {
+  constructor() {
+    super('Counterparty is rate limiting this browser. Waiting before retrying.')
+  }
+}
 
 /**
  * Fetch, with the relay behind it.
@@ -88,22 +219,50 @@ const relayable = (status: number) => status >= 500 || status === 403 || status 
  * caller sees the original response and the original status, rather than a
  * confusing second-hand error about a route it never asked for.
  */
-export async function relayingFetch(url: string, timeoutMs: number): Promise<Response> {
+export async function relayingFetch(
+  url: string,
+  timeoutMs: number,
+  { essential = false }: { essential?: boolean } = {},
+): Promise<Response> {
   const relay = counterpartyRelay(url)
+  const viaRelay = () => fetch(relay!, { signal: AbortSignal.timeout(timeoutMs) })
+  /** The relay, if this read is allowed to have it. */
+  const lifeboat = async (): Promise<Response | null> => {
+    if (!relay) return null
+    if (!essential && !claimBudget()) return null
+    return viaRelay()
+  }
+  // Known throttled: do not knock on a door we know is shut. A rate limiter
+  // counts what it rejects, so a doomed direct attempt is not free — it is the
+  // thing keeping the window from draining.
+  if (relay && throttled()) {
+    const relayed = await lifeboat()
+    if (relayed) return relayed
+    throw new RelayBudgetExhausted()
+  }
+
   try {
     const direct = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) })
-    if (!relay || !relayable(direct.status)) return direct
-    try {
-      const relayed = await fetch(relay, { signal: AbortSignal.timeout(timeoutMs) })
-      return relayed.ok ? relayed : direct
-    } catch {
+    if (!relay) return direct
+    if (!relayable(direct.status)) {
+      noteRecovered()
       return direct
     }
+    // A readable 429 is the same news as an unreadable one, and the only kind
+    // we ever get to see — counterparty-core's own /rate-limited route sends
+    // it with CORS headers attached.
+    if (direct.status === 429 || direct.status === 403) noteThrottled()
+    const relayed = await lifeboat().catch(() => null)
+    return relayed?.ok ? relayed : direct
   } catch (error) {
     // No status to inspect: a dead network and a response the browser refused
-    // to expose arrive here identically, and only one is worth a retry, so
-    // both get one.
+    // to expose arrive here identically. Only one is worth a retry, so both
+    // get one — and both are worth standing the pollers down for, because if
+    // it IS the limiter then every further attempt extends it.
     if (!relay) throw error
-    return fetch(relay, { signal: AbortSignal.timeout(timeoutMs) })
+    noteThrottled()
+    const relayed = await lifeboat()
+    if (relayed) return relayed
+    throw new RelayBudgetExhausted()
   }
 }
