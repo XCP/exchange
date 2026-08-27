@@ -85,12 +85,22 @@ export async function fetchCoinPrices(): Promise<CoinPrices | null> {
      * The upstream is a Worker behind Cloudflare's own edge cache, so going
      * uncached here costs an edge hit, not a cold origin round trip.
      */
-    const res = await fetch('https://api.xcp.io/v2/price', { signal: AbortSignal.timeout(SSR_FETCH_TIMEOUT_MS), cache: 'no-store' })
+    const [res, tickerRes] = await Promise.all([
+      fetch('https://api.xcp.io/v2/price', {
+        signal: AbortSignal.timeout(SSR_FETCH_TIMEOUT_MS),
+        cache: 'no-store',
+      }),
+      fetch('https://api.xcp.io/v2/price/ticker', {
+        signal: AbortSignal.timeout(SSR_FETCH_TIMEOUT_MS),
+        cache: 'no-store',
+      }),
+    ])
     if (!res.ok) return null
     const r = (await res.json())?.result
+    const ticker = tickerRes.ok ? (await tickerRes.json())?.result : null
     const last = r?.history?.[r.history.length - 1]
     return {
-      xcp: r?.xcp?.usd ?? null,
+      xcp: ticker?.xcp?.usd ?? r?.xcp?.usd ?? null,
       btc: r?.btc?.usd ?? null,
       supply: last?.supply ?? null,
     }
