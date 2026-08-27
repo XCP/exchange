@@ -407,10 +407,10 @@ export default function PriceClient({ initial }: { initial: Coin }) {
       )}
 
       <p className="mt-4 text-[11px] leading-relaxed text-zinc-500">
-        Daily closes from the XCP.io price calendar, which also prices every USD figure elsewhere on
-        the site. Bitcoin supply is derived from the emission schedule at the current block height
-        and counts issued coins, including those provably lost. Third-party venues are listed for
-        convenience — no affiliation or endorsement.
+        Completed days use the XCP.io daily price calendar; today&apos;s XCP endpoint uses the current
+        dispenser ask. Bitcoin supply is derived from the emission schedule at the current block
+        height and counts issued coins, including those provably lost. Third-party venues are listed
+        for convenience — no affiliation or endorsement.
       </p>
     </div>
   )

@@ -1,5 +1,7 @@
+import { useMemo } from 'react'
 import useSWR from 'swr'
 import { fetcher } from '@/lib/api/client'
+import { useBtcPrice, useXcpPrice } from '@/lib/hooks/useNetworkInfo'
 
 export interface PriceRow {
   day: string
@@ -46,9 +48,33 @@ export function usePriceHistory(deep: boolean) {
     fetcher,
     { revalidateOnFocus: false, dedupingInterval: 600_000, keepPreviousData: true },
   )
+  const { xcpUsd } = useXcpPrice()
+  const btcUsd = useBtcPrice()
+  const rows = useMemo(() => {
+    const historical = data?.anchors ?? []
+    if (historical.length === 0 || xcpUsd == null || btcUsd == null) return historical
+    const today = new Date().toISOString().slice(0, 10)
+    const last = historical.at(-1)!
+    const live = { day: today, xcp: xcpUsd, btc: btcUsd, supply: last.supply }
+    return last.day === today ? [...historical.slice(0, -1), live] : [...historical, live]
+  }, [data?.anchors, xcpUsd, btcUsd])
+  const stats = useMemo(() => {
+    if (!data?.stats || rows.length === 0) return data?.stats ?? null
+    const today = rows.at(-1)!
+    const peak = (current: Peak | null, value: number): Peak =>
+      !current || value > current.value ? { day: today.day, value } : current
+    return {
+      ...data.stats,
+      ath: {
+        btc: peak(data.stats.ath.btc, today.btc),
+        xcp: peak(data.stats.ath.xcp, today.xcp),
+        ratio: peak(data.stats.ath.ratio, (today.xcp / today.btc) * 1e8),
+      },
+    }
+  }, [data, rows])
   return {
-    rows: data?.anchors ?? [],
-    stats: data?.stats ?? null,
+    rows,
+    stats,
     error,
     isLoading,
   }

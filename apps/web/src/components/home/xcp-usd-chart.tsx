@@ -14,8 +14,8 @@ import { XCP_IMG_BASE } from '@/utils/constants'
  *
  * The chart itself is the same component /price/XCP draws — extracted rather
  * than copied, so the two cannot drift. This wrapper only decides what is
- * charted (the deep calendar, every row, no window switcher) and what the
- * header says.
+ * charted (the deep calendar plus the live dispenser ask as today's endpoint,
+ * every row, no window switcher) and what the header says.
  *
  * All-time is the only honest default here: XCP has twelve years of history
  * and a shorter window on a thin market is mostly flat line.
