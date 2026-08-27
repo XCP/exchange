@@ -890,7 +890,12 @@ export async function syncBlocks(
       blockTime = ev.block_time ?? (ev.params.block_time as number | undefined);
       if (blockTime) break;
     }
-    if (!blockTime && events.length > 0) {
+    // The checkpoint time describes the Bitcoin block, not whether that block
+    // happened to contain one of our selected DEX events. An empty event page
+    // still advances the height; writing String(undefined) here made every
+    // freshness consumer treat a successful sync as stale until a later busy
+    // block happened to repair it.
+    if (!blockTime) {
       blockTime = (await fetchBlockInfo(apiBase, blockIdx)).block_time;
     }
 
