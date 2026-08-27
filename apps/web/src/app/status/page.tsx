@@ -16,6 +16,8 @@ export const revalidate = 600
 
 interface DexStatus {
   ok: boolean
+  indexer_healthy: boolean
+  indexer_age_seconds: number | null
   mode: string
   trades: number
   pairs: number
@@ -82,7 +84,7 @@ export default async function StatusPage() {
 
       <div className="mt-8">
         <Light operational={dex != null && dex.ok} label="Market API" />
-        <Light operational={dex != null && dex.mode === 'FOLLOWING'} label="Counterparty indexer" />
+        <Light operational={dex != null && dex.indexer_healthy} label="Counterparty indexer" />
         <Light operational={network != null && network.ledger_state === 'Following'} label="Bitcoin synchronization" />
       </div>
 

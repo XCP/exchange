@@ -381,7 +381,15 @@ function processOpenOrder(
   blockIndex: number,
   blockTime: number,
   now: number
-): { stmt: (db: D1Database) => D1PreparedStatement; pair: string } {
+): { stmt: (db: D1Database) => D1PreparedStatement; pair: string } | null {
+  // Core emits OPEN_ORDER for the parsed attempt, including attempts it has
+  // already rejected. Those rows carry status="invalid: ..." and may quite
+  // correctly have a zero quantity. They are not an order-book mutation and
+  // must not be normalized or stored. Treating the event name alone as proof
+  // of an open order made one invalid order poison the block checkpoint: every
+  // cron retried the same block and the entire exchange index froze behind it.
+  if (params.status !== "open") return null;
+
   const order: Order = {
     tx_hash: params.tx_hash as string,
     tx_index: params.tx_index as number,
@@ -948,6 +956,7 @@ export async function syncBlocks(
               break;
             }
             const opened = processOpenOrder(params, blockIndex, eventBlockTime, now);
+            if (!opened) break;
             stmts.push(opened.stmt);
             result.orders_upserted++;
             // Deal scoring exists to catch a bargain the moment it is LISTED,

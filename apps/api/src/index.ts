@@ -272,10 +272,27 @@ app.get('/status', async (c) => {
 
   const cnt = (r: D1Result) => (r.results[0] as { cnt: number } | undefined)?.cnt ?? 0;
   const stateRows = state.results as { key: string; value: string }[];
+  const indexer = Object.fromEntries(
+    stateRows
+      .filter((r) => !['aggregation_offset'].includes(r.key))
+      .map((r) => [r.key, r.value])
+  );
+  const lastRunTime = Number(indexer.last_run_time ?? 0);
+  const indexerAgeSeconds = Number.isFinite(lastRunTime) && lastRunTime > 0
+    ? Math.max(0, Math.floor(Date.now() / 1000) - lastRunTime)
+    : null;
+  // The cron runs every two minutes. Fifteen minutes allows ordinary Worker
+  // scheduling jitter and transient upstream failures, while ensuring a
+  // poison block cannot leave /status green for hours just because the stale
+  // stored mode still says FOLLOWING.
+  const indexerHealthy =
+    mode === "FOLLOWING" && indexerAgeSeconds !== null && indexerAgeSeconds <= 15 * 60;
 
   return Response.json({
-    ok: true,
+    ok: indexerHealthy,
     mode,
+    indexer_healthy: indexerHealthy,
+    indexer_age_seconds: indexerAgeSeconds,
     trades: cnt(tradeCount),
     pairs: cnt(pairCount),
     open_orders: cnt(openOrderCount),
@@ -283,11 +300,7 @@ app.get('/status', async (c) => {
     open_dispensers: cnt(openDispenserCount),
     pools: cnt(poolCount),
     candles: cnt(candleCount),
-    indexer: Object.fromEntries(
-      stateRows
-        .filter((r) => !['aggregation_offset'].includes(r.key))
-        .map((r) => [r.key, r.value])
-    ),
+    indexer,
   }, {
     // Seven unqualified COUNT(*)s, each O(table): ~1M rows read per call, of
     // which candles alone is 523,780 and was measured at 557ms. This route
