@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { COUNTERPARTY_API_BASE, DEX_API_BASE } from '@/utils/constants'
+import { fetchDexStatus } from '@/lib/api/server'
 
 export const metadata: Metadata = {
   title: 'Status | XCP DEX',
@@ -33,7 +34,7 @@ interface CounterpartyRoot {
 
 async function load(): Promise<{ dex: DexStatus | null; network: CounterpartyRoot['result'] | null }> {
   const [dexRes, cpRes] = await Promise.allSettled([
-    fetch(`${DEX_API_BASE}/status`, { next: { revalidate: 600 } }),
+    fetchDexStatus(),
     fetch(`${COUNTERPARTY_API_BASE.replace(/\/v2$/, '')}/v2/`, { next: { revalidate: 60 } }),
   ])
   const dex = dexRes.status === 'fulfilled' && dexRes.value.ok ? ((await dexRes.value.json()) as DexStatus) : null

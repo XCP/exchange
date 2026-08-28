@@ -1,3 +1,6 @@
+import 'server-only'
+import { getCloudflareContext } from '@opennextjs/cloudflare'
+
 import type { PairStats } from '@/lib/hooks/usePairStats'
 import type { DispenserStats } from '@/lib/hooks/useDispenserStats'
 
@@ -16,9 +19,46 @@ const SSR_FETCH_TIMEOUT_MS = 8_000
 const DEX_API_BASE = process.env.NEXT_PUBLIC_DEX_API_BASE ?? 'https://api.xcpdex.com'
 const COUNTERPARTY_API_BASE = process.env.NEXT_PUBLIC_COUNTERPARTY_API_BASE ?? 'https://api.counterparty.io:4000/v2'
 
+type NextFetchInit = RequestInit & { next?: { revalidate?: number } }
+
+interface WorkerBinding {
+  fetch(request: Request): Promise<Response>
+}
+
+interface InternalApiEnv extends CloudflareEnv {
+  DEX_API?: WorkerBinding
+  XCP_API?: WorkerBinding
+}
+
+/** Use an internal Worker hop during deployed server renders. */
+async function internalFetch(url: string, init: NextFetchInit): Promise<Response> {
+  try {
+    const { env, cf } = await getCloudflareContext({ async: true })
+    if (cf) {
+      const bindings = env as InternalApiEnv
+      const hostname = new URL(url).hostname
+      const binding = hostname === 'api.xcpdex.com'
+        ? bindings.DEX_API
+        : hostname === 'api.xcp.io'
+          ? bindings.XCP_API
+          : undefined
+
+      if (binding) return binding.fetch(new Request(url, init))
+    }
+  } catch {
+    // Next development and static generation use the configured public URL.
+  }
+
+  return fetch(url, init)
+}
+
+export function fetchDexStatus(): Promise<Response> {
+  return internalFetch(`${DEX_API_BASE}/status`, { next: { revalidate: 600 } })
+}
+
 export async function fetchPairStats(pairSlug: string): Promise<PairStats | null> {
   try {
-    const res = await fetch(`${DEX_API_BASE}/pair/${pairSlug}`, {
+    const res = await internalFetch(`${DEX_API_BASE}/pair/${pairSlug}`, {
       signal: AbortSignal.timeout(SSR_FETCH_TIMEOUT_MS),
       next: { revalidate: 60 },
     })
@@ -42,7 +82,7 @@ export interface PoolMetaResult {
 /** One pool, for generateMetadata. Null on any failure — metadata must never 500 a page. */
 export async function fetchPool(lpAsset: string): Promise<PoolMetaResult | null> {
   try {
-    const res = await fetch(`${DEX_API_BASE}/pools/${lpAsset}`, { signal: AbortSignal.timeout(SSR_FETCH_TIMEOUT_MS), next: { revalidate: 300 } })
+    const res = await internalFetch(`${DEX_API_BASE}/pools/${lpAsset}`, { signal: AbortSignal.timeout(SSR_FETCH_TIMEOUT_MS), next: { revalidate: 300 } })
     if (!res.ok) return null
     const body = await res.json()
     return (body?.pool ?? body) as PoolMetaResult
@@ -86,11 +126,11 @@ export async function fetchCoinPrices(): Promise<CoinPrices | null> {
      * uncached here costs an edge hit, not a cold origin round trip.
      */
     const [res, tickerRes] = await Promise.all([
-      fetch('https://api.xcp.io/v2/price', {
+      internalFetch('https://api.xcp.io/v2/price', {
         signal: AbortSignal.timeout(SSR_FETCH_TIMEOUT_MS),
         cache: 'no-store',
       }),
-      fetch('https://api.xcp.io/v2/price/ticker', {
+      internalFetch('https://api.xcp.io/v2/price/ticker', {
         signal: AbortSignal.timeout(SSR_FETCH_TIMEOUT_MS),
         cache: 'no-store',
       }),
@@ -111,7 +151,7 @@ export async function fetchCoinPrices(): Promise<CoinPrices | null> {
 
 export async function fetchDispenserStats(asset: string): Promise<DispenserStats | null> {
   try {
-    const res = await fetch(`${DEX_API_BASE}/dispenser-stats/${asset}`, {
+    const res = await internalFetch(`${DEX_API_BASE}/dispenser-stats/${asset}`, {
       signal: AbortSignal.timeout(SSR_FETCH_TIMEOUT_MS),
       next: { revalidate: 300 },
     })
