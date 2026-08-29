@@ -181,6 +181,19 @@ export function scaleBase(base: string | number, factor: number): string {
 }
 
 /**
+ * A slippage-adjusted protocol minimum, which must remain positive for a positive quote.
+ *
+ * One indivisible output unit has no fractional unit to absorb a percentage haircut: flooring
+ * `1 × 0.97` produces zero, and Counterparty correctly rejects that as a non-positive get
+ * quantity. In that one-base-unit case the only representable minimum is one. A zero/negative
+ * factor still returns zero so this helper remains explicit about a 100%+ tolerance.
+ */
+export function minimumBase(base: string | number, factor: number): string {
+  const scaled = scaleBase(base, factor)
+  return big(base).isGreaterThan(0) && factor > 0 && scaled === '0' ? '1' : scaled
+}
+
+/**
  * PRICE × AMOUNT as base units of the quote asset.
  *
  * Done in human units and converted once. Multiplying two already-scaled

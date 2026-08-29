@@ -16,7 +16,7 @@ import { useDebounced } from '@/lib/hooks/useDebounced'
 import { useXcpPrice, useBtcPrice, useFeeRate } from '@/lib/hooks/useNetworkInfo'
 import { fetcher, counterpartyUrl } from '@/lib/api/client'
 import { formatAmount } from '@/utils/format-amount'
-import { toBase, fromBase, fromBaseNumber, scaleBase, sanitizeAmountInput, rawErrorMessage, num, big, isPositive, DIVISIBLE_DECIMALS, ROUND_DOWN } from '@/utils/numeric'
+import { toBase, fromBase, fromBaseNumber, minimumBase, sanitizeAmountInput, rawErrorMessage, num, big, isPositive, DIVISIBLE_DECIMALS, ROUND_DOWN } from '@/utils/numeric'
 import { COMPOSE_STATUS_LABELS } from '@/utils/constants'
 
 /**
@@ -339,7 +339,7 @@ export function SwapWidget({
       give_asset: giveAsset,
       give_quantity: giveResult.base,
       get_asset: getAsset,
-      get_quantity: scaleBase(fresh.estimated_output, 1 - slippage / 100),
+      get_quantity: minimumBase(fresh.estimated_output, 1 - slippage / 100),
       expiration,
       fee_rate: feeRate || undefined,
     })
@@ -501,7 +501,7 @@ export function SwapWidget({
               </Row>
             )}
             <Row label="Minimum received">
-              {formatAmount(fromBaseNumber(scaleBase(outRaw, 1 - slippage / 100), getDivisible))} {getAsset}
+              {formatAmount(fromBaseNumber(minimumBase(outRaw, 1 - slippage / 100), getDivisible))} {getAsset}
             </Row>
             </dl>
           </PanelSection>
