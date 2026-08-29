@@ -17,7 +17,7 @@ import { FormNotice, TxBroadcast } from '@/components/ui/form-notice'
 import { formatAmount } from '@/utils/format-amount'
 import { poolFeeLabel } from '@/utils/pool-fee'
 import { useXcpPrice } from '@/lib/hooks/useNetworkInfo'
-import { toBase, fromBase, scaleBase, sanitizeAmountInput, big, num, ROUND_DOWN } from '@/utils/numeric'
+import { toBase, fromBase, minimumBase, sanitizeAmountInput, big, num, ROUND_DOWN } from '@/utils/numeric'
 import { COMPOSE_STATUS_LABELS } from '@/utils/constants'
 
 /**
@@ -58,7 +58,7 @@ function fromRawAmount(value: number | string | null | undefined, divisible: boo
 /** Round DOWN — a minimum-received that rounds up is a promise the pool can break. */
 function applySlippage(raw: number | string | null | undefined, slippagePercent: number) {
   if (raw == null) return '0'
-  return scaleBase(raw, 1 - slippagePercent / 100)
+  return minimumBase(raw, 1 - slippagePercent / 100)
 }
 
 export function PoolManagePanel({
