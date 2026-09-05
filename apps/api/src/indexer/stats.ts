@@ -732,49 +732,73 @@ export async function refreshLongWindowPairStats(
 /**
  * Resolve missing base_asset_longname values in pair_stats by querying the
  * Counterparty API directly. Processes a small batch per call to stay within
- * rate limits and CPU budget. Only targets numeric assets (A\d+) which are
- * subassets that should have longnames.
+ * rate limits and CPU budget. Numeric assets can legitimately have no
+ * longname: remember authoritative nulls for a week, retry provider failures
+ * on the next cron, and check unseen assets before previously checked ones.
  */
 export async function backfillMissingLongnames(
   db: D1Database,
-  batchSize: number = 10
+  batchSize: number = 10,
+  options: { now?: number; fetcher?: typeof fetch } = {},
 ): Promise<number> {
+  const now = options.now ?? Math.floor(Date.now() / 1000);
+  const fetcher = options.fetcher ?? fetch;
   const missing = await db
     .prepare(
-      `SELECT DISTINCT base_asset FROM pair_stats
-       WHERE base_asset_longname IS NULL AND base_asset LIKE 'A%'
+      `SELECT DISTINCT pairs.base_asset FROM pair_stats pairs
+       LEFT JOIN asset_longname_checks checks ON checks.asset = pairs.base_asset
+       WHERE pairs.base_asset_longname IS NULL
+         AND pairs.base_asset GLOB 'A[0-9]*'
+         AND substr(pairs.base_asset, 2) NOT GLOB '*[^0-9]*'
+         AND (checks.retry_after IS NULL OR checks.retry_after <= ?)
+       ORDER BY COALESCE(checks.checked_at, 0), pairs.base_asset
        LIMIT ?`
     )
-    .bind(batchSize)
+    .bind(now, batchSize)
     .all<{ base_asset: string }>();
 
   if (missing.results.length === 0) return 0;
 
   let updated = 0;
   for (const row of missing.results) {
+    let outcome = "unavailable";
+    let retryAfter = now + 120;
     try {
-      const resp = await fetch(
+      const resp = await fetcher(
         `https://api.counterparty.io:4000/v2/assets/${row.base_asset}`,
-        { headers: { Accept: "application/json" } }
+        { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(10_000) }
       );
-      if (!resp.ok) continue;
-      const data = (await resp.json()) as { result?: { asset_longname?: string | null } };
-      const longname = data.result?.asset_longname;
-      if (!longname) continue;
-
-      await db.batch([
-        db.prepare(
-          `UPDATE pair_stats SET base_asset_longname = ? WHERE base_asset = ? AND base_asset_longname IS NULL`
-        ).bind(longname, row.base_asset),
-        db.prepare(
-          `INSERT INTO assets (asset, asset_longname, updated_at) VALUES (?, ?, ?)
-           ON CONFLICT (asset) DO UPDATE SET asset_longname = COALESCE(assets.asset_longname, excluded.asset_longname), updated_at = excluded.updated_at`
-        ).bind(row.base_asset, longname, Math.floor(Date.now() / 1000)),
-      ]);
-      updated++;
+      if (resp.ok) {
+        const data = (await resp.json()) as { result?: { asset?: string; asset_longname?: string | null } };
+        const longname = data.result?.asset_longname;
+        // Missing/mismatched result bodies are provider failures, not proof
+        // that an asset lacks a longname.
+        if (data.result?.asset === row.base_asset && longname === null) {
+          outcome = "no_longname";
+          retryAfter = now + 7 * 86400;
+        } else if (data.result?.asset === row.base_asset && typeof longname === "string" && longname.length > 0) {
+          await db.batch([
+            db.prepare(
+              `UPDATE pair_stats SET base_asset_longname = ? WHERE base_asset = ? AND base_asset_longname IS NULL`
+            ).bind(longname, row.base_asset),
+            db.prepare(
+              `INSERT INTO assets (asset, asset_longname, updated_at) VALUES (?, ?, ?)
+               ON CONFLICT (asset) DO UPDATE SET asset_longname = COALESCE(assets.asset_longname, excluded.asset_longname), updated_at = excluded.updated_at`
+            ).bind(row.base_asset, longname, now),
+            db.prepare(`DELETE FROM asset_longname_checks WHERE asset = ?`).bind(row.base_asset),
+          ]);
+          updated++;
+          continue;
+        }
+      }
     } catch {
-      // Skip failures - will retry next cron tick
+      // Keep transient failures eligible at the normal two-minute cadence.
     }
+    await db.prepare(
+      `INSERT INTO asset_longname_checks(asset, checked_at, retry_after, outcome) VALUES (?, ?, ?, ?)
+       ON CONFLICT(asset) DO UPDATE SET checked_at=excluded.checked_at,
+         retry_after=excluded.retry_after,outcome=excluded.outcome`
+    ).bind(row.base_asset, now, retryAfter, outcome).run();
   }
 
   return updated;
