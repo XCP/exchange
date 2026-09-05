@@ -1,6 +1,14 @@
 import { cacheControl } from "../utils/cache";
+import { cachedAnalytics } from "../lib/analytics-cache";
 
 export async function handleAnalytics(
+  request: Request,
+  db: D1Database
+): Promise<Response> {
+  return cachedAnalytics(request, db, () => buildAnalytics(request, db));
+}
+
+async function buildAnalytics(
   request: Request,
   db: D1Database
 ): Promise<Response> {
