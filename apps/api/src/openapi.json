@@ -3,7 +3,7 @@
   "info": {
     "title": "XCP DEX Market Data API",
     "version": "1.0.0",
-    "description": "Aggregator-facing market data for the Counterparty DEX (XCP DEX). CoinGecko and CoinMarketCap use the explicit market allowlist in /catalog/pairs. DefiLlama volume is venue-wide across every BTC- or XCP-quoted market that can be priced defensibly. Completed Counterparty order-book settlements, AMM pool fills, and BTC-denominated dispenser executions are counted once; pending BTC order matches and PSBT/UTXO swaps are excluded. Dispenser quote volume and prices are protocol-priced notional (dispensed quantity x the dispenser's satoshirate-derived unit price), never the gross Bitcoin payment, which can be shared across multiple dispensers and can include overpayment. Methodology: https://xcpdex.com/methodology",
+    "description": "Aggregator-facing market data for the Counterparty DEX (XCP DEX). CoinMarketCap, CoinGecko, and DefiLlama have separate named adapters and independently controlled market policies, backed by the same normalized settlement data. The initial CoinGecko submission profile contains only XCP/BTC. The CMC profile is current and historical DEX data only for assets CMC already lists; additional Counterparty markets are deliberately excluded from that profile. DefiLlama volume is venue-wide across every BTC- or XCP-quoted market that can be priced defensibly. Completed Counterparty order-book settlements, AMM pool fills, and BTC-denominated dispenser executions are counted once; pending BTC order matches and PSBT/UTXO swaps are excluded. Open BTC-quoted DEX orders are also excluded from published depth because their BTC leg is not committed until BTCPay; completed BTCPay settlements remain in trades, prices, and volume, while escrow-backed dispensers remain asks. Dispenser quote volume and prices are protocol-priced notional (dispensed quantity x the dispenser's satoshirate-derived unit price), never the gross Bitcoin payment, which can be shared across multiple dispensers and can include overpayment. Methodology: https://xcpdex.com/methodology",
     "contact": { "name": "XCP DEX", "url": "https://xcpdex.com", "email": "dan@droplister.com" }
   },
   "servers": [{ "url": "https://api.xcpdex.com" }],
@@ -11,7 +11,7 @@
     "/coingecko/pairs": {
       "get": {
         "summary": "Active markets",
-        "description": "Markets currently surfaced by the feed. The universe is a fixed allowlist; allowlisted pairs with no completed settlement ever are omitted here and from tickers (see /catalog/pairs for the full allowlist with status). Cache-Control: 300s.",
+        "description": "Markets currently surfaced by the CoinGecko feed. The initial submission profile is restricted to XCP/BTC; assets without an exact CoinGecko identity are not published. Allowlisted pairs with no completed settlement ever are omitted here and from tickers (see /catalog/pairs for the full cross-consumer catalog with status). Cache-Control: 300s.",
         "responses": {
           "200": {
             "description": "OK",
@@ -37,7 +37,7 @@
     "/coingecko/tickers": {
       "get": {
         "summary": "Rolling 24h market summaries",
-        "description": "The 24h window is rolling (request time minus 24 hours through request time), not a UTC calendar day. Inclusion is governed by the Bitcoin block time of the completed settlement. high/low are calculated from completed settlements only; when no settlement occurred in the window they fall back to last_price and volumes are \"0.00000000\". bid/ask are the best currently executable levels (order-book bids; order-book asks merged with open dispenser offers on BTC-quoted pairs); null when that side has no executable level. An open bid or ask is never promoted into last_price. Cache-Control: 60s.",
+        "description": "The 24h window is rolling (request time minus 24 hours through request time), not a UTC calendar day. Inclusion is governed by the Bitcoin block time of the completed settlement. high/low are calculated from completed settlements only; when no settlement occurred in the window they fall back to last_price and volumes are \"0.00000000\". For protocol-asset pairs, bid/ask are open order-book levels. For BTC-quoted pairs, uncommitted open DEX orders are omitted and escrow-backed dispensers supply asks. AMM rows include total reserve liquidity in USD, valued at the pool ratio through the current XCP/USD or BTC/USD anchor. An open quote is never promoted into last_price. Cache-Control: 60s.",
         "responses": {
           "200": {
             "description": "OK",
@@ -53,7 +53,7 @@
     "/coingecko/orderbook": {
       "get": {
         "summary": "Price-level aggregated order book",
-        "description": "Bids sorted descending, asks ascending, aggregated by price level, executable remaining quantities only. On BTC-quoted pairs, open dispensers (escrow remaining, protocol price) are merged into the ask side - dispensers contribute asks, never bids. Cache-Control: 60s.",
+        "description": "Bids sorted descending and asks ascending, aggregated by price level. Protocol-asset pairs report executable remaining open-order quantities. BTC-quoted pairs exclude all open DEX orders because the BTC leg is not committed until BTCPay; their only published live depth is escrow-backed dispenser asks. Cache-Control: 60s.",
         "parameters": [
           { "$ref": "#/components/parameters/tickerId" },
           {
@@ -139,7 +139,7 @@
     "/coinmarketcap/summary": {
       "get": {
         "summary": "CoinMarketCap Ideal API summary",
-        "description": "Identical underlying dataset to /coingecko/tickers (the production reconciliation gate enforces field-level equality). type is always \"spot\". Cache-Control: 60s.",
+        "description": "Current and historical market summary for the CoinMarketCap-specific allowlist: only assets CMC already lists. Historical market data retains original timestamps; zero rolling volume is not replaced with lifetime volume. Open BTC-quoted DEX orders do not populate highest_bid or lowest_ask because the BTC leg is not committed until BTCPay; completed BTCPays remain in settled price and volume, and escrow-backed dispensers remain asks. type is always \"spot\". Cache-Control: 60s.",
         "responses": {
           "200": {
             "description": "OK",
@@ -149,6 +149,86 @@
               }
             }
           }
+        }
+      }
+    },
+    "/coinmarketcap/assets": {
+      "get": {
+        "summary": "CoinMarketCap asset identity and status",
+        "description": "CMC A1 representation of currencies used by the CMC-specific market profile. Every published currency has a verified UCID; adding a CMC pair without one fails explicitly rather than relying on a collision-prone symbol. Counterparty trading is self-custodial and its order book has no venue maker/taker fee.",
+        "responses": {
+          "200": {
+            "description": "Assets keyed by exchange currency code",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": { "$ref": "#/components/schemas/CmcAsset" }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/coinmarketcap/ticker": {
+      "get": {
+        "summary": "CoinMarketCap rolling 24h tickers",
+        "description": "CMC A2 representation keyed by market pair. isFrozen=1 marks a pair whose last completed settlement is older than 90 days; its historical last price retains the original last_trade_timestamp and its rolling volume remains zero.",
+        "responses": {
+          "200": {
+            "description": "Tickers keyed by market pair",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": { "$ref": "#/components/schemas/CmcTicker" }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/coinmarketcap/orderbook/{market_pair}": {
+      "get": {
+        "summary": "CoinMarketCap level-2 order book",
+        "description": "CMC A3 representation. Bids are descending, asks ascending, and quantities are aggregated by price level. BTC-quoted pairs exclude uncommitted open DEX orders and publish only escrow-backed dispenser asks; completed BTCPay settlements remain available from the trades endpoint.",
+        "parameters": [
+          { "name": "market_pair", "in": "path", "required": true, "schema": { "$ref": "#/components/schemas/TickerId" } },
+          { "name": "depth", "in": "query", "schema": { "type": "integer", "minimum": 0, "maximum": 1000, "default": 0 }, "description": "Total entries across both sides; 0 or absent returns full available depth capped at 500 levels per side." }
+        ],
+        "responses": {
+          "200": {
+            "description": "Level-2 depth",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CmcOrderbook" } } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "404": { "$ref": "#/components/responses/UnknownTicker" }
+        }
+      }
+    },
+    "/coinmarketcap/trades/{market_pair}": {
+      "get": {
+        "summary": "CoinMarketCap recent trades",
+        "description": "CMC A4 representation of completed settlements, newest first. It defaults to the rolling last 24 hours required by CMC; optional time bounds expose older source history. Timestamps in the response are UTC milliseconds.",
+        "parameters": [
+          { "name": "market_pair", "in": "path", "required": true, "schema": { "$ref": "#/components/schemas/TickerId" } },
+          { "name": "start_time", "in": "query", "schema": { "type": "integer", "format": "int64" }, "description": "Optional inclusive lower bound in unix seconds or milliseconds; defaults to 24 hours ago." },
+          { "name": "end_time", "in": "query", "schema": { "type": "integer", "format": "int64" }, "description": "Optional inclusive upper bound in unix seconds or milliseconds." },
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "minimum": 0, "maximum": 1000, "default": 0 }, "description": "0 returns all matching rows up to the safety cap of 1000." }
+        ],
+        "responses": {
+          "200": {
+            "description": "Completed 24-hour trades",
+            "content": {
+              "application/json": {
+                "schema": { "type": "array", "items": { "$ref": "#/components/schemas/CmcTrade" } }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "404": { "$ref": "#/components/responses/UnknownTicker" }
         }
       }
     },
@@ -208,7 +288,7 @@
     "/catalog/pairs": {
       "get": {
         "summary": "Market catalog",
-        "description": "The complete market allowlist with per-asset disambiguation (protocol, divisibility, longname, canonical explorer URL) and data-driven execution_sources: \"pool\" appears only on pairs with a live AMM pool, \"dispenser\" only on BTC-quoted pairs. status: active (completed fill within 90 days), stale (priced, no recent fill), inactive (never priced; omitted from tickers). Cache-Control: 300s.",
+        "description": "The union of named consumer allowlists with per-row consumers, per-asset disambiguation (protocol, divisibility, longname, canonical explorer URL), and data-driven execution_sources: \"pool\" appears only on pairs with a live AMM pool, \"dispenser\" only on BTC-quoted pairs. status: active (completed fill within 90 days), stale (priced, no recent fill), inactive (never priced; omitted from tickers). Cache-Control: 300s.",
         "responses": {
           "200": {
             "description": "OK",
@@ -287,16 +367,21 @@
             "type": "string",
             "description": "Counterparty LP asset name for markets with an AMM pool. Orderbook-only markets have no LP asset and use their unique ticker_id instead."
           },
+          "liquidity_in_usd": {
+            "type": "string",
+            "pattern": "^[0-9]+\\.[0-9]{2}$",
+            "description": "Present for AMM markets: both pool reserves valued in USD at the pool's current reserve ratio, using the current XCP/USD or BTC/USD anchor from api.xcp.io. Counterparty uses x*y=k; XCP pools charge 50 bps on input and other pools charge 100 bps. Not applicable to orderbook-only markets."
+          },
           "last_price": { "$ref": "#/components/schemas/PriceString" },
           "base_volume": { "$ref": "#/components/schemas/QuantityString" },
           "target_volume": { "$ref": "#/components/schemas/QuantityString" },
           "bid": {
             "oneOf": [{ "$ref": "#/components/schemas/PriceString" }, { "type": "null" }],
-            "description": "Best executable bid; null when no open bid exists."
+            "description": "Best executable bid; null when none. Always null on BTC-quoted pairs because their open DEX orders are not committed until BTCPay."
           },
           "ask": {
             "oneOf": [{ "$ref": "#/components/schemas/PriceString" }, { "type": "null" }],
-            "description": "Best executable ask (order book merged with open dispensers on BTC pairs); null when none."
+            "description": "Best executable ask. Protocol-asset pairs use the open order book; BTC-quoted pairs use escrow-backed dispensers only."
           },
           "high": { "$ref": "#/components/schemas/PriceString" },
           "low": { "$ref": "#/components/schemas/PriceString" },
@@ -347,6 +432,53 @@
           "description": "[price, base amount]"
         }
       },
+      "CmcAsset": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "unified_cryptoasset_id": { "type": "integer" },
+          "can_withdraw": { "type": "boolean" },
+          "can_deposit": { "type": "boolean" },
+          "maker_fee": { "type": "string" },
+          "taker_fee": { "type": "string" },
+          "network": { "type": "string", "enum": ["bitcoin", "counterparty"] },
+          "self_custodial": { "type": "boolean", "const": true },
+          "asset_url": { "type": "string" }
+        }
+      },
+      "CmcTicker": {
+        "type": "object",
+        "properties": {
+          "base_id": { "type": "integer" },
+          "quote_id": { "type": "integer" },
+          "base_currency": { "type": "string" },
+          "quote_currency": { "type": "string" },
+          "last_price": { "$ref": "#/components/schemas/PriceString" },
+          "base_volume": { "$ref": "#/components/schemas/QuantityString" },
+          "quote_volume": { "$ref": "#/components/schemas/QuantityString" },
+          "isFrozen": { "type": "integer", "enum": [0, 1] },
+          "last_trade_timestamp": { "oneOf": [{ "$ref": "#/components/schemas/TimestampMs" }, { "type": "null" }] }
+        }
+      },
+      "CmcOrderbook": {
+        "type": "object",
+        "properties": {
+          "timestamp": { "$ref": "#/components/schemas/TimestampMs" },
+          "bids": { "$ref": "#/components/schemas/BookSide" },
+          "asks": { "$ref": "#/components/schemas/BookSide" }
+        }
+      },
+      "CmcTrade": {
+        "type": "object",
+        "properties": {
+          "trade_id": { "$ref": "#/components/schemas/TradeId" },
+          "price": { "$ref": "#/components/schemas/PriceString" },
+          "base_volume": { "$ref": "#/components/schemas/QuantityString" },
+          "quote_volume": { "$ref": "#/components/schemas/QuantityString" },
+          "timestamp": { "$ref": "#/components/schemas/TimestampMs" },
+          "type": { "type": "string", "enum": ["buy", "sell"] }
+        }
+      },
       "CmcSummaryRow": {
         "type": "object",
         "properties": {
@@ -387,6 +519,10 @@
           "base": { "$ref": "#/components/schemas/CatalogAsset" },
           "target": { "$ref": "#/components/schemas/CatalogAsset" },
           "market_url": { "type": "string" },
+          "consumers": {
+            "type": "array",
+            "items": { "type": "string", "enum": ["coinmarketcap", "coingecko"] }
+          },
           "execution_sources": {
             "type": "array",
             "items": { "type": "string", "enum": ["order_book", "pool", "dispenser"] }

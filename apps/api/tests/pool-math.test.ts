@@ -5,6 +5,7 @@ import {
   calculateFeeValueInQuote,
   calculatePoolFeePeriodReturnInQuote,
   calculatePoolPriceInQuote,
+  calculatePoolLiquidityUsd,
   calculatePoolValueInQuote,
   YEAR_SECONDS,
 } from "../src/lib/pool-math";
@@ -22,6 +23,11 @@ describe("pool math", () => {
 
   it("values the pool in quote terms", () => {
     assert.equal(calculatePoolValueInQuote(100, 200), 400);
+  });
+
+  it("values both pool reserves in USD through the quote anchor", () => {
+    assert.equal(calculatePoolLiquidityUsd(100, 200, 4.5), 1800);
+    assert.equal(calculatePoolLiquidityUsd(100, 200, 0), null);
   });
 
   it("values mixed-asset fees in quote terms", () => {

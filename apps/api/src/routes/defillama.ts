@@ -32,6 +32,10 @@ interface VolumeRow {
   trades: number;
 }
 
+interface WaitUntilContext {
+  waitUntil(promise: Promise<unknown>): void;
+}
+
 function requiredTimestamp(url: URL, name: string): number | null {
   const raw = url.searchParams.get(name);
   if (raw == null || !/^\d+$/.test(raw)) return null;
@@ -42,7 +46,7 @@ function requiredTimestamp(url: URL, name: string): number | null {
 export async function handleDefiLlamaVolume(
   request: Request,
   db: D1Database,
-  executionCtx?: ExecutionContext
+  executionCtx?: WaitUntilContext
 ): Promise<Response> {
   const url = new URL(request.url);
   const now = Math.floor(Date.now() / 1000);

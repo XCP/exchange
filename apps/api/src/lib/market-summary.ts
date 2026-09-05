@@ -17,17 +17,19 @@ import { makePairString } from "./pairs";
  * dispense_quantity x the dispenser's own per-unit price (satoshirate-derived,
  * joined via dispenser_tx_hash). Gross BTC paid is never used as market volume.
  *
- * The feed is an explicit allowlist, not an activity heuristic: aggregators
- * want a stable, defensible market list, and every query below is a
- * per-pair indexed lookup (no table scans), so a request costs tens of
- * rows read regardless of database size.
+ * Each consumer feed has an explicit allowlist, not an activity heuristic.
+ * The lists may currently overlap, but are intentionally separate so one
+ * aggregator's asset policy does not silently change another's feed. Every
+ * query below is a per-pair indexed lookup (no table scans), so a request costs
+ * tens of rows read regardless of database size.
  */
 
-// XCP_BTC plus the top currency-like assets by all-time order-book trades,
-// each against both quotes. Pairs with no last price (never traded or
-// dispensed) drop out of tickers automatically, so this list is a cap on
-// what the feed may show, not a promise that every combination is live.
-export const INTEGRATION_PAIRS: readonly string[] = [
+// Current and historical Counterparty DEX markets for assets with a verified
+// CoinMarketCap UCID. Do not add a market here merely because it trades on the
+// protocol; first verify the underlying asset and record its UCID in the CMC
+// adapter. MAGICFLDC has no verified CMC listing, and CMC's BITCORN/CORN is a
+// different asset, so both are intentionally absent from this profile.
+export const COINMARKETCAP_PAIRS: readonly string[] = [
   "XCP_BTC",
   "PEPECASH_XCP", "PEPECASH_BTC",
   "BITCRYSTALS_XCP", "BITCRYSTALS_BTC",
@@ -37,8 +39,19 @@ export const INTEGRATION_PAIRS: readonly string[] = [
   "FLDC_XCP", "FLDC_BTC",
   "ZAIF_XCP", "ZAIF_BTC",
   "RUSTBITS_XCP", "RUSTBITS_BTC",
-  "MAGICFLDC_XCP", "MAGICFLDC_BTC",
-  "BITCORN_XCP", "BITCORN_BTC",
+];
+
+// Initial CoinGecko submission profile. Keep this to the unambiguous,
+// already-listed Counterparty (XCP) market. Counterparty PEPECASH,
+// BITCRYSTALS, BITCORN, and other assets require distinct CoinGecko identity
+// approval before their markets can be added without symbol collisions.
+export const COINGECKO_PAIRS: readonly string[] = [
+  "XCP_BTC",
+];
+
+/** All pairs needed by shared catalog/reconciliation surfaces. */
+export const INTEGRATION_PAIRS: readonly string[] = [
+  ...new Set([...COINMARKETCAP_PAIRS, ...COINGECKO_PAIRS]),
 ];
 
 /** A market with no completed fill in this window reports is_stale: true. */
@@ -96,13 +109,29 @@ interface PairDef {
   quote: string;
 }
 
-const PAIR_DEFS: PairDef[] = INTEGRATION_PAIRS.map((pair) => {
-  const [base, quote] = pair.split("_");
-  return { pair, base, quote };
-});
+function pairDefinitions(pairs: readonly string[]): PairDef[] {
+  return pairs.map((pair) => {
+    const [base, quote] = pair.split("_");
+    return { pair, base, quote };
+  });
+}
 
-export function isIntegrationPair(pair: string): boolean {
-  return INTEGRATION_PAIRS.includes(pair);
+export function isIntegrationPair(
+  pair: string,
+  pairs: readonly string[] = INTEGRATION_PAIRS
+): boolean {
+  return pairs.includes(pair);
+}
+
+/**
+ * A Counterparty order that receives BTC is not fully executable until its
+ * separate BTCPay settles. Publishing that intent as live depth lets an
+ * uncommitted BTC leg spoof the book, so aggregator books use open orders only
+ * when both sides are protocol assets. Completed BTC order matches remain in
+ * trades, prices, and volume; escrow-backed dispensers remain executable asks.
+ */
+export function includesOpenOrderBook(quote: string): boolean {
+  return quote !== "BTC";
 }
 
 interface PairStatRow {
@@ -177,13 +206,17 @@ export const DISPENSE_AGG_SQL = (assetPlaceholders: string) =>
  * Compute rolling 24h summaries for the allowlisted pairs. Every statement
  * is a primary-key or (pair|asset, block_time) index lookup.
  */
-export async function getMarketSummaries(db: D1Database): Promise<MarketSummary[]> {
+export async function getMarketSummaries(
+  db: D1Database,
+  pairs: readonly string[] = INTEGRATION_PAIRS
+): Promise<MarketSummary[]> {
   const now = Math.floor(Date.now() / 1000);
   const cutoff24h = now - 86400;
+  const pairDefs = pairDefinitions(pairs);
 
-  const pairPh = PAIR_DEFS.map(() => "?").join(",");
-  const pairBinds = PAIR_DEFS.map((d) => d.pair);
-  const btcBases = PAIR_DEFS.filter((d) => d.quote === "BTC").map((d) => d.base);
+  const pairPh = pairDefs.map(() => "?").join(",");
+  const pairBinds = pairDefs.map((d) => d.pair);
+  const btcBases = pairDefs.filter((d) => d.quote === "BTC").map((d) => d.base);
   const basePh = btcBases.map(() => "?").join(",");
 
   const stmts = [
@@ -264,7 +297,7 @@ export async function getMarketSummaries(db: D1Database): Promise<MarketSummary[
 
   const summaries: MarketSummary[] = [];
 
-  for (const def of PAIR_DEFS) {
+  for (const def of pairDefs) {
     const isBtcPair = def.quote === "BTC";
     const stat = pairStatByPair.get(def.pair);
 
@@ -322,13 +355,17 @@ export async function getMarketSummaries(db: D1Database): Promise<MarketSummary[
       s.priceChangePct24h = ((s.lastPrice - open) / open) * 100;
     }
 
-    // Best bid/ask; dispensers act as executable asks on BTC pairs.
-    const b = bookByPair.get(def.pair);
-    s.bestBid = b?.best_bid ?? null;
-    s.bestAsk = b?.best_ask ?? null;
+    // BTC-quoted open order intents are not committed liquidity. Completed
+    // BTCPays still feed the settlement aggregates above; only their resting
+    // quotes are omitted here. Dispensers remain executable, escrowed asks.
+    if (includesOpenOrderBook(def.quote)) {
+      const b = bookByPair.get(def.pair);
+      s.bestBid = b?.best_bid ?? null;
+      s.bestAsk = b?.best_ask ?? null;
+    }
     if (isBtcPair) {
       const dAsk = dispenserStatByAsset.get(def.base)?.cheapest_price;
-      if (dAsk != null && (s.bestAsk == null || dAsk < s.bestAsk)) s.bestAsk = dAsk;
+      if (dAsk != null) s.bestAsk = dAsk;
     }
 
     if (s.lastPrice > 0) summaries.push(s);

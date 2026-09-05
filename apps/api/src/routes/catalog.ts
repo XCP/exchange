@@ -1,5 +1,11 @@
 import { cacheControl } from "../utils/cache";
-import { getMarketSummaries, INTEGRATION_PAIRS, STALE_AFTER_SECONDS } from "../lib/market-summary";
+import {
+  COINGECKO_PAIRS,
+  COINMARKETCAP_PAIRS,
+  getMarketSummaries,
+  INTEGRATION_PAIRS,
+  STALE_AFTER_SECONDS,
+} from "../lib/market-summary";
 
 /**
  * GET /catalog/pairs — canonical market catalog for aggregator reviewers.
@@ -92,7 +98,11 @@ export async function handleCatalogPairs(request: Request, db: D1Database): Prom
         ticker_id: def.pair,
         base: catalogAsset(def.base, assetBySymbol.get(def.base)),
         target: catalogAsset(def.quote, assetBySymbol.get(def.quote)),
-        market_url: `https://xcpdex.com/trade/${def.pair}`,
+        market_url: `https://xcpdex.com/limit/${def.base}/${def.quote}`,
+        consumers: [
+          ...(COINMARKETCAP_PAIRS.includes(def.pair) ? ["coinmarketcap"] : []),
+          ...(COINGECKO_PAIRS.includes(def.pair) ? ["coingecko"] : []),
+        ],
         execution_sources: sources,
         // inactive = never priced (absent from tickers); stale = priced but no
         // completed fill inside the 90-day window; active = recent fill.

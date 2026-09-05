@@ -1,13 +1,17 @@
 import { cacheControl } from "../utils/cache";
 import {
+  COINGECKO_PAIRS,
   dec,
   decPrice,
   getMarketSummaries,
+  includesOpenOrderBook,
   isIntegrationPair,
   parseTickerId,
   STALE_AFTER_SECONDS,
 } from "../lib/market-summary";
 import { makePoolPair } from "../lib/pools";
+import { calculatePoolLiquidityUsd } from "../lib/pool-math";
+import { fetchUsdAnchors } from "../lib/usd-price";
 
 /**
  * CoinGecko integration endpoints, per CoinGecko's "Integration Ideal API
@@ -34,7 +38,7 @@ const SOURCE_CODE = { order: 0, pool: 1, dispenser: 2 } as const;
 
 export async function handleCgPairs(request: Request, db: D1Database): Promise<Response> {
   const url = new URL(request.url);
-  const summaries = await getMarketSummaries(db);
+  const summaries = await getMarketSummaries(db, COINGECKO_PAIRS);
   return Response.json(
     summaries.map((s) => ({
       ticker_id: s.pair,
@@ -48,22 +52,50 @@ export async function handleCgPairs(request: Request, db: D1Database): Promise<R
 export async function handleCgTickers(request: Request, db: D1Database): Promise<Response> {
   const url = new URL(request.url);
   const now = Math.floor(Date.now() / 1000);
-  const summaries = await getMarketSummaries(db);
+  const summaries = await getMarketSummaries(db, COINGECKO_PAIRS);
   const poolPairs = [...new Set(summaries.map((s) => makePoolPair(s.base, s.quote)))];
+  interface PoolTickerRow {
+    pair: string;
+    lp_asset: string;
+    asset_a: string;
+    asset_b: string;
+    reserve_a: number;
+    reserve_b: number;
+  }
   const poolResult = poolPairs.length > 0
     ? await db.prepare(
-        `SELECT pair, lp_asset FROM pools WHERE pair IN (${poolPairs.map(() => "?").join(",")})`
-      ).bind(...poolPairs).all<{ pair: string; lp_asset: string }>()
-    : { results: [] as { pair: string; lp_asset: string }[] };
-  const lpAssetByPair = new Map(poolResult.results.map((row) => [row.pair, row.lp_asset]));
-  return Response.json(
-    summaries.map((s) => ({
+        `SELECT pair, lp_asset, asset_a, asset_b, reserve_a, reserve_b
+         FROM pools WHERE pair IN (${poolPairs.map(() => "?").join(",")})`
+      ).bind(...poolPairs).all<PoolTickerRow>()
+    : { results: [] as PoolTickerRow[] };
+  const poolByPair = new Map(poolResult.results.map((row) => [row.pair, row]));
+  const usdAnchors = poolResult.results.length > 0
+    ? await fetchUsdAnchors()
+    : { XCP: null, BTC: null };
+
+  let hasUnpricedPool = false;
+  const tickers = summaries.map((s) => {
+    const pool = poolByPair.get(makePoolPair(s.base, s.quote));
+    let liquidityInUsd: string | undefined;
+    if (pool) {
+      const baseReserve = pool.asset_a === s.base ? pool.reserve_a : pool.reserve_b;
+      const quoteReserve = pool.asset_a === s.quote ? pool.reserve_a : pool.reserve_b;
+      const quoteUsd = s.quote === "XCP" || s.quote === "BTC" ? usdAnchors[s.quote] : null;
+      const liquidity = quoteUsd == null
+        ? null
+        : calculatePoolLiquidityUsd(baseReserve, quoteReserve, quoteUsd);
+      if (liquidity != null) liquidityInUsd = liquidity.toFixed(2);
+      else hasUnpricedPool = true;
+    }
+
+    return {
       ticker_id: s.pair,
       base_currency: s.base,
       target_currency: s.quote,
       // The protocol LP asset is the canonical pool ID. Orderbook-only
       // markets have no LP asset, so retain their unique market identifier.
-      pool_id: lpAssetByPair.get(makePoolPair(s.base, s.quote)) ?? s.pair,
+      pool_id: pool?.lp_asset ?? s.pair,
+      ...(liquidityInUsd != null ? { liquidity_in_usd: liquidityInUsd } : {}),
       last_price: decPrice(s.lastPrice),
       base_volume: dec(s.baseVolume24h),
       target_volume: dec(s.quoteVolume24h),
@@ -73,19 +105,38 @@ export async function handleCgTickers(request: Request, db: D1Database): Promise
       low: decPrice(s.low24h ?? s.lastPrice),
       last_trade_timestamp: s.lastTime != null ? s.lastTime * 1000 : null,
       is_stale: s.lastTime == null || now - s.lastTime > STALE_AFTER_SECONDS,
-    })),
+    };
+  });
+  if (hasUnpricedPool) {
+    return Response.json(
+      { error: "current USD anchor unavailable for AMM liquidity" },
+      {
+        status: 503,
+        headers: {
+          "Cache-Control": "no-store",
+          "Retry-After": "60",
+        },
+      }
+    );
+  }
+  return Response.json(
+    tickers,
     { headers: { "Cache-Control": cacheControl(url, 60) } }
   );
 }
 
-export async function handleCgOrderbook(request: Request, db: D1Database): Promise<Response> {
+export async function handleCgOrderbook(
+  request: Request,
+  db: D1Database,
+  allowedPairs: readonly string[] = COINGECKO_PAIRS
+): Promise<Response> {
   const url = new URL(request.url);
   const tickerId = url.searchParams.get("ticker_id");
   const parsed = tickerId ? parseTickerId(tickerId) : null;
   if (!parsed) {
     return Response.json({ error: "ticker_id is required, e.g. XCP_BTC" }, { status: 400 });
   }
-  if (!isIntegrationPair(parsed.pair)) {
+  if (!isIntegrationPair(parsed.pair, allowedPairs)) {
     return Response.json({ error: `Unknown ticker_id: ${parsed.pair}` }, { status: 404 });
   }
 
@@ -95,20 +146,20 @@ export async function handleCgOrderbook(request: Request, db: D1Database): Promi
 
   const isBtcPair = parsed.quote === "BTC";
 
-  const stmts = [
-    db.prepare(
-      `SELECT price, SUM(remaining) AS amount
-       FROM orders
-       WHERE pair = ? AND status = 'open' AND side = 'bid' AND remaining > 0
-       GROUP BY price ORDER BY price DESC LIMIT ?`
-    ).bind(parsed.pair, perSide),
-    db.prepare(
-      `SELECT price, SUM(remaining) AS amount
-       FROM orders
-       WHERE pair = ? AND status = 'open' AND side = 'ask' AND remaining > 0
-       GROUP BY price ORDER BY price ASC LIMIT ?`
-    ).bind(parsed.pair, perSide),
-  ];
+  const stmts = includesOpenOrderBook(parsed.quote) ? [
+      db.prepare(
+        `SELECT price, SUM(remaining) AS amount
+         FROM orders
+         WHERE pair = ? AND status = 'open' AND side = 'bid' AND remaining > 0
+         GROUP BY price ORDER BY price DESC LIMIT ?`
+      ).bind(parsed.pair, perSide),
+      db.prepare(
+        `SELECT price, SUM(remaining) AS amount
+         FROM orders
+         WHERE pair = ? AND status = 'open' AND side = 'ask' AND remaining > 0
+         GROUP BY price ORDER BY price ASC LIMIT ?`
+      ).bind(parsed.pair, perSide),
+    ] : [];
   if (isBtcPair) {
     stmts.push(
       db.prepare(
@@ -122,9 +173,9 @@ export async function handleCgOrderbook(request: Request, db: D1Database): Promi
 
   const results = await db.batch(stmts);
   type Level = { price: number; amount: number };
-  const bids = results[0].results as unknown as Level[];
-  const orderAsks = results[1].results as unknown as Level[];
-  const dispenserAsks = isBtcPair ? (results[2].results as unknown as Level[]) : [];
+  const bids = isBtcPair ? [] : results[0].results as unknown as Level[];
+  const orderAsks = isBtcPair ? [] : results[1].results as unknown as Level[];
+  const dispenserAsks = isBtcPair ? (results[0].results as unknown as Level[]) : [];
 
   // Dispensers are standing sell offers settled in BTC; merge them into asks.
   const askLevels = new Map<number, number>();
@@ -176,14 +227,18 @@ interface CgTrade {
   settlement_txid: string;
 }
 
-export async function handleCgHistoricalTrades(request: Request, db: D1Database): Promise<Response> {
+export async function handleCgHistoricalTrades(
+  request: Request,
+  db: D1Database,
+  allowedPairs: readonly string[] = COINGECKO_PAIRS
+): Promise<Response> {
   const url = new URL(request.url);
   const tickerId = url.searchParams.get("ticker_id");
   const parsed = tickerId ? parseTickerId(tickerId) : null;
   if (!parsed) {
     return Response.json({ error: "ticker_id is required, e.g. XCP_BTC" }, { status: 400 });
   }
-  if (!isIntegrationPair(parsed.pair)) {
+  if (!isIntegrationPair(parsed.pair, allowedPairs)) {
     return Response.json({ error: `Unknown ticker_id: ${parsed.pair}` }, { status: 404 });
   }
 

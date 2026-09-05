@@ -35,7 +35,13 @@ import { handleDeals } from "./routes/deals";
 import { handleMempool } from "./routes/mempool";
 import { handleAddressPools, handleAssetPoolVenue, handlePool, handlePoolAddress, handlePools } from "./routes/pools";
 import { handleCgPairs, handleCgTickers, handleCgOrderbook, handleCgHistoricalTrades } from "./routes/coingecko";
-import { handleCmcSummary } from "./routes/coinmarketcap";
+import {
+  handleCmcAssets,
+  handleCmcOrderbook,
+  handleCmcSummary,
+  handleCmcTicker,
+  handleCmcTrades,
+} from "./routes/coinmarketcap";
 import { handleCatalogPairs } from "./routes/catalog";
 import { handleDefiLlamaVolume } from "./routes/defillama";
 import openapi from "./openapi.json";
@@ -161,7 +167,7 @@ app.use('/indexer/*', async (c, next) => {
   if (!c.env.INDEXER_TOKEN) {
     return Response.json({ error: 'INDEXER_TOKEN not configured' }, { status: 500 });
   }
-  const auth = bearerAuth({ token: c.env.INDEXER_TOKEN });
+  const auth = bearerAuth<{ Bindings: Bindings }>({ token: c.env.INDEXER_TOKEN });
   return auth(c, next);
 });
 
@@ -236,6 +242,12 @@ app.get('/coingecko/tickers', (c) => handleCgTickers(c.req.raw, c.env.DB));
 app.get('/coingecko/orderbook', (c) => handleCgOrderbook(c.req.raw, c.env.DB));
 app.get('/coingecko/historical_trades', (c) => handleCgHistoricalTrades(c.req.raw, c.env.DB));
 app.get('/coinmarketcap/summary', (c) => handleCmcSummary(c.req.raw, c.env.DB));
+app.get('/coinmarketcap/assets', (c) => handleCmcAssets(c.req.raw, c.env.DB));
+app.get('/coinmarketcap/ticker', (c) => handleCmcTicker(c.req.raw, c.env.DB));
+app.get('/coinmarketcap/orderbook/:marketPair', (c) =>
+  handleCmcOrderbook(c.req.raw, c.env.DB, c.req.param('marketPair')));
+app.get('/coinmarketcap/trades/:marketPair', (c) =>
+  handleCmcTrades(c.req.raw, c.env.DB, c.req.param('marketPair')));
 app.get('/defillama/volume', (c) => handleDefiLlamaVolume(c.req.raw, c.env.DB, c.executionCtx));
 app.get('/catalog/pairs', (c) => handleCatalogPairs(c.req.raw, c.env.DB));
 app.get('/openapi.json', () =>

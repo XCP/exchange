@@ -1,7 +1,14 @@
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { test } from "node:test";
-import { DISPENSE_AGG_SQL, dec, decPrice } from "../src/lib/market-summary";
+import {
+  COINGECKO_PAIRS,
+  COINMARKETCAP_PAIRS,
+  DISPENSE_AGG_SQL,
+  INTEGRATION_PAIRS,
+  dec,
+  decPrice,
+} from "../src/lib/market-summary";
 
 /**
  * Regression fixture for the real shared-payment pathology discovered in
@@ -88,4 +95,14 @@ test("prices serialize full precision and never scientific notation; quantities 
   assert.equal(decPrice(null), "0");
   assert.equal(dec(1000), "1000.00000000");
   assert.equal(dec(0.00441623), "0.00441623");
+});
+
+test("aggregators have independent pair profiles backed by one catalog union", () => {
+  // CoinGecko starts with only the unambiguous XCP/BTC market. Narrowing that
+  // submission profile must not remove CMC's verified historical markets.
+  assert.notEqual(COINMARKETCAP_PAIRS, COINGECKO_PAIRS);
+  assert.deepEqual(COINGECKO_PAIRS, ["XCP_BTC"]);
+  assert.equal(COINMARKETCAP_PAIRS.includes("PEPECASH_XCP"), true);
+  assert.equal(COINGECKO_PAIRS.includes("PEPECASH_XCP"), false);
+  assert.deepEqual(INTEGRATION_PAIRS, [...new Set([...COINMARKETCAP_PAIRS, ...COINGECKO_PAIRS])]);
 });
