@@ -10,6 +10,8 @@ CREATE INDEX idx_pool_lp_events_block ON pool_lp_balance_events(block_index);
 -- The history row and its balance effect must be one SQLite statement.
 -- INSERT OR IGNORE on replay then has no second balance effect. Preserve
 -- existing opening balances; retained LP event history may start after them.
+-- Use RAISE ... WHERE, not bare CASE ... END: the remote D1 parser can
+-- mistake CASE's END for the trigger terminator (workers-sdk issue 4727).
 CREATE TRIGGER pool_lp_event_insert AFTER INSERT ON pool_lp_balance_events
 BEGIN
   INSERT INTO pool_lp_balances
@@ -24,20 +26,18 @@ BEGIN
     balance = pool_lp_balances.balance + excluded.balance,
     updated_block_index = excluded.updated_block_index,
     updated_block_time = excluded.updated_block_time;
-  SELECT CASE WHEN (SELECT balance_raw FROM pool_lp_balances
-    WHERE lp_asset = NEW.lp_asset AND holder = NEW.holder) < 0
-    THEN RAISE(ABORT, 'LP balance underflow') END;
-  SELECT CASE WHEN (SELECT balance_raw FROM pool_lp_balances
-    WHERE lp_asset = NEW.lp_asset AND holder = NEW.holder) > 9007199254740991
-    THEN RAISE(ABORT, 'Unsafe LP balance quantity') END;
+  SELECT RAISE(ABORT, 'LP balance underflow') FROM pool_lp_balances
+    WHERE lp_asset = NEW.lp_asset AND holder = NEW.holder AND balance_raw < 0;
+  SELECT RAISE(ABORT, 'Unsafe LP balance quantity') FROM pool_lp_balances
+    WHERE lp_asset = NEW.lp_asset AND holder = NEW.holder AND balance_raw > 9007199254740991;
 END;
 
 -- Reorgs reverse only removed events, never reconstruct a baseline from zero.
 CREATE TRIGGER pool_lp_event_delete AFTER DELETE ON pool_lp_balance_events
 BEGIN
-  SELECT CASE WHEN NOT EXISTS (
+  SELECT RAISE(ABORT, 'Missing LP balance for rollback') WHERE NOT EXISTS (
     SELECT 1 FROM pool_lp_balances WHERE lp_asset = OLD.lp_asset AND holder = OLD.holder
-  ) THEN RAISE(ABORT, 'Missing LP balance for rollback') END;
+  );
   UPDATE pool_lp_balances SET
     balance_raw = balance_raw - OLD.delta_raw,
     balance = balance - OLD.delta

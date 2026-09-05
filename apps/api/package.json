@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "wrangler dev",
-    "test": "tsc -p tsconfig.test.json && node scripts/run-compiled-tests.mjs",
+    "test": "tsc -p tsconfig.test.json && node scripts/run-compiled-tests.mjs && node scripts/test-replay-migration.mjs",
     "reconcile": "node scripts/reconcile.mjs",
     "deploy": "wrangler deploy",
     "migrate:local": "wrangler d1 migrations apply xcpdex --local",
