@@ -3,10 +3,42 @@ name: Deploy
 on:
   push:
     branches: [master]
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Application to deploy
+        required: true
+        default: api
+        type: choice
+        options: [api, web, all]
 
 jobs:
+  changes:
+    name: Select changed applications
+    runs-on: ubuntu-latest
+    outputs:
+      api: ${{ steps.scope.outputs.api }}
+      web: ${{ steps.scope.outputs.web }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node --test .github/scripts/deploy-scope.test.mjs
+      - id: scope
+        run: node .github/scripts/deploy-scope.mjs
+        env:
+          DEPLOY_EVENT: ${{ github.event_name }}
+          DEPLOY_TARGET: ${{ inputs.target }}
+          DEPLOY_BEFORE: ${{ github.event.before }}
+          DEPLOY_HEAD: ${{ github.sha }}
+
   deploy-api:
     name: Deploy API Worker
+    needs: changes
+    if: needs.changes.outputs.api == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -14,6 +46,8 @@ jobs:
         with:
           node-version: 22
       - run: npm ci
+        working-directory: apps/api
+      - run: npm test && npx tsc --noEmit
         working-directory: apps/api
       # Apply DB migrations before deploying so schema is never behind the code.
       - run: npx wrangler d1 migrations apply xcpdex --remote
@@ -29,6 +63,8 @@ jobs:
 
   deploy-web:
     name: Deploy Web
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
