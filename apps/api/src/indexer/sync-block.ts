@@ -1,5 +1,5 @@
 import { OrderMatch, Order, CounterpartyDispenser, fetchOrderByHash } from "../lib/counterparty";
-import { API_TIMEOUT_MS, LOCK_TIMEOUT_SECONDS } from "../lib/constants";
+import { API_TIMEOUT_MS, LOCK_TIMEOUT_SECONDS, MAX_PAGINATION_PAGES } from "../lib/constants";
 import { batchExec } from "../lib/batch";
 import { normalizeOrderMatch, normalizeOrder, normalizeDispenser, normalizeDispensePrice, normalizePoolMatch, buildOrderUpsertStmt, buildDispenserUpsertStmt } from "./normalize";
 import { aggregateCandlesForPair, bucketTimestamp } from "./aggregate";
@@ -207,9 +207,12 @@ async function fetchBlockEvents(
 ): Promise<BlockEvent[]> {
   const events: BlockEvent[] = [];
   let cursor: string | null = null;
+  const seenCursors = new Set<string>();
+  let pages = 0;
 
   // Paginate through all events in the block
   while (true) {
+    if (++pages > MAX_PAGINATION_PAGES) throw new Error(`Event pagination exceeded limit for block ${blockIndex}`);
     const url = new URL(
       `${apiBase}/blocks/${blockIndex}/events`
     );
@@ -230,6 +233,8 @@ async function fetchBlockEvents(
 
     if (!data.next_cursor || data.result.length === 0) break;
     cursor = String(data.next_cursor);
+    if (seenCursors.has(cursor)) throw new Error(`Repeated event cursor for block ${blockIndex}`);
+    seenCursors.add(cursor);
   }
 
   return events;
@@ -822,6 +827,10 @@ export async function syncBlocks(
       db.prepare(`DELETE FROM pool_lp_balance_events WHERE block_index > ?`).bind(rollbackTo),
       db.prepare(`DELETE FROM pool_lp_balance_snapshots WHERE block_index > ?`).bind(rollbackTo),
       db.prepare(`DELETE FROM pool_fee_accruals WHERE block_index > ?`).bind(rollbackTo),
+      db.prepare(`SELECT CASE WHEN EXISTS (SELECT 1 FROM pool_lp_balances
+        WHERE lp_asset IN (SELECT value FROM json_each(?))
+          AND (balance_raw < 0 OR balance_raw > 9007199254740991))
+        THEN json('Invalid LP rollback balance') ELSE 1 END`).bind(JSON.stringify(plan.pools)),
       // Re-open orders/dispensers that pre-date the rollback but were closed recently
       // (i.e., closed by events in the now-invalidated blocks).
       // The next sync cycle re-processes replacement blocks and re-closes as needed.

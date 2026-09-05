@@ -27,6 +27,9 @@ BEGIN
   SELECT CASE WHEN (SELECT balance_raw FROM pool_lp_balances
     WHERE lp_asset = NEW.lp_asset AND holder = NEW.holder) < 0
     THEN RAISE(ABORT, 'LP balance underflow') END;
+  SELECT CASE WHEN (SELECT balance_raw FROM pool_lp_balances
+    WHERE lp_asset = NEW.lp_asset AND holder = NEW.holder) > 9007199254740991
+    THEN RAISE(ABORT, 'Unsafe LP balance quantity') END;
 END;
 
 -- Reorgs reverse only removed events, never reconstruct a baseline from zero.

@@ -120,6 +120,7 @@ function buildFeeAccrualStmts(
 ): { stmts: D1PreparedStatement[]; allocations: number } {
   const positive = balances.filter((row) => row.balanceRaw > 0);
   const totalSupplyRaw = positive.reduce((sum, row) => sum + row.balanceRaw, 0);
+  if (!Number.isSafeInteger(totalSupplyRaw)) throw new Error("Unsafe LP fee allocation supply");
   if (input.feeQuantityRaw <= 0 || totalSupplyRaw <= 0) {
     return { stmts: [], allocations: 0 };
   }
