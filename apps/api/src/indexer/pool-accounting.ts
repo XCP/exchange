@@ -64,17 +64,31 @@ function feeShare(feeRaw: number, balanceRaw: number, totalRaw: number): number 
   return Number((BigInt(feeRaw) * BigInt(balanceRaw)) / BigInt(totalRaw));
 }
 
-interface PoolBalanceState {
-  lpAsset: string;
-  pair: string;
-  address: string;
-  holder: string;
-  holderType: "address" | "utxo";
-  ownerAddress: string | null;
-  balanceRaw: number;
-  balance: number;
-  updatedBlockIndex: number;
-  updatedBlockTime: number;
+// On a partial-block retry, fee allocation and snapshots need the opening
+// balance, not the current balance plus the same block's deltas a second time.
+export type AppliedPoolBalances = Map<string, {
+  lpAsset: string; holder: string; address: string;
+  holderType: "address" | "utxo"; ownerAddress: string | null;
+  deltaRaw: number; delta: number; balanceRaw: number; balance: number;
+}>;
+
+export async function loadAppliedPoolBalances(db: D1Database, blockIndex: number): Promise<AppliedPoolBalances> {
+  const rows = await db.prepare(`SELECT e.lp_asset, e.holder,
+      SUM(e.delta_raw) AS delta_raw, SUM(e.delta) AS delta,
+      b.address, b.holder_type, b.owner_address, b.balance_raw, b.balance
+    FROM pool_lp_balance_events e JOIN pool_lp_balances b
+      ON b.lp_asset = e.lp_asset AND b.holder = e.holder
+    WHERE e.block_index = ? GROUP BY e.lp_asset, e.holder`)
+    .bind(blockIndex).all<{
+      lp_asset: string; holder: string; address: string;
+      holder_type: "address" | "utxo"; owner_address: string | null;
+      delta_raw: number; delta: number; balance_raw: number; balance: number;
+    }>();
+  return new Map(rows.results.map(row => [balanceKey(row.lp_asset, row.holder), {
+    lpAsset: row.lp_asset, holder: row.holder, address: row.address,
+    holderType: row.holder_type, ownerAddress: row.owner_address,
+    deltaRaw: row.delta_raw, delta: row.delta, balanceRaw: row.balance_raw, balance: row.balance,
+  }]));
 }
 
 interface FeeAllocationRow {
@@ -159,12 +173,16 @@ export function addLpDelta(
   pendingBalances: PendingPoolBalances,
   input: LpDeltaInput
 ): void {
+  if (!Number.isSafeInteger(input.deltaRaw) || !Number.isFinite(input.delta)) {
+    throw new Error("Invalid LP balance delta");
+  }
   if (!input.holder || input.deltaRaw === 0) return;
 
   const key = balanceKey(input.lpAsset, input.holder);
   const existing = pendingBalances.get(key);
   const currentRaw = existing?.deltaRaw ?? 0;
   const current = existing?.delta ?? 0;
+  if (!Number.isSafeInteger(currentRaw + input.deltaRaw)) throw new Error("Unsafe LP balance delta total");
   pendingBalances.set(key, {
     lpAsset: input.lpAsset,
     pair: input.pair,
@@ -204,35 +222,7 @@ export function addLpDelta(
       )
   );
 
-  stmts.push((db) =>
-    db
-      .prepare(
-        `INSERT INTO pool_lp_balances
-         (lp_asset, pair, address, holder, holder_type, owner_address, balance_raw, balance, updated_block_index, updated_block_time)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT(lp_asset, holder) DO UPDATE SET
-           pair = excluded.pair,
-           address = excluded.address,
-           holder_type = excluded.holder_type,
-           owner_address = excluded.owner_address,
-           balance_raw = pool_lp_balances.balance_raw + excluded.balance_raw,
-           balance = pool_lp_balances.balance + excluded.balance,
-           updated_block_index = excluded.updated_block_index,
-           updated_block_time = excluded.updated_block_time`
-      )
-      .bind(
-        input.lpAsset,
-        input.pair,
-        input.address,
-        input.holder,
-        input.holderType,
-        input.ownerAddress,
-        input.deltaRaw,
-        input.delta,
-        input.blockIndex,
-        input.blockTime
-      )
-  );
+  // The insert trigger applies the delta atomically only for a new event.
 }
 
 export function addCreditDebitLpDelta(
@@ -282,7 +272,8 @@ export async function allocatePoolFees(
   db: D1Database,
   stmts: ((db: D1Database) => D1PreparedStatement)[],
   pendingBalances: PendingPoolBalances,
-  input: FeeAllocationInput
+  input: FeeAllocationInput,
+  appliedBalances: AppliedPoolBalances = new Map(),
 ): Promise<number> {
   if (input.feeQuantityRaw <= 0) return 0;
 
@@ -304,6 +295,16 @@ export async function allocatePoolFees(
       ownerAddress: row.owner_address,
       balanceRaw: row.balance_raw,
       balance: row.balance,
+    });
+  }
+
+  for (const applied of appliedBalances.values()) {
+    if (applied.lpAsset !== input.lpAsset) continue;
+    // Include holders already debited to zero by the interrupted attempt.
+    balances.set(applied.holder, {
+      ...applied,
+      balanceRaw: applied.balanceRaw - applied.deltaRaw,
+      balance: applied.balance - applied.delta,
     });
   }
 
@@ -380,159 +381,14 @@ export async function refreshPoolFeeTotals(db: D1Database, lpAsset: string): Pro
   ));
 }
 
-export async function rebuildPoolAccountingFromHistory(db: D1Database, lpAsset: string): Promise<void> {
-  await db.batch([
-    db.prepare(`DELETE FROM pool_lp_balances WHERE lp_asset = ?`).bind(lpAsset),
-    db.prepare(`DELETE FROM pool_fee_accruals WHERE lp_asset = ?`).bind(lpAsset),
-    db.prepare(`DELETE FROM pool_address_fee_totals WHERE lp_asset = ?`).bind(lpAsset),
-  ]);
-
-  const eventRows = await db
-    .prepare(
-      `SELECT 'balance' AS kind,
-              event_index,
-              tx_hash,
-              NULL AS order_tx_hash,
-              block_index,
-              block_time,
-              lp_asset,
-              pair,
-              address,
-              holder,
-              holder_type,
-              owner_address,
-              delta_raw,
-              delta,
-              NULL AS fee_asset,
-              NULL AS fee_quantity_raw,
-              NULL AS fee_quantity
-       FROM pool_lp_balance_events
-       WHERE lp_asset = ?
-       UNION ALL
-       SELECT 'match' AS kind,
-              event_index,
-              tx_hash,
-              order_tx_hash,
-              block_index,
-              block_time,
-              lp_asset,
-              pair,
-              NULL AS address,
-              NULL AS holder,
-              NULL AS holder_type,
-              NULL AS owner_address,
-              NULL AS delta_raw,
-              NULL AS delta,
-              fee_asset,
-              fee_quantity_raw,
-              fee_quantity
-       FROM pool_matches
-       WHERE lp_asset = ? AND status IN ('valid', 'completed')
-       ORDER BY event_index ASC`
-    )
-    .bind(lpAsset, lpAsset)
-    .all<{
-      kind: "balance" | "match";
-      event_index: number;
-      tx_hash: string;
-      order_tx_hash: string | null;
-      block_index: number;
-      block_time: number;
-      lp_asset: string;
-      pair: string;
-      address: string | null;
-      holder: string | null;
-      holder_type: "address" | "utxo" | null;
-      owner_address: string | null;
-      delta_raw: number | null;
-      delta: number | null;
-      fee_asset: string | null;
-      fee_quantity_raw: number | null;
-      fee_quantity: number | null;
-    }>();
-
-  const balances = new Map<string, PoolBalanceState>();
-  const feeStmts: D1PreparedStatement[] = [];
-
-  for (const row of eventRows.results) {
-    if (row.kind === "balance") {
-      if (!row.holder || !row.address || !row.holder_type) continue;
-      const existing = balances.get(row.holder);
-      const balanceRaw = (existing?.balanceRaw ?? 0) + (row.delta_raw ?? 0);
-      const balance = (existing?.balance ?? 0) + (row.delta ?? 0);
-
-      if (balanceRaw === 0) {
-        balances.delete(row.holder);
-        continue;
-      }
-
-      balances.set(row.holder, {
-        lpAsset: row.lp_asset,
-        pair: row.pair,
-        address: row.address,
-        holder: row.holder,
-        holderType: row.holder_type,
-        ownerAddress: row.owner_address,
-        balanceRaw,
-        balance,
-        updatedBlockIndex: row.block_index,
-        updatedBlockTime: row.block_time,
-      });
-      continue;
-    }
-
-    if (!row.fee_asset || row.fee_quantity_raw == null || row.fee_quantity == null) continue;
-    const allocation = buildFeeAccrualStmts(
-      db,
-      {
-        txHash: row.tx_hash,
-        orderTxHash: row.order_tx_hash,
-        eventIndex: row.event_index,
-        blockIndex: row.block_index,
-        blockTime: row.block_time,
-        lpAsset: row.lp_asset,
-        pair: row.pair,
-        feeAsset: row.fee_asset,
-        feeQuantityRaw: row.fee_quantity_raw,
-        feeQuantity: row.fee_quantity,
-      },
-      [...balances.values()]
-    );
-    feeStmts.push(...allocation.stmts);
-  }
-
-  await batchExec(db, feeStmts);
-
-  await batchExec(db, [...balances.values()].map((row) =>
-    db
-      .prepare(
-        `INSERT INTO pool_lp_balances
-         (lp_asset, pair, address, holder, holder_type, owner_address, balance_raw, balance, updated_block_index, updated_block_time)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-      )
-      .bind(
-        row.lpAsset,
-        row.pair,
-        row.address,
-        row.holder,
-        row.holderType,
-        row.ownerAddress,
-        row.balanceRaw,
-        row.balance,
-        row.updatedBlockIndex,
-        row.updatedBlockTime
-      )
-  ));
-
-  await refreshPoolFeeTotals(db, lpAsset);
-}
 
 export async function addBalanceSnapshots(
   db: D1Database,
   stmts: ((db: D1Database) => D1PreparedStatement)[],
   pendingBalances: PendingPoolBalances,
   blockIndex: number,
-  blockTime: number
+  blockTime: number,
+  appliedBalances: AppliedPoolBalances = new Map(),
 ): Promise<void> {
   if (pendingBalances.size === 0) return;
 
@@ -546,8 +402,9 @@ export async function addBalanceSnapshots(
       .bind(pending.lpAsset, pending.holder)
       .first<{ balance_raw: number; balance: number }>();
 
-    const balanceRaw = (current?.balance_raw ?? 0) + pending.deltaRaw;
-    const balance = (current?.balance ?? 0) + pending.delta;
+    const applied = appliedBalances.get(balanceKey(pending.lpAsset, pending.holder));
+    const balanceRaw = (current?.balance_raw ?? 0) - (applied?.deltaRaw ?? 0) + pending.deltaRaw;
+    const balance = (current?.balance ?? 0) - (applied?.delta ?? 0) + pending.delta;
 
     stmts.push((stmtDb) =>
       stmtDb

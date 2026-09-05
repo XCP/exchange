@@ -7,6 +7,7 @@ import { updatePairStats, updateOrderBookStats } from "./stats";
 import { updateDispenserStats } from "./dispenser-stats";
 import { scoreNewOrders, scoreNewDispensers, pruneClosedDeals } from "./deal-scores";
 import { getMode } from "./state";
+import { checkpointStatements, findCommonCheckpoint, type BlockCheckpoint } from "./block-checkpoint";
 import { makePoolPair } from "../lib/pools";
 import { eventQuantity, normalizeRawQuantity, parseQuantity } from "../lib/quantity";
 import {
@@ -25,7 +26,7 @@ import {
   addCreditDebitLpDelta,
   allocatePoolFees,
   prunePoolBalanceSnapshots,
-  rebuildPoolAccountingFromHistory,
+  loadAppliedPoolBalances,
   refreshPoolFeeTotals,
   type PendingPoolBalances,
 } from "./pool-accounting";
@@ -60,6 +61,24 @@ interface BlockEvent {
   tx_hash: string;
   block_index?: number;  // Present in /v2/events, absent in /blocks/{N}/events
   block_time?: number;   // Present in some event types (ORDER_MATCH, OPEN_ORDER) but not others
+}
+
+interface RollbackPlan {
+  checkpoint: BlockCheckpoint;
+  pairs: { pair: string; base_asset: string; quote_asset: string }[];
+  assets: { asset: string }[];
+  pools: string[];
+  earliestTime: number | null;
+  closureCutoff: number;
+}
+
+interface PostprocessPlan {
+  pairs: [string, { base: string; quote: string; baseLongname: string | null; quoteLongname: string | null; earliestTime: number }][];
+  assets: [string, string | null][];
+  orderPairs: string[];
+  pools: string[];
+  ordersChanged: boolean;
+  listingsClosed: boolean;
 }
 
 interface SyncResult {
@@ -623,7 +642,7 @@ export async function syncBlocks(
   const now = Math.floor(Date.now() / 1000);
 
   // Advisory lock: prevent concurrent syncBlocks (cron overlap or cron + manual)
-  // Acquire lock only if no lock exists or the existing lock is stale (>120s)
+  // Acquire only if no lock exists or the configured lease has expired.
   const lockResult = await db
     .prepare(
       `INSERT INTO indexer_state (key, value) VALUES ('sync_lock', ?)
@@ -636,21 +655,29 @@ export async function syncBlocks(
 
   try {
   // Get our last processed block + stored hash (for reorg detection)
-  const [lastRow, lastHashRow] = await Promise.all([
+  const [lastRow, lastHashRow, rollbackRow, pendingRow, postprocessRow] = await Promise.all([
     db.prepare(`SELECT value FROM indexer_state WHERE key = 'last_block_index'`).first<{ value: string }>(),
     db.prepare(`SELECT value FROM indexer_state WHERE key = 'last_block_hash'`).first<{ value: string }>(),
+    db.prepare(`SELECT value FROM indexer_state WHERE key = 'rollback_plan'`).first<{ value: string }>(),
+    db.prepare(`SELECT value FROM indexer_state WHERE key = 'pending_block'`).first<{ value: string }>(),
+    db.prepare(`SELECT value FROM indexer_state WHERE key = 'pending_postprocess'`).first<{ value: string }>(),
   ]);
 
   const currentBlock = await fetchCurrentBlock(apiBase);
   let lastBlock = lastRow ? parseInt(lastRow.value, 10) : currentBlock.block_index - 1;
 
   // Reorg detection
-  let rollbackTo: number | null = null;
+  const savedRollback: RollbackPlan | null = rollbackRow ? JSON.parse(rollbackRow.value) : null;
+  let rollbackCheckpoint: BlockCheckpoint | null = savedRollback?.checkpoint ?? null;
 
-  if (currentBlock.block_index < lastBlock) {
+  if (savedRollback) {
+    if (await fetchBlockHash(apiBase, savedRollback.checkpoint.block_index) !== savedRollback.checkpoint.block_hash) {
+      throw new Error("Chain changed during rollback; operator recovery required");
+    }
+  } else if (currentBlock.block_index < lastBlock) {
     // Chain tip went backwards - obvious reorg
     console.log(`Reorg detected: chain tip ${currentBlock.block_index} < checkpoint ${lastBlock}`);
-    rollbackTo = currentBlock.block_index;
+    rollbackCheckpoint = await findCommonCheckpoint(db, currentBlock.block_index, height => fetchBlockHash(apiBase, height));
   } else if (lastHashRow) {
     // Same-height reorg detection: verify our checkpoint block hash hasn't changed
     const checkpointHash = currentBlock.block_index === lastBlock
@@ -661,9 +688,25 @@ export async function syncBlocks(
         `Reorg detected at block ${lastBlock}: hash mismatch ` +
         `(stored=${lastHashRow.value.slice(0, 16)}... actual=${checkpointHash.slice(0, 16)}...)`
       );
-      rollbackTo = lastBlock - 1;
+      rollbackCheckpoint = await findCommonCheckpoint(db, lastBlock - 1, height => fetchBlockHash(apiBase, height));
     }
   }
+
+  // A hash first observed after a reorg is not evidence of the old chain.
+  // Seed retained history only after verifying the existing checkpoint.
+  if (!rollbackCheckpoint && lastHashRow) {
+    const header = lastBlock === currentBlock.block_index ? currentBlock : await fetchBlockInfo(apiBase, lastBlock);
+    if (header.block_hash !== lastHashRow.value) throw new Error("Checkpoint changed during verification");
+    await db.batch(checkpointStatements(db, { ...header, block_index: lastBlock }));
+  }
+  if (!rollbackCheckpoint && pendingRow) {
+    const pending = JSON.parse(pendingRow.value) as BlockCheckpoint;
+    if (pending.block_index !== lastBlock + 1) throw new Error("Unexpected pending block checkpoint");
+    if (await fetchBlockHash(apiBase, pending.block_index) !== pending.block_hash) {
+      rollbackCheckpoint = await findCommonCheckpoint(db, lastBlock, height => fetchBlockHash(apiBase, height));
+    }
+  }
+  const rollbackTo = rollbackCheckpoint?.block_index ?? null;
 
   // A deployment may introduce last_block_time while the indexer is already
   // caught up, leaving no new block to populate it in the processing loop.
@@ -743,16 +786,6 @@ export async function syncBlocks(
       .first<{ t: number | null }>();
 
     // Candle deletes scoped to affected pairs, bucket-aligned to smallest interval
-    const candleDeletes: D1PreparedStatement[] = [];
-    if (rollbackBlock?.t) {
-      const bucket = bucketTimestamp(rollbackBlock.t, "1h");
-      for (const p of affectedReorgPairs.results) {
-        candleDeletes.push(
-          db.prepare(`DELETE FROM candles WHERE pair = ? AND timestamp >= ?`).bind(p.pair, bucket)
-        );
-      }
-    }
-
     // Compute the wall-clock time threshold for identifying closures from this run.
     // syncBlocks is called by cron (every 10 min). Orders/dispensers closed with
     // closed_at >= this threshold were likely closed by events in the now-invalid blocks.
@@ -761,6 +794,19 @@ export async function syncBlocks(
       .prepare(`SELECT value FROM indexer_state WHERE key = 'last_run_time'`)
       .first<{ value: string }>();
     const closureCutoff = lastRunRow ? parseInt(lastRunRow.value, 10) : now - 1200;
+
+    const plan: RollbackPlan = savedRollback ?? {
+      checkpoint: rollbackCheckpoint!, pairs: affectedReorgPairs.results,
+      assets: affectedReorgAssets.results, pools: [...affectedReorgPools],
+      earliestTime: rollbackBlock?.t ?? null, closureCutoff,
+    };
+    if (!savedRollback) {
+      await db.prepare(`INSERT INTO indexer_state(key, value) VALUES ('rollback_plan', ?)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value`).bind(JSON.stringify(plan)).run();
+    }
+    const candleDeletes = plan.earliestTime === null ? [] : plan.pairs.map(p =>
+      db.prepare(`DELETE FROM candles WHERE pair = ? AND timestamp >= ?`)
+        .bind(p.pair, bucketTimestamp(plan.earliestTime!, "1h")));
 
     // Core rollback: delete invalidated data + re-open recently closed orders/dispensers
     await db.batch([
@@ -782,34 +828,40 @@ export async function syncBlocks(
       db.prepare(
         `UPDATE orders SET status = 'open', closed_at = NULL
          WHERE status != 'open' AND block_index <= ? AND closed_at >= ?`
-      ).bind(rollbackTo, closureCutoff),
+      ).bind(rollbackTo, plan.closureCutoff),
       db.prepare(
         `UPDATE dispensers SET status = 0, closed_at = NULL
          WHERE status != 0 AND block_index <= ? AND closed_at >= ?`
-      ).bind(rollbackTo, closureCutoff),
-      db.prepare(
-        `INSERT INTO indexer_state (key, value) VALUES ('last_block_index', ?)
-         ON CONFLICT (key) DO UPDATE SET value = excluded.value`
-      ).bind(String(rollbackTo)),
+      ).bind(rollbackTo, plan.closureCutoff),
     ]);
 
     // Candle deletes in separate batches (one per pair, could exceed D1's 100-stmt limit)
     await batchExec(db, candleDeletes);
 
     // Recalculate stats for affected pairs and assets
-    for (const p of affectedReorgPairs.results) {
-      await aggregateCandlesForPair(db, p.pair, rollbackBlock?.t ?? 0);
+    for (const p of plan.pairs) {
+      await aggregateCandlesForPair(db, p.pair, plan.earliestTime ?? 0);
       await updatePairStats(db, p.pair, p.base_asset, p.quote_asset);
     }
-    for (const a of affectedReorgAssets.results) {
+    for (const a of plan.assets) {
       await updateDispenserStats(db, a.asset);
     }
-    for (const lpAsset of affectedReorgPools) {
+    for (const lpAsset of plan.pools) {
       await rebuildPoolFromHistory(db, lpAsset);
-      await rebuildPoolAccountingFromHistory(db, lpAsset);
+      // The event-delete trigger reversed exactly the orphan deltas. A full
+      // LP history rebuild would erase opening balances missing from history.
+      await refreshPoolFeeTotals(db, lpAsset);
+      await db.prepare(`UPDATE pool_lp_balances SET updated_block_index = ?, updated_block_time = ?
+        WHERE lp_asset = ? AND updated_block_index > ?`)
+        .bind(rollbackTo, plan.checkpoint.block_time, lpAsset, rollbackTo).run();
     }
     // Recalculate order book stats after reorg
     await updateOrderBookStats(db, now);
+
+    await db.batch([
+      ...checkpointStatements(db, plan.checkpoint),
+      db.prepare(`DELETE FROM indexer_state WHERE key IN ('rollback_plan', 'pending_block')`),
+    ]);
 
     lastBlock = rollbackTo;
   }
@@ -835,21 +887,27 @@ export async function syncBlocks(
     pool_fee_accruals_inserted: 0,
   };
 
+  // A checkpoint can commit before derived stats finish. Retain only touched
+  // identities so a caught-up retry can finish them without a global sweep.
+  const previousPostprocess: PostprocessPlan | null = postprocessRow ? JSON.parse(postprocessRow.value) : null;
+  let expectedPreviousHash = rollbackCheckpoint?.block_hash ?? lastHashRow?.value;
   // Track affected pairs/assets for post-processing
   const affectedPairs = new Map<
     string,
     { base: string; quote: string; baseLongname: string | null; quoteLongname: string | null; earliestTime: number }
-  >();
-  const affectedDispenseAssets = new Map<string, string | null>();
+  >(previousPostprocess?.pairs);
+  const affectedDispenseAssets = new Map<string, string | null>(previousPostprocess?.assets);
   /** Pairs whose BOOK changed this run — a new listing to deal-score even
    *  when nothing traded in that pair (affectedPairs only sees fills). */
-  const newOrderPairs = new Set<string>();
-  const affectedPools = new Set<string>();
+  const newOrderPairs = new Set<string>(previousPostprocess?.orderPairs);
+  const affectedPools = new Set<string>(previousPostprocess?.pools);
   const knownPoolLpByPair = new Map<string, string>();
   const knownPoolPairByLp = new Map<string, string>();
 
   for (let blockIdx = lastBlock + 1; blockIdx <= targetBlock; blockIdx++) {
+    const header = await fetchBlockInfo(apiBase, blockIdx);
     const events = await fetchBlockEvents(apiBase, blockIdx);
+    const appliedPoolBalances = await loadAppliedPoolBalances(db, blockIdx);
 
     // Sort by event_index ASC - the Counterparty API returns DESC order,
     // but we need ASC so that OPEN_ORDER runs before ORDER_UPDATE (fill)
@@ -883,21 +941,13 @@ export async function syncBlocks(
     await seedPoolPairsForAssets(db, creditDebitAssets, knownPoolPairByLp);
     const nonPoolAssets = new Set<string>();
 
-    // Derive block_time from any event that carries it (ORDER_MATCH, OPEN_ORDER,
-    // OPEN_DISPENSER, DISPENSE all include block_time; ORDER_UPDATE and others don't).
-    let blockTime: number | undefined;
-    for (const ev of events) {
-      blockTime = ev.block_time ?? (ev.params.block_time as number | undefined);
-      if (blockTime) break;
-    }
+    // Header time is authoritative even when a block has no DEX events.
+    const blockTime = header.block_time;
     // The checkpoint time describes the Bitcoin block, not whether that block
     // happened to contain one of our selected DEX events. An empty event page
     // still advances the height; writing String(undefined) here made every
     // freshness consumer treat a successful sync as stale until a later busy
     // block happened to repair it.
-    if (!blockTime) {
-      blockTime = (await fetchBlockInfo(apiBase, blockIdx)).block_time;
-    }
 
     const stmts: ((db: D1Database) => D1PreparedStatement)[] = [];
     const pendingPoolBalances: PendingPoolBalances = new Map();
@@ -1231,7 +1281,8 @@ export async function syncBlocks(
                   feeAsset: params.backward_asset as string,
                   feeQuantityRaw: parseQuantity(params.fee_quantity),
                   feeQuantity: eventQuantity(params, "fee_quantity_normalized", "fee_quantity", "backward_asset_info"),
-                }
+                },
+                appliedPoolBalances,
               );
               result.pool_matches_inserted++;
             }
@@ -1301,8 +1352,24 @@ export async function syncBlocks(
     }
 
     if (pendingPoolBalances.size > 0 && blockTime) {
-      await addBalanceSnapshots(db, stmts, pendingPoolBalances, blockIdx, blockTime);
+      await addBalanceSnapshots(db, stmts, pendingPoolBalances, blockIdx, blockTime, appliedPoolBalances);
     }
+
+    // Reject a chain change while fetching/composing this block, before writes.
+    if (await fetchBlockHash(apiBase, blockIdx) !== header.block_hash) {
+      throw new Error(`Block ${blockIdx} changed while fetching events`);
+    }
+    if (expectedPreviousHash && await fetchBlockHash(apiBase, blockIdx - 1) !== expectedPreviousHash) {
+      throw new Error(`Applied chain changed before block ${blockIdx}`);
+    }
+    const checkpoint = { ...header, block_index: blockIdx };
+    const postprocess: PostprocessPlan = {
+      pairs: [...affectedPairs], assets: [...affectedDispenseAssets], orderPairs: [...newOrderPairs], pools: [...affectedPools],
+      ordersChanged: !!previousPostprocess?.ordersChanged || result.orders_upserted > 0 || result.orders_closed > 0,
+      listingsClosed: !!previousPostprocess?.listingsClosed || result.orders_closed > 0 || result.dispensers_updated > 0,
+    };
+    await db.prepare(`INSERT INTO indexer_state(key, value) VALUES ('pending_block', ?)
+      ON CONFLICT(key) DO UPDATE SET value = excluded.value`).bind(JSON.stringify(checkpoint)).run();
 
     // Execute all statements for this block in batches
     if (stmts.length > 0) {
@@ -1315,21 +1382,20 @@ export async function syncBlocks(
       }
     }
 
-    // Update both height and time atomically. Time lets historical API
-    // consumers distinguish a genuinely empty window from one the indexer
-    // has not completed yet.
+    // Height, hash and time describe the same applied block, even if this
+    // invocation dies before the next block or post-processing.
     await db.batch([
-      db.prepare(
-        `INSERT INTO indexer_state (key, value) VALUES ('last_block_index', ?)
-         ON CONFLICT (key) DO UPDATE SET value = excluded.value`
-      ).bind(String(blockIdx)),
-      db.prepare(
-        `INSERT INTO indexer_state (key, value) VALUES ('last_block_time', ?)
-         ON CONFLICT (key) DO UPDATE SET value = excluded.value`
-      ).bind(String(blockTime)),
+      ...checkpointStatements(db, checkpoint),
+      db.prepare(`DELETE FROM indexer_state WHERE key = 'pending_block'`),
+      ...(postprocess.pairs.length || postprocess.assets.length || postprocess.pools.length ||
+          postprocess.orderPairs.length || postprocess.ordersChanged || postprocess.listingsClosed ? [
+        db.prepare(`INSERT INTO indexer_state(key, value) VALUES ('pending_postprocess', ?)
+          ON CONFLICT(key) DO UPDATE SET value = excluded.value`).bind(JSON.stringify(postprocess)),
+      ] : []),
     ]);
 
     lastBlock = blockIdx;
+    expectedPreviousHash = header.block_hash;
     result.blocks_processed++;
   }
 
@@ -1350,7 +1416,7 @@ export async function syncBlocks(
   }
 
   // Update order book stats for pairs with changed orders
-  if (result.orders_upserted > 0 || result.orders_closed > 0) {
+  if (previousPostprocess?.ordersChanged || result.orders_upserted > 0 || result.orders_closed > 0) {
     await updateOrderBookStats(db, now);
   }
 
@@ -1366,7 +1432,7 @@ export async function syncBlocks(
         dispAssets.length > 0 ? scoreNewDispensers(db, dispAssets) : 0,
       ]);
       // Prune closed listings
-      if (result.orders_closed > 0 || result.dispensers_updated > 0) {
+      if (previousPostprocess?.listingsClosed || result.orders_closed > 0 || result.dispensers_updated > 0) {
         await pruneClosedDeals(db);
       }
       if (orderDeals > 0 || dispDeals > 0) {
@@ -1381,6 +1447,7 @@ export async function syncBlocks(
   // existed; indexer_caught_up changes only when lag state changes, not on
   // every cron, event, trade, or pair.
   await db.batch([
+    db.prepare(`DELETE FROM indexer_state WHERE key = 'pending_postprocess'`),
     db.prepare(
       `INSERT INTO indexer_state (key, value) VALUES ('last_run_time', ?)
        ON CONFLICT (key) DO UPDATE SET value = excluded.value`
@@ -1392,15 +1459,7 @@ export async function syncBlocks(
     ).bind(lastBlock === currentBlock.block_index ? "1" : "0"),
   ]);
 
-  // Store block hash for same-height reorg detection on next run
   if (result.blocks_processed > 0) {
-    const lastProcessedHash = lastBlock === currentBlock.block_index
-      ? currentBlock.block_hash
-      : await fetchBlockHash(apiBase, lastBlock);
-    await db.prepare(
-      `INSERT INTO indexer_state (key, value) VALUES ('last_block_hash', ?)
-       ON CONFLICT (key) DO UPDATE SET value = excluded.value`
-    ).bind(lastProcessedHash).run();
     await prunePoolBalanceSnapshots(db, lastBlock);
   }
 
@@ -1409,6 +1468,6 @@ export async function syncBlocks(
 
   } finally {
     // Always release advisory lock, even on error
-    await db.prepare(`DELETE FROM indexer_state WHERE key = 'sync_lock'`).run();
+    await db.prepare(`DELETE FROM indexer_state WHERE key = 'sync_lock' AND value = ?`).bind(String(now)).run();
   }
 }

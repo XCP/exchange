@@ -1,0 +1,22 @@
+name: API checks
+on:
+  pull_request:
+    paths:
+      - "apps/api/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/api-check.yml"
+permissions:
+  contents: read
+jobs:
+  api:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+        working-directory: apps/api
+      - run: npm test && npx tsc --noEmit
+        working-directory: apps/api
