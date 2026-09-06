@@ -47,6 +47,12 @@ configuration binds that Worker as `XCPDEX_API`.
 npm run deploy:pages --workspace counterwallet-gateway
 ```
 
+After that, the `Deploy` GitHub workflow redeploys the gateway on every push to
+`master` that touches `apps/counterwallet-gateway/` or a shared root file, and
+can be run by hand with the `gateway` target. The Pages project's production
+branch is `main`, so both the script and the workflow pass `--branch main`;
+without it a deploy lands as a preview instead of replacing production.
+
 After the deployment exists, add `api.counterwallet.io` under the Pages
 project's **Custom domains** screen. Only then should the domain owner create a
 Namecheap CNAME from host `api` to `counterwallet-api.pages.dev`. Cloudflare will

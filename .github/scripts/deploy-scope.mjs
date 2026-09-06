@@ -10,15 +10,21 @@ export function deploymentScope(paths) {
   return {
     api: shared || paths.some((path) => path.startsWith('apps/api/')),
     web: shared || paths.some((path) => path.startsWith('apps/web/')),
+    gateway: shared || paths.some((path) => path.startsWith('apps/counterwallet-gateway/')),
   };
+}
+
+export const TARGETS = ['api', 'web', 'gateway'];
+
+export function dispatchScope(target) {
+  if (target !== 'all' && !TARGETS.includes(target)) throw new Error('Choose an explicit deployment target');
+  return Object.fromEntries(TARGETS.map((name) => [name, target === 'all' || target === name]));
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   let scope;
   if (process.env.DEPLOY_EVENT === 'workflow_dispatch') {
-    const target = process.env.DEPLOY_TARGET;
-    if (!['api', 'web', 'all'].includes(target)) throw new Error('Choose an explicit deployment target');
-    scope = { api: target !== 'web', web: target !== 'api' };
+    scope = dispatchScope(process.env.DEPLOY_TARGET);
   } else {
     const before = process.env.DEPLOY_BEFORE;
     const head = process.env.DEPLOY_HEAD;
@@ -32,6 +38,6 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     scope = deploymentScope(paths);
   }
   if (!process.env.GITHUB_OUTPUT) throw new Error('Missing workflow output file');
-  appendFileSync(process.env.GITHUB_OUTPUT, `api=${scope.api}\nweb=${scope.web}\n`);
+  appendFileSync(process.env.GITHUB_OUTPUT, TARGETS.map((name) => `${name}=${scope[name]}\n`).join(''));
   console.log(JSON.stringify(scope));
 }
