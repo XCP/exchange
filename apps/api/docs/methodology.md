@@ -26,8 +26,11 @@ execution definition.
 Markets are an explicit allowlist (`/catalog/pairs`), not everything the protocol has ever
 traded. Each entry declares which execution sources actually feed it.
 
-That allowlist applies to the CoinGecko and CoinMarketCap feeds. The DefiLlama volume endpoint
-is venue-wide: it includes every non-hidden Counterparty market whose executed quote asset is
+CoinGecko and CoinMarketCap have separate explicit allowlists. The initial CoinGecko submission
+profile contains only `XCP_BTC`; additional Counterparty assets require exact CoinGecko identity
+approval before their markets are added. CoinMarketCap retains its separately verified current
+and historical asset profile. The DefiLlama volume endpoint is venue-wide: it includes every
+non-hidden Counterparty market whose executed quote asset is
 BTC or XCP. This includes long-tail base assets without assigning them speculative prices;
 the endpoint returns native BTC and XCP quote balances for DefiLlama to price historically.
 Direct order-book self-matches, where the indexed maker and taker Bitcoin addresses are equal,
@@ -52,9 +55,17 @@ This is the unusual part of the venue, so it is stated precisely:
 > protocol price. Counting gross payments would duplicate and inflate quote volume; counting
 > protocol notional cannot.
 
-Dispenser-backed liquidity contributes **asks only** (a dispenser is a standing sell offer);
-order-book bids are the only bids. On the order book endpoint, open dispensers with escrow
-remaining appear as ask levels alongside order-book asks.
+On **BTC-quoted pairs, open DEX orders are excluded from all aggregator bid/ask fields**.
+Counterparty does not commit the BTC leg when the order is placed, so an open intent is not
+reliable executable depth. Only an order match whose separate BTCPay completed enters trades,
+prices, and volume. Dispensers are different: their offered asset is escrowed by the protocol,
+so open dispensers with remaining inventory continue to appear as executable asks. On
+protocol-asset pairs such as `PEPECASH_XCP`, the normal open order book remains published.
+
+For CoinGecko AMM rows, `liquidity_in_usd` values both reserves at the pool's own reserve ratio
+and converts the resulting quote balance through the current XCP/USD or BTC/USD anchor from
+XCP.io. Counterparty pools use the constant-product `x * y = k` curve. The input fee is 50 bps
+when either pool leg is XCP and 100 bps otherwise.
 
 ## Prices, quantities, and staleness
 
@@ -98,8 +109,9 @@ Bitcoin blockchain directly.
 ## Verification
 
 A reconciliation gate runs against the live API before any aggregator submission and after any
-accounting change. It requires: CoinMarketCap and CoinGecko responses equal field-for-field;
-ticker bid/ask equal to the order book's top levels; ticker volumes, high, low, and last price
+accounting change. It requires each profile to reconcile field-for-field with the canonical
+settlement data, and requires shared markets to agree across adapters; ticker bid/ask must equal
+the order book's top levels; ticker volumes, high, low, and last price must
 equal to the full rolling-24h historical window (paged exhaustively); no duplicate trade IDs;
 no nonpositive prices; sorted books; and stale flags consistent with the 90-day rule.
 

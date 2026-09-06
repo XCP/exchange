@@ -5,7 +5,7 @@
  *   node scripts/reconcile.mjs            # against https://api.xcpdex.com
  *   RECONCILE_BASE=http://localhost:8791 node scripts/reconcile.mjs
  *
- * Hard failures (exit 1): CMC and CG disagree on price/volume; ticker
+ * Hard failures (exit 1): shared CMC/CG markets disagree on price/volume; ticker
  * last/bid/ask/high/low disagree with the orderbook or the full rolling-24h
  * historical window; duplicate trade IDs; nonpositive published prices;
  * unsorted or crossed book; is_stale disagreeing with the 90-day rule.
@@ -59,7 +59,7 @@ async function fullWindow(tickerId, startSec, endSec) {
 async function reconcilePair(cg, cmcByPair, nowMs) {
   const pair = cg.ticker_id;
 
-  // --- CMC vs CG: one dataset, two presentations ---
+  // --- Shared CMC/CG market: one dataset, two presentations ---
   const cmc = cmcByPair.get(pair);
   if (!cmc) {
     fail(pair, "cmc-presence", "pair missing from /coinmarketcap/summary");
@@ -156,7 +156,7 @@ console.log(`reconcile ${BASE} — ${openingTickers.length} tickers, ${unstable.
 for (const pair of unstable) console.log(`UNSTABLE ${pair} (ticker changed mid-run; rerun)`);
 for (const note of notes) console.log(`NOTE ${note}`);
 if (finalFailures.length === 0) {
-  console.log("PASS — CMC == CG, tickers reconcile with orderbook and full 24h window");
+  console.log("PASS — shared CMC/CG markets agree; tickers reconcile with orderbook and full 24h window");
 } else {
   for (const line of finalFailures) console.log(`FAIL ${line}`);
   process.exit(1);
