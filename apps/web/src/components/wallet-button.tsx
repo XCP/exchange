@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
+import { useWalletMenu } from '@xcp/wallet-sdk/react'
 import { useWallet, type ProofStatus } from '@/lib/wallet/wallet-context'
 import { useConnectFlow } from '@/lib/wallet/useConnectFlow'
 import { formatAddress } from '@/utils/format-address'
@@ -29,11 +30,12 @@ const PROOF_UI: Record<ProofStatus, { dot: string; title: string; note: string |
 }
 
 export function WalletButton() {
-  const { status, address, disconnect, forgetWallet, wallets, accounts, switchAccount, proofStatus } = useWallet()
+  const { status, address, proofStatus } = useWallet()
+  const menu = useWalletMenu()
+  const { accounts, switchAccount, disconnect, canSwitchWallet: canSwitch, switchWallet: forgetWallet } = menu
   const wallet = useConnectFlow()
   const proof = PROOF_UI[proofStatus]
   const [open, setOpen] = useState(false)
-  const canSwitch = wallets.filter((candidate) => candidate.installed).length > 1
   const ref = useRef<HTMLDivElement>(null)
 
   // Close dropdown on outside click
@@ -76,6 +78,9 @@ export function WalletButton() {
 
       {open && (
         <div className="absolute right-0 top-full mt-1 w-56 rounded-sm border border-zinc-700 bg-zinc-900 shadow-lg z-50">
+          {menu.wallet && (
+            <p className="px-3 py-1.5 text-[10px] uppercase tracking-wide text-zinc-500">via {menu.wallet.name}</p>
+          )}
           {accounts.length > 1 && (
             <>
               {accounts.map((account) => (
