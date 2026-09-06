@@ -1,7 +1,7 @@
 'use client'
 
 import { SWRConfig } from 'swr'
-import { leaderPolling } from '@xcp/wallet-sdk/react'
+import { leaderPolling } from '@xcp/wallet-sdk/react/leader-polling'
 import type { ReactNode } from 'react'
 
 export function SWRProvider({ children }: { children: ReactNode }) {
