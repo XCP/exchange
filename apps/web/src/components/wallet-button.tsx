@@ -3,8 +3,8 @@
 import { useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
 import { useWallet, type ProofStatus } from '@/lib/wallet/wallet-context'
+import { useConnectFlow } from '@/lib/wallet/useConnectFlow'
 import { formatAddress } from '@/utils/format-address'
-import { WalletInstallModal } from '@/components/wallet-install-modal'
 
 /**
  * The dot carries the state; only the red one gets words.
@@ -29,10 +29,11 @@ const PROOF_UI: Record<ProofStatus, { dot: string; title: string; note: string |
 }
 
 export function WalletButton() {
-  const { status, address, connecting, connect, disconnect, proofStatus } = useWallet()
+  const { status, address, disconnect, forgetWallet, wallets, proofStatus } = useWallet()
+  const wallet = useConnectFlow()
   const proof = PROOF_UI[proofStatus]
   const [open, setOpen] = useState(false)
-  const [showInstall, setShowInstall] = useState(false)
+  const canSwitch = wallets.filter((candidate) => candidate.installed).length > 1
   const ref = useRef<HTMLDivElement>(null)
 
   // Close dropdown on outside click
@@ -47,36 +48,18 @@ export function WalletButton() {
     return () => document.removeEventListener('mousedown', handler)
   }, [open])
 
-  if (status === 'not_detected') {
+  if (status !== 'connected') {
     return (
       <>
         <button
-          onClick={() => {
-            // Re-check in case the extension injected after the 2s detection window.
-            if (window.xcpwallet) {
-              connect()
-            } else {
-              setShowInstall(true)
-            }
-          }}
-          className="rounded-sm border border-green-500/30 bg-green-500/10 px-3 py-1 text-xs font-medium text-green-400 hover:bg-green-500/20 transition-colors"
+          onClick={wallet.start}
+          disabled={wallet.connecting}
+          className="rounded-sm border border-green-500/30 bg-green-500/10 px-3 py-1 text-xs font-medium text-green-400 hover:bg-green-500/20 transition-colors disabled:opacity-50"
         >
-          Connect
+          {wallet.connecting ? 'Connecting...' : 'Connect'}
         </button>
-        {showInstall && <WalletInstallModal onClose={() => setShowInstall(false)} />}
+        {wallet.walletModal}
       </>
-    )
-  }
-
-  if (status === 'disconnected') {
-    return (
-      <button
-        onClick={connect}
-        disabled={connecting}
-        className="rounded-sm border border-green-500/30 bg-green-500/10 px-3 py-1 text-xs font-medium text-green-400 hover:bg-green-500/20 transition-colors disabled:opacity-50"
-      >
-        {connecting ? 'Connecting...' : 'Connect'}
-      </button>
     )
   }
 
@@ -104,6 +87,17 @@ export function WalletButton() {
             <>
               <div className="border-t border-zinc-800" />
               <p className="px-3 py-2 text-[11px] leading-snug text-amber-400/90">{proof.note}</p>
+            </>
+          )}
+          {canSwitch && (
+            <>
+              <div className="border-t border-zinc-800" />
+              <button
+                onClick={() => { forgetWallet(); setOpen(false) }}
+                className="block w-full px-3 py-2 text-left text-xs text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300 transition-colors"
+              >
+                Switch wallet
+              </button>
             </>
           )}
           <div className="border-t border-zinc-800" />

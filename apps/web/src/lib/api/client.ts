@@ -1,6 +1,7 @@
 import { COUNTERPARTY_API_BASE, DEX_API_BASE } from '@/utils/constants'
 import { parseJsonLossless } from '@/lib/api/lossless-json'
-import { relayingFetch } from '@/lib/counterparty-relay'
+import { relayingFetch } from '@xcp/wallet-sdk'
+import '@/lib/wallet/sdk-config'
 
 /**
  * Every API read goes through here, which is the only place a quantity can

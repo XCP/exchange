@@ -8,7 +8,7 @@ import { usePoolSwapQuote } from '@/lib/hooks/usePools'
 import { COMPOSE_STATUS_LABELS } from '@/utils/constants'
 import { formatAmount } from '@/utils/format-amount'
 import { toBase, fromBaseNumber, big, num, ROUND_DOWN, DIVISIBLE_DECIMALS } from '@/utils/numeric'
-import { WalletInstallModal } from '@/components/wallet-install-modal'
+import { useConnectFlow } from '@/lib/wallet/useConnectFlow'
 
 interface TradeFormProps {
   baseSymbol: string
@@ -55,13 +55,13 @@ export function TradeForm({
   amountInput,
   setAmountInput,
 }: TradeFormProps) {
-  const { status: walletStatus, address, connect, connecting } = useWallet()
+  const { status: walletStatus } = useWallet()
+  const wallet = useConnectFlow()
   const { status: txStatus, txid, error: txError, composeOrder, reset } = useCompose()
 
   const spendAsset = tradeTab === 'buy' ? quoteSymbol : baseSymbol
   const feeRate = useFeeRate()
 
-  const [showInstall, setShowInstall] = useLocalState(false)
   const [orderType, setOrderType] = useLocalState<'limit' | 'market'>('limit')
 
   const handleSubmit = () => {
@@ -383,17 +383,17 @@ export function TradeForm({
         {walletStatus !== 'connected' ? (
           <>
           <button
-            onClick={walletStatus === 'disconnected' ? connect : () => setShowInstall(true)}
-            disabled={connecting}
+            onClick={wallet.start}
+            disabled={wallet.connecting}
             className={`w-full rounded-sm py-2.5 text-xs font-semibold uppercase tracking-wider transition-colors ${
               tradeTab === 'buy'
                 ? 'bg-green-500 text-zinc-950 hover:bg-green-400'
                 : 'bg-red-500 text-zinc-950 hover:bg-red-400'
             } disabled:opacity-50`}
           >
-            {connecting ? 'Connecting...' : 'Connect Wallet'}
+            {wallet.connecting ? 'Connecting...' : 'Connect Wallet'}
           </button>
-          {showInstall && <WalletInstallModal onClose={() => setShowInstall(false)} />}
+          {wallet.walletModal}
           </>
         ) : (
           <button

@@ -374,7 +374,7 @@ export function PoolManagePanel({
           <CTA onClick={wallet.start} disabled={wallet.connecting}>
             {wallet.connecting ? 'Connecting…' : 'Connect Wallet'}
           </CTA>
-          {wallet.installModal}
+          {wallet.walletModal}
         </>
       )
     }

@@ -61,7 +61,7 @@ export default function PortfolioPage() {
               {wallet.connecting ? 'Connecting…' : 'Connect Wallet'}
             </button>
           </div>
-          {wallet.installModal}
+          {wallet.walletModal}
         </div>
       </div>
     )

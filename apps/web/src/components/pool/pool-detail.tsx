@@ -7,7 +7,6 @@ import { PoolCharts } from '@/components/pool/pool-charts'
 import { PoolManagePanel } from '@/components/pool/pool-manage-panel'
 import { FormSettings, PoolSlippageSetting } from '@/components/form-settings'
 import { useFormSettings } from '@/lib/hooks/useFormSettings'
-import { WalletInstallModal } from '@/components/wallet-install-modal'
 import { usePool, usePoolAddressPosition, type PoolAddressPosition, type PoolDeposit, type PoolDisplayAmounts, type PoolHolder, type PoolMatch, type PoolSummary, type PoolWithdrawal } from '@/lib/hooks/usePools'
 import { useWallet } from '@/lib/wallet/wallet-context'
 import { formatAddress } from '@/utils/format-address'
@@ -37,7 +36,6 @@ export default function PoolDetailPage({ lpAsset: lpAssetProp }: { lpAsset: stri
   const { pool, totalLpSupplyRaw, holders, deposits, withdrawals, matches, isLoading, error: poolError } = usePool(lpAsset)
   const { status: walletStatus, address } = useWallet()
   const { position, isLoading: positionLoading, error: positionError } = usePoolAddressPosition(lpAsset, address)
-  const [showInstall, setShowInstall] = useState(false)
   /** The forms stay folded away until asked for — see the rail below. */
   const [manageOpen, setManageOpen] = useState(false)
   const { poolSlippage, setPoolSlippage } = useFormSettings()
@@ -233,7 +231,6 @@ export default function PoolDetailPage({ lpAsset: lpAssetProp }: { lpAsset: stri
         </div>
       </div>
 
-      {showInstall && <WalletInstallModal onClose={() => setShowInstall(false)} />}
     </div>
   )
 }

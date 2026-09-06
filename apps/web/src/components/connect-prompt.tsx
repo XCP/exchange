@@ -21,7 +21,7 @@ export function ConnectPrompt({ message }: ConnectPromptProps) {
       >
         Connect Wallet
       </button>
-      {wallet.installModal}
+      {wallet.walletModal}
     </div>
   )
 }
