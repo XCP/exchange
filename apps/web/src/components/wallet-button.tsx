@@ -29,7 +29,7 @@ const PROOF_UI: Record<ProofStatus, { dot: string; title: string; note: string |
 }
 
 export function WalletButton() {
-  const { status, address, disconnect, forgetWallet, wallets, proofStatus } = useWallet()
+  const { status, address, disconnect, forgetWallet, wallets, accounts, switchAccount, proofStatus } = useWallet()
   const wallet = useConnectFlow()
   const proof = PROOF_UI[proofStatus]
   const [open, setOpen] = useState(false)
@@ -76,6 +76,22 @@ export function WalletButton() {
 
       {open && (
         <div className="absolute right-0 top-full mt-1 w-56 rounded-sm border border-zinc-700 bg-zinc-900 shadow-lg z-50">
+          {accounts.length > 1 && (
+            <>
+              {accounts.map((account) => (
+                <button
+                  key={account}
+                  onClick={() => { void switchAccount(account); setOpen(false) }}
+                  className={`block w-full px-3 py-2 text-left font-mono text-xs transition-colors ${
+                    account === address ? 'text-green-400' : 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200'
+                  }`}
+                >
+                  {formatAddress(account)}
+                </button>
+              ))}
+              <div className="border-t border-zinc-800" />
+            </>
+          )}
           <Link
             href="/portfolio"
             onClick={() => setOpen(false)}
