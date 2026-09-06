@@ -61,7 +61,9 @@ export default function MethodologyPage() {
           PSBT/UTXO swaps are currently excluded. They are a separate settlement mechanism and will only be
           added with their own trade-ID namespace (code 3, already reserved) and a precise execution
           definition. Markets are an explicit allowlist (<Code>/catalog/pairs</Code>), not everything the
-          protocol has ever traded; each entry declares which execution sources actually feed it.
+          protocol has ever traded; each entry declares which execution sources actually feed it. CoinGecko
+          and CoinMarketCap use separate profiles. The initial CoinGecko profile contains only{' '}
+          <Code>XCP_BTC</Code>; additional Counterparty assets require exact CoinGecko identity approval.
         </P>
       </Section>
 
@@ -80,9 +82,17 @@ export default function MethodologyPage() {
           </P>
         </div>
         <P>
-          Dispenser-backed liquidity contributes asks only (a dispenser is a standing sell offer); order-book
-          bids are the only bids. On the order book endpoint, open dispensers with escrow remaining appear as
-          ask levels alongside order-book asks.
+          On BTC-quoted pairs, open DEX orders are excluded from aggregator bid/ask fields. Counterparty does
+          not commit the BTC leg when the order is placed, so an open intent is not reliable executable depth.
+          Only a match whose separate BTCPay completed enters trades, prices, and volume. A dispenser is
+          different: its offered asset is escrowed by the protocol, so open dispensers with inventory remain
+          executable asks. Protocol-asset pairs such as <Code>PEPECASH_XCP</Code> retain their normal open book.
+        </P>
+        <P>
+          CoinGecko AMM liquidity values both reserves at the pool&apos;s own reserve ratio and converts that
+          quote value through the current XCP/USD or BTC/USD anchor from XCP.io. Counterparty pools use the
+          constant-product <Code>x * y = k</Code> curve, with a 50 bps input fee when either leg is XCP and
+          100 bps otherwise.
         </P>
       </Section>
 
@@ -157,8 +167,9 @@ export default function MethodologyPage() {
       <Section title="Verification">
         <P>
           A reconciliation gate runs against the live API before any aggregator submission and after any
-          accounting change. It requires: CoinMarketCap and CoinGecko responses equal field-for-field; ticker
-          bid/ask equal to the order book&apos;s top levels; ticker volumes, high, low, and last price equal
+          accounting change. It requires each profile to reconcile field-for-field with canonical settlement
+          data and shared markets to agree across adapters; ticker bid/ask equal to the order book&apos;s top
+          levels; ticker volumes, high, low, and last price equal
           to the full rolling-24h historical window (paged exhaustively); no duplicate trade IDs; no
           nonpositive prices; sorted books; and stale flags consistent with the 90-day rule.
         </P>
