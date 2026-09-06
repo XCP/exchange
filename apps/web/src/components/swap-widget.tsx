@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import useSWR from 'swr'
 import { AssetSelect } from '@/components/asset-select'
 import { Panel, PanelSection, AmountField, AssetChip, SelectAssetChip, FlipButton, BalancePresets } from '@/components/ui/form-kit'
@@ -11,6 +11,13 @@ import { useWallet } from '@/lib/wallet/wallet-context'
 import { useCompose } from '@/lib/wallet/useCompose'
 import { useBalance } from '@/lib/hooks/useBalance'
 import { usePoolByPair } from '@/lib/hooks/usePools'
+import { useMempool } from '@/lib/hooks/useMempool'
+import {
+  OTHER_POOL_FEE_BPS,
+  quoteAfterMempool,
+  XCP_POOL_FEE_BPS,
+  type BookOrder as SimBookOrder,
+} from '@/lib/pool-quote'
 import { useAssetInfo } from '@/lib/hooks/useAssetInfo'
 import { useDebounced } from '@/lib/hooks/useDebounced'
 import { useXcpPrice, useBtcPrice, useFeeRate } from '@/lib/hooks/useNetworkInfo'
@@ -71,6 +78,25 @@ const STALE_QUOTE_TOLERANCE = 0.99
 const QUOTE_DEBOUNCE_MS = 250
 /** A composed order: a couple of inputs, an OP_RETURN and change. */
 const ORDER_VBYTES = 250
+/** Auto slippage's ceiling when nothing is pending: this trade's own impact
+ *  is the only thing it has to allow for. */
+const AUTO_SLIPPAGE_CAP = 5
+/** ...and with the mempool counted, how far Auto may follow it. Past this the
+ *  trade is not a market order any more. */
+const AUTO_SLIPPAGE_MEMPOOL_CAP = 20
+
+/** A resting order as `/orders/{a}/{b}` returns it: the fields the replay needs. */
+interface CpBookOrder {
+  give_asset: string
+  get_asset: string
+  give_quantity: number | string
+  get_quantity: number | string
+  give_remaining: number | string
+  get_remaining: number | string
+}
+
+/** A raw quantity as bigint, whether it arrived as a digit string or a number. */
+const rawBig = (v: number | string): bigint => (typeof v === 'string' ? BigInt(v) : BigInt(Math.round(v)))
 
 /** Trim the padding zeros off a fixed-decimal string before it enters a field. */
 function trimZeros(value: string): string {
@@ -262,23 +288,6 @@ export function SwapWidget({
   // and past 5% it is the single most important number on the card.
   const impact = quote?.price_impact ?? 0
 
-  /**
-   * What Auto slippage should be for THIS trade.
-   *
-   * A fixed tolerance is wrong in both directions — 1% abandons a large trade
-   * whose own impact exceeds it, and is needlessly loose on a small one. The
-   * reasoning: another taker of roughly your size arriving first would move
-   * the price by about what your own trade moves it, so tolerate that and no
-   * more. Floored at 0.5% because below pool-fee territory it is noise, and
-   * capped at 5% so Auto can never quietly authorise a bad fill — past that
-   * the trade needs a deliberate manual choice.
-   */
-  const neededSlippage =
-    quote && outRaw > 0 ? Math.min(5, Math.max(0.5, Math.ceil(impact * 10) / 10)) : 1
-  useEffect(() => {
-    onAutoSlippage(neededSlippage)
-  }, [neededSlippage, onAutoSlippage])
-
   /** Estimate only — the true size is known after compose. The RATE is exact. */
   const effectiveFeeRate = feeRate || medianFeeRate
   const txFeeUsd =
@@ -295,7 +304,7 @@ export function SwapWidget({
    * the client, so quoting a combined figure would be a number that is wrong
    * by the time it renders.
    */
-  const { pool } = usePoolByPair(giveAsset || null, getAsset || null)
+  const { pool, isLoading: poolLoading } = usePoolByPair(giveAsset || null, getAsset || null)
   const availableGet = !pool
     ? null
     : pool.asset_a === getAsset
@@ -303,6 +312,111 @@ export function SwapWidget({
       : pool.asset_b === getAsset
         ? pool.reserve_b
         : null
+
+  /**
+   * What is already in line ahead of this trade.
+   *
+   * Core's quote reflects the confirmed state only, and says so: "actual
+   * execution may differ if trades confirm before yours." Those trades are
+   * not a mystery — the pending orders on the pair are in the mempool feed
+   * this site already polls — so the same-direction ones are replayed through
+   * Core's own quote algorithm (lib/pool-quote) ahead of this order, and what
+   * they leave is what Auto slippage has to cover. Priced off the confirmed
+   * quote alone, a market order missed its price whenever they confirmed
+   * first, and rested for a block instead of filling: a network fee for
+   * nothing.
+   */
+  const { entries: mempoolEntries } = useMempool('order')
+  const pendingAhead = useMemo(
+    () =>
+      giveAsset && getAsset && giveAsset !== getAsset
+        ? mempoolEntries
+            .filter(
+              (e) =>
+                e.give_asset === giveAsset &&
+                e.get_asset === getAsset &&
+                e.give_quantity != null &&
+                e.give_quantity > 0
+            )
+            .map((e) => rawBig(e.give_quantity as number))
+        : [],
+    [mempoolEntries, giveAsset, getAsset]
+  )
+  // The resting book exists here only to be replayed through, so it is
+  // fetched only while there is something pending to replay.
+  const { data: restingBook, error: restingBookError } = useSWR<SimBookOrder[]>(
+    pendingAhead.length > 0
+      ? counterpartyUrl(`/orders/${getAsset}/${giveAsset}?status=open&limit=1000`)
+      : null,
+    (url: string) =>
+      fetcher(url).then((d) =>
+        ((d as { result?: CpBookOrder[] }).result ?? [])
+          .filter((o) => o.give_asset === getAsset && o.get_asset === giveAsset)
+          .map((o) => ({
+            giveQuantity: rawBig(o.give_quantity),
+            getQuantity: rawBig(o.get_quantity),
+            giveRemaining: rawBig(o.give_remaining),
+            getRemaining: rawBig(o.get_remaining),
+          }))
+      ),
+    { refreshInterval: 60_000, shouldRetryOnError: false }
+  )
+  // Null while the inputs are loading or when nothing is pending. A book that
+  // failed to load counts as empty: the pool then absorbs every pending
+  // order, which overstates the drop, and overstating is the safe direction
+  // for a tolerance.
+  const mempoolQuote = useMemo(() => {
+    if (pendingAhead.length === 0 || giveRaw <= 0 || poolLoading) return null
+    const book = restingBook ?? (restingBookError ? [] : undefined)
+    if (book === undefined) return null
+    const simPool =
+      pool && pool.reserve_a_raw > 0 && pool.reserve_b_raw > 0
+        ? {
+            reserveIn: rawBig(pool.asset_a === giveAsset ? pool.reserve_a_raw : pool.reserve_b_raw),
+            reserveOut: rawBig(pool.asset_a === giveAsset ? pool.reserve_b_raw : pool.reserve_a_raw),
+            feeBps:
+              quote?.fee_bps ??
+              (giveAsset === 'XCP' || getAsset === 'XCP' ? XCP_POOL_FEE_BPS : OTHER_POOL_FEE_BPS),
+          }
+        : null
+    if (!simPool && book.length === 0) return null
+    return quoteAfterMempool({ pool: simPool, book }, pendingAhead, rawBig(giveRaw))
+  }, [pendingAhead, giveRaw, poolLoading, restingBook, restingBookError, pool, giveAsset, getAsset, quote?.fee_bps])
+  const mempoolDrop = mempoolQuote?.dropPercent ?? 0
+  // Core's quote, scaled by what the replay says the mempool leaves of it.
+  // Scaled rather than used directly so any drift between the port and the
+  // node cancels out: the number the user sees stays anchored to Core's.
+  const afterMempoolRaw =
+    mempoolQuote && mempoolQuote.baseline > 0n && outRaw > 0
+      ? Number((rawBig(outRaw) * mempoolQuote.output) / mempoolQuote.baseline)
+      : null
+  const minReceivedRaw = minimumBase(outRaw, 1 - slippage / 100)
+  // The guarantee row is above what the mempool leaves: this order, as priced,
+  // rests instead of filling if the pending ones confirm first.
+  const minBelowMempool = afterMempoolRaw !== null && num(minReceivedRaw) > afterMempoolRaw
+
+  /**
+   * What Auto slippage should be for THIS trade.
+   *
+   * A fixed tolerance is wrong in both directions — 1% abandons a large trade
+   * whose own impact exceeds it, and is needlessly loose on a small one. The
+   * reasoning: whatever is already pending ahead of this trade, plus room for
+   * one more taker of roughly your size — which moves the price by about what
+   * your own trade moves it. Floored at 0.5% because below pool-fee territory
+   * it is noise. The impact share is capped at 5% as it always was; the
+   * mempool share is allowed through, because it is not a guess, up to the
+   * point where this stops being a market order.
+   */
+  const neededSlippage =
+    quote && outRaw > 0
+      ? Math.min(
+          AUTO_SLIPPAGE_MEMPOOL_CAP,
+          Math.max(0.5, Math.ceil((Math.min(impact, AUTO_SLIPPAGE_CAP) + mempoolDrop) * 10) / 10)
+        )
+      : 1
+  useEffect(() => {
+    onAutoSlippage(neededSlippage)
+  }, [neededSlippage, onAutoSlippage])
 
   // Flipping carries the quote into the pay field, so "sell what I was about
   // to buy" is one click rather than retyping the number.
@@ -461,6 +575,15 @@ export function SwapWidget({
                     Price impact {impact.toFixed(1)}%
                   </span>
                 )}
+                {mempoolQuote && (
+                  <span
+                    className={mempoolDrop >= 3 ? 'font-medium text-amber-400' : 'text-zinc-500'}
+                    title={`${mempoolQuote.pendingCount} unconfirmed ${mempoolQuote.pendingCount === 1 ? 'order' : 'orders'} on this pair in the same direction. If they confirm first, this trade gets about ${mempoolDrop.toFixed(1)}% less than the quote. Auto slippage allows for it.`}
+                  >
+                    {mempoolQuote.pendingCount} ahead in mempool
+                    {mempoolDrop > 0 && ` · −${mempoolDrop.toFixed(1)}%`}
+                  </span>
+                )}
                 <QuoteRing
                   periodMs={QUOTE_REFRESH_MS}
                   lastUpdated={lastQuoteAt}
@@ -500,8 +623,22 @@ export function SwapWidget({
                 </span>
               </Row>
             )}
-            <Row label="Minimum received">
-              {formatAmount(fromBaseNumber(minimumBase(outRaw, 1 - slippage / 100), getDivisible))} {getAsset}
+            {afterMempoolRaw !== null && (
+              <Row label="After mempool">
+                ≈ {formatAmount(fromBaseNumber(afterMempoolRaw, getDivisible))} {getAsset}
+              </Row>
+            )}
+            <Row
+              label="Minimum received"
+              tone={minBelowMempool ? 'danger' : undefined}
+              title={
+                minBelowMempool
+                  ? 'Above what the pending orders would leave. If they confirm first, this order rests for a block and refunds instead of filling — raise the slippage or use Auto.'
+                  : undefined
+              }
+            >
+              {formatAmount(fromBaseNumber(minReceivedRaw, getDivisible))} {getAsset}
+              {minBelowMempool && <span className="text-zinc-500"> · above the mempool estimate</span>}
             </Row>
             </dl>
           </PanelSection>
@@ -615,11 +752,23 @@ export function SwapWidget({
   )
 }
 
-function Row({ label, children, tone }: { label: string; children: React.ReactNode; tone?: 'warn' }) {
+function Row({
+  label,
+  children,
+  tone,
+  title,
+}: {
+  label: string
+  children: React.ReactNode
+  tone?: 'warn' | 'danger'
+  title?: string
+}) {
   return (
-    <div className="flex justify-between gap-2">
+    <div className="flex justify-between gap-2" title={title}>
       <dt className="text-zinc-500">{label}</dt>
-      <dd className={tone === 'warn' ? 'text-amber-400' : 'text-zinc-300'}>{children}</dd>
+      <dd className={tone === 'danger' ? 'text-red-400' : tone === 'warn' ? 'text-amber-400' : 'text-zinc-300'}>
+        {children}
+      </dd>
     </div>
   )
 }
