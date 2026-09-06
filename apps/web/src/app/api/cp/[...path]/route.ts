@@ -10,7 +10,7 @@ import { COUNTERPARTY_API_BASE } from '@/utils/constants'
  *
  * That host sits behind Google Cloud Armor, whose denials do not carry CORS
  * headers — so the browser refuses to expose them and script sees a bare
- * TypeError with no status at all. See lib/counterparty-relay.ts for the full
+ * TypeError with no status at all. The SDK's relayingFetch carries the full
  * diagnosis; this is the other half of it, the host that answers when the node
  * will not.
  *

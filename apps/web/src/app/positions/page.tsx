@@ -38,7 +38,7 @@ export default function PositionsPage() {
             >
               {wallet.connecting ? 'Connecting…' : 'Connect Wallet'}
             </button>
-            {wallet.installModal}
+            {wallet.walletModal}
           </div>
         </div>
       </div>

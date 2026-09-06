@@ -74,7 +74,7 @@ export function YourSection({
           children
         ))}
 
-      {wallet.installModal}
+      {wallet.walletModal}
     </section>
   )
 }

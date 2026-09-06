@@ -1,10 +1,8 @@
 'use client'
 
-import { useState } from 'react'
 import { CTA } from '@/components/ui/form-kit'
 import { FormNotice } from '@/components/ui/form-notice'
-import { WalletInstallModal } from '@/components/wallet-install-modal'
-import { useWallet } from '@/lib/wallet/wallet-context'
+import { useConnectFlow } from '@/lib/wallet/useConnectFlow'
 
 /**
  * The action at the foot of every form: connect, then do the thing.
@@ -33,10 +31,9 @@ export function ConnectCTA({
   disabled?: boolean
   tone?: 'primary' | 'sell' | 'muted'
 }) {
-  const { status, connect, connecting, connectError } = useWallet()
-  const [showInstall, setShowInstall] = useState(false)
+  const wallet = useConnectFlow()
 
-  if (status === 'connected') {
+  if (wallet.connected) {
     return (
       <CTA onClick={onClick} disabled={disabled} tone={tone}>
         {children}
@@ -51,23 +48,17 @@ export function ConnectCTA({
           like every other notice — an `mb-2` here stacked ON TOP of that and
           set this one message 16px off the button where all the others sit
           at 8px. */}
-      {connectError && <FormNotice tone="error">{connectError}</FormNotice>}
+      {wallet.connectError && <FormNotice tone="error">{wallet.connectError}</FormNotice>}
       <CTA
-        onClick={() => {
-          // Re-check at click time rather than trusting the mount-time status:
-          // an extension that injected late is common on a cold browser start,
-          // and the wallet context listens for exactly that.
-          if (typeof window !== 'undefined' && window.xcpwallet) connect()
-          else setShowInstall(true)
-        }}
-        disabled={connecting}
+        onClick={wallet.start}
+        disabled={wallet.connecting}
         // Connecting stays available with an incomplete form, but it isn't
         // the step being asked for, so it takes the same muted treatment.
         tone={tone === 'muted' ? 'muted' : 'primary'}
       >
-        {connecting ? 'Connecting…' : 'Connect Wallet'}
+        {wallet.connecting ? 'Connecting…' : 'Connect Wallet'}
       </CTA>
-      {showInstall && <WalletInstallModal onClose={() => setShowInstall(false)} />}
+      {wallet.walletModal}
     </>
   )
 }

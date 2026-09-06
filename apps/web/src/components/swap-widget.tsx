@@ -17,7 +17,7 @@ import {
   quoteAfterMempool,
   XCP_POOL_FEE_BPS,
   type BookOrder as SimBookOrder,
-} from '@/lib/pool-quote'
+} from '@xcp/wallet-sdk'
 import { useAssetInfo } from '@/lib/hooks/useAssetInfo'
 import { useDebounced } from '@/lib/hooks/useDebounced'
 import { useXcpPrice, useBtcPrice, useFeeRate } from '@/lib/hooks/useNetworkInfo'
@@ -320,7 +320,7 @@ export function SwapWidget({
    * execution may differ if trades confirm before yours." Those trades are
    * not a mystery — the pending orders on the pair are in the mempool feed
    * this site already polls — so the same-direction ones are replayed through
-   * Core's own quote algorithm (lib/pool-quote) ahead of this order, and what
+   * Core's own quote algorithm (the SDK's pool quote) ahead of this order, and what
    * they leave is what Auto slippage has to cover. Priced off the confirmed
    * quote alone, a market order missed its price whenever they confirmed
    * first, and rested for a block instead of filling: a network fee for

@@ -4,7 +4,7 @@ import { Suspense, useState } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { useWallet } from '@/lib/wallet/wallet-context'
-import { friendlyError } from '@/lib/wallet/sdk'
+import { friendlyError } from '@xcp/wallet-sdk'
 import { DEX_API_BASE } from '@/utils/constants'
 
 type SellStatus = 'idle' | 'preparing' | 'signing' | 'submitting' | 'success' | 'error'
