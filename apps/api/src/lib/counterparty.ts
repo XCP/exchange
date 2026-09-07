@@ -1,5 +1,8 @@
 import { API_TIMEOUT_MS } from "./constants";
 
+/** The longest we will wait on a node that asked us to come back later. */
+const MAX_RETRY_DELAY_MS = 10_000;
+
 async function fetchWithRetry(
   url: string,
   retries: number = 2,
@@ -8,10 +11,30 @@ async function fetchWithRetry(
   for (let attempt = 0; attempt <= retries; attempt++) {
     const res = await fetch(url, { signal: AbortSignal.timeout(API_TIMEOUT_MS) });
     if (res.ok) return res;
-    if (res.status < 500 || attempt === retries) {
+
+    // 429 is the one status this loop used to treat as fatal, which is exactly
+    // backwards: it is the node asking to be retried, and it is what a public
+    // Counterparty node returns under load. Everything below 500 that is not a
+    // 429 really is final.
+    const retryable = res.status === 429 || res.status >= 500;
+    const retryAfter = Number.parseInt(res.headers.get("retry-after") ?? "", 10);
+
+    // The body is dead weight from here on, and a Worker holds only six
+    // outbound connections. Leaking one per attempt meant a flapping node cost
+    // three slots per call and held them across both sleeps below.
+    await res.body?.cancel().catch(() => undefined);
+
+    if (!retryable || attempt === retries) {
       throw new Error(`Counterparty API error: ${res.status} ${res.statusText}`);
     }
-    await new Promise((r) => setTimeout(r, backoffMs * (attempt + 1)));
+
+    // Honour the node's own number when it gives one; fall back to the linear
+    // backoff this loop already used.
+    const requested =
+      Number.isSafeInteger(retryAfter) && retryAfter >= 0
+        ? retryAfter * 1000
+        : backoffMs * (attempt + 1);
+    await new Promise((r) => setTimeout(r, Math.min(requested, MAX_RETRY_DELAY_MS)));
   }
   throw new Error("Unreachable");
 }

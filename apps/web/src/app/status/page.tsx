@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { COUNTERPARTY_API_BASE, DEX_API_BASE } from '@/utils/constants'
 import { fetchDexStatus } from '@/lib/api/server'
+import { discard } from '@/lib/net'
 
 export const metadata: Metadata = {
   title: 'Status | XCP DEX',
@@ -35,13 +36,23 @@ interface CounterpartyRoot {
 async function load(): Promise<{ dex: DexStatus | null; network: CounterpartyRoot['result'] | null }> {
   const [dexRes, cpRes] = await Promise.allSettled([
     fetchDexStatus(),
-    fetch(`${COUNTERPARTY_API_BASE.replace(/\/v2$/, '')}/v2/`, { next: { revalidate: 60 } }),
+    fetch(`${COUNTERPARTY_API_BASE.replace(/\/v2$/, '')}/v2/`, {
+      // Without a deadline a stalled node holds this render open; the page
+      // already treats a missing answer as "not operational".
+      signal: AbortSignal.timeout(8_000),
+      next: { revalidate: 60 },
+    }),
   ])
-  const dex = dexRes.status === 'fulfilled' && dexRes.value.ok ? ((await dexRes.value.json()) as DexStatus) : null
-  const network =
-    cpRes.status === 'fulfilled' && cpRes.value.ok
-      ? ((await cpRes.value.json()) as CounterpartyRoot).result
-      : null
+  let dex: DexStatus | null = null
+  if (dexRes.status === 'fulfilled') {
+    if (dexRes.value.ok) dex = (await dexRes.value.json()) as DexStatus
+    else await discard(dexRes.value)
+  }
+  let network: CounterpartyRoot['result'] | null = null
+  if (cpRes.status === 'fulfilled') {
+    if (cpRes.value.ok) network = ((await cpRes.value.json()) as CounterpartyRoot).result
+    else await discard(cpRes.value)
+  }
   return { dex, network }
 }
 

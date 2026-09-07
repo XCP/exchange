@@ -3,6 +3,7 @@ import { getCloudflareContext } from '@opennextjs/cloudflare'
 
 import type { PairStats } from '@/lib/hooks/usePairStats'
 import type { DispenserStats } from '@/lib/hooks/useDispenserStats'
+import { discard } from '@/lib/net'
 
 /**
  * Deadline for server-side fetches.
@@ -62,7 +63,7 @@ export async function fetchPairStats(pairSlug: string): Promise<PairStats | null
       signal: AbortSignal.timeout(SSR_FETCH_TIMEOUT_MS),
       next: { revalidate: 60 },
     })
-    if (!res.ok) return null
+    if (!res.ok) return discard(res).then(() => null)
     return res.json()
   } catch {
     return null
@@ -83,7 +84,10 @@ export interface PoolMetaResult {
 export async function fetchPool(lpAsset: string): Promise<PoolMetaResult | null> {
   try {
     const res = await internalFetch(`${DEX_API_BASE}/pools/${lpAsset}`, { signal: AbortSignal.timeout(SSR_FETCH_TIMEOUT_MS), next: { revalidate: 300 } })
-    if (!res.ok) return null
+    if (!res.ok) {
+      await discard(res)
+      return null
+    }
     const body = await res.json()
     return (body?.pool ?? body) as PoolMetaResult
   } catch {
@@ -135,9 +139,21 @@ export async function fetchCoinPrices(): Promise<CoinPrices | null> {
         cache: 'no-store',
       }),
     ])
-    if (!res.ok) return null
+    // Both responses are in hand: a failure on either one still has to be
+    // released, and the ticker is optional so its miss path is the usual one.
+    if (!res.ok) {
+      await Promise.all([discard(res), discard(tickerRes)])
+      return null
+    }
     const r = (await res.json())?.result
-    const ticker = tickerRes.ok ? (await tickerRes.json())?.result : null
+    // The ticker only supplies the XCP price; the main response covers the
+    // rest, so a miss here degrades rather than fails.
+    let ticker: { xcp?: { usd?: number | null } | null } | null = null
+    if (tickerRes.ok) {
+      ticker = (await tickerRes.json())?.result ?? null
+    } else {
+      await discard(tickerRes)
+    }
     const last = r?.history?.[r.history.length - 1]
     return {
       xcp: ticker?.xcp?.usd ?? r?.xcp?.usd ?? null,
@@ -155,7 +171,7 @@ export async function fetchDispenserStats(asset: string): Promise<DispenserStats
       signal: AbortSignal.timeout(SSR_FETCH_TIMEOUT_MS),
       next: { revalidate: 300 },
     })
-    if (!res.ok) return null
+    if (!res.ok) return discard(res).then(() => null)
     return res.json()
   } catch {
     return null
@@ -189,8 +205,10 @@ export async function assetExists(asset: string): Promise<'yes' | 'no' | 'unknow
       signal: AbortSignal.timeout(SSR_FETCH_TIMEOUT_MS),
       next: { revalidate: 3600 },
     })
-    if (res.status === 404) return 'no'
-    if (!res.ok) return 'unknown'
+    // A 404 here is the ordinary answer for a name nobody issued, so this is
+    // the hot path rather than an exceptional one.
+    if (res.status === 404) return discard(res).then(() => 'no' as const)
+    if (!res.ok) return discard(res).then(() => 'unknown' as const)
     const data = await res.json()
     if (data?.result?.asset) return 'yes'
     // The node answers 200 with {"error": "Not found"} for a name nobody has
@@ -207,7 +225,10 @@ export async function fetchAssetInfo(asset: string): Promise<AssetInfoResult | n
       signal: AbortSignal.timeout(SSR_FETCH_TIMEOUT_MS),
       next: { revalidate: 3600 },
     })
-    if (!res.ok) return null
+    if (!res.ok) {
+      await discard(res)
+      return null
+    }
     const data = await res.json()
     return data.result ?? null
   } catch {
