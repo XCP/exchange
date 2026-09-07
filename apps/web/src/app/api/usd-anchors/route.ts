@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { discard } from '@/lib/net'
 
 /**
  * Daily XCP/USD and BTC/USD, for pricing history in dollars.
@@ -52,7 +53,10 @@ export async function GET(request: Request) {
       signal: AbortSignal.timeout(8000),
       cache: 'no-store',
     })
-    if (!res.ok) return NextResponse.json({ anchors: [], stats: null })
+    if (!res.ok) {
+      await discard(res)
+      return NextResponse.json({ anchors: [], stats: null })
+    }
 
     const data = (await res.json()) as {
       result?: {

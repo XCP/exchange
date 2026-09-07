@@ -30,6 +30,7 @@ import {
   refreshPoolFeeTotals,
   type PendingPoolBalances,
 } from "./pool-accounting";
+import { discard } from "../lib/net";
 
 // Event types we care about for DEX indexing
 const DEX_EVENTS = [
@@ -175,7 +176,10 @@ async function fetchCurrentBlock(
   apiBase: string
 ): Promise<{ block_index: number; block_time: number; block_hash: string }> {
   const res = await fetch(`${apiBase}/blocks/last`, { signal: AbortSignal.timeout(API_TIMEOUT_MS) });
-  if (!res.ok) throw new Error(`Failed to fetch last block: ${res.status}`);
+  if (!res.ok) {
+    await discard(res);
+    throw new Error(`Failed to fetch last block: ${res.status}`);
+  }
   const data: { result: { block_index: number; block_time: number; block_hash: string } } =
     await res.json();
   return data.result;
@@ -186,7 +190,10 @@ async function fetchBlockHash(
   blockIndex: number
 ): Promise<string> {
   const res = await fetch(`${apiBase}/blocks/${blockIndex}`, { signal: AbortSignal.timeout(API_TIMEOUT_MS) });
-  if (!res.ok) throw new Error(`Failed to fetch block ${blockIndex}: ${res.status}`);
+  if (!res.ok) {
+    await discard(res);
+    throw new Error(`Failed to fetch block ${blockIndex}: ${res.status}`);
+  }
   const data: { result: { block_hash: string } } = await res.json();
   return data.result.block_hash;
 }
@@ -196,7 +203,10 @@ async function fetchBlockInfo(
   blockIndex: number
 ): Promise<{ block_hash: string; block_time: number }> {
   const res = await fetch(`${apiBase}/blocks/${blockIndex}`, { signal: AbortSignal.timeout(API_TIMEOUT_MS) });
-  if (!res.ok) throw new Error(`Failed to fetch block ${blockIndex}: ${res.status}`);
+  if (!res.ok) {
+    await discard(res);
+    throw new Error(`Failed to fetch block ${blockIndex}: ${res.status}`);
+  }
   const data: { result: { block_hash: string; block_time: number } } = await res.json();
   return data.result;
 }
@@ -222,7 +232,10 @@ async function fetchBlockEvents(
     if (cursor) url.searchParams.set("cursor", cursor);
 
     const res = await fetch(url.toString(), { signal: AbortSignal.timeout(API_TIMEOUT_MS) });
-    if (!res.ok) throw new Error(`Failed to fetch events for block ${blockIndex}: ${res.status}`);
+    if (!res.ok) {
+      await discard(res);
+      throw new Error(`Failed to fetch events for block ${blockIndex}: ${res.status}`);
+    }
 
     const data: {
       result: BlockEvent[];

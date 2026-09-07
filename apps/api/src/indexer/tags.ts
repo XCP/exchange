@@ -1,4 +1,5 @@
 import { setState } from "./state";
+import { discard } from "../lib/net";
 
 // app.xcp.io retired 2026-06: its curated collection tags were already synced into D1, and new
 // collections come from the secondary sources below. syncTags() now refreshes counts from D1 only.
@@ -97,7 +98,10 @@ export async function syncTags(db: D1Database, tagType: string): Promise<{ tags:
  */
 export async function syncTokenscanCollections(db: D1Database): Promise<{ tags: number; assets: number }> {
   const res = await fetch(TOKENSCAN_NFTS_URL);
-  if (!res.ok) throw new Error(`Tokenscan fetch error: ${res.status}`);
+  if (!res.ok) {
+    await discard(res);
+    throw new Error(`Tokenscan fetch error: ${res.status}`);
+  }
   const text = await res.text();
 
   // File format: NFT_DATA = [ ... ]; — strip prefix and trailing semicolon
@@ -211,6 +215,9 @@ export async function syncPepeWtfCollections(db: D1Database): Promise<{ tags: nu
     const assetRes = await fetch(`https://api.pepe.wtf/api/asset?collection=${encodeURIComponent(col.slug)}`);
     if (!assetRes.ok) {
       console.error(`pepe.wtf asset fetch error for ${col.slug}: ${assetRes.status}`);
+      // One iteration per collection, hundreds of them: continuing without
+      // releasing this leaks a connection slot per failure.
+      await discard(assetRes);
       continue;
     }
     const assetData: { name: string }[] = await assetRes.json();
@@ -299,15 +306,27 @@ export async function syncStampchainCollection(db: D1Database): Promise<{ tags: 
     .first<{ id: number }>();
   if (existing) return { tags: 0, assets: 0 };
 
-  // Paginate through stampchain API to collect all cpid values
+  // Paginate through stampchain API to collect all cpid values.
+  //
+  // totalPages comes from the upstream response, so without a ceiling this loop
+  // is as long as a third party says it is — and a Worker gets 1000 subrequests
+  // per invocation. The cap is generous (500 stamps a page) and failing loudly
+  // beats silently truncating a collection.
+  const MAX_PAGES = 200;
   const assets: string[] = [];
   let page = 1;
   let totalPages = 1;
   const limit = 500;
 
   while (page <= totalPages) {
+    if (page > MAX_PAGES) {
+      throw new Error(`stampchain.io pagination exceeded ${MAX_PAGES} pages (totalPages=${totalPages})`);
+    }
     const res = await fetch(`${STAMPCHAIN_API_BASE}?page=${page}&limit=${limit}&sort_order=asc`);
-    if (!res.ok) throw new Error(`stampchain.io fetch error: ${res.status} on page ${page}`);
+    if (!res.ok) {
+      await discard(res);
+      throw new Error(`stampchain.io fetch error: ${res.status} on page ${page}`);
+    }
     const data: { data: { cpid: string | null }[]; totalPages: number } = await res.json();
     totalPages = data.totalPages;
 
@@ -402,7 +421,10 @@ async function syncSimpleCollection(
   if (existing) return { tags: 0, assets: 0 };
 
   const res = await fetch(url);
-  if (!res.ok) throw new Error(`${name} fetch error: ${res.status}`);
+  if (!res.ok) {
+    await discard(res);
+    throw new Error(`${name} fetch error: ${res.status}`);
+  }
   const data: Record<string, string>[] = await res.json();
   const assets = [...new Set(data.map((item) => item[assetKey]).filter(Boolean))];
 

@@ -1,4 +1,5 @@
 import { setState } from "./state";
+import { discard } from "../lib/net";
 
 /**
  * Low-quality asset list, mirrored from xcp.io.
@@ -39,7 +40,10 @@ async function fetchLowQualityAssets(): Promise<string[]> {
     const res = await fetch(`${LOW_QUALITY_TAG_URL}?limit=${PAGE_SIZE}&offset=${offset}`, {
       headers: { "User-Agent": "xcpdex-indexer", accept: "application/json" },
     });
-    if (!res.ok) throw new Error(`xcp.io low_quality fetch error: ${res.status} at offset ${offset}`);
+    if (!res.ok) {
+      await discard(res);
+      throw new Error(`xcp.io low_quality fetch error: ${res.status} at offset ${offset}`);
+    }
     const body: TagPage = await res.json();
 
     const members = body.result?.members ?? [];

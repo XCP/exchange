@@ -1,4 +1,5 @@
 import { batchExec } from "../lib/batch";
+import { discard } from "../lib/net";
 
 /** Max items per SQL chunk - constrained by D1's 100 bound params per statement */
 const BULK_CHUNK = 95;
@@ -768,6 +769,7 @@ export async function backfillMissingLongnames(
         `https://api.counterparty.io:4000/v2/assets/${row.base_asset}`,
         { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(10_000) }
       );
+      if (!resp.ok) await discard(resp);
       if (resp.ok) {
         const data = (await resp.json()) as { result?: { asset?: string; asset_longname?: string | null } };
         const longname = data.result?.asset_longname;

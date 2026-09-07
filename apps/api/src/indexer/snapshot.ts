@@ -5,6 +5,7 @@ import { normalizeOrder, NormalizedOrder, normalizeDispenser, NormalizedDispense
 import { updateOrderBookStats } from "./stats";
 import { upsertDispenserAggregates } from "./dispenser-stats";
 import { setState, deleteState } from "./state";
+import { discard } from "../lib/net";
 
 export async function syncOrders(
   db: D1Database,
@@ -183,7 +184,10 @@ export async function runSnapshotStep(
   if (phase === "orders") {
     // Fetch chain tip first, but only persist AFTER syncOrders succeeds
     const res = await fetch(`${apiBase}/blocks/last`, { signal: AbortSignal.timeout(API_TIMEOUT_MS) });
-    if (!res.ok) throw new Error(`Failed to fetch last block: ${res.status}`);
+    if (!res.ok) {
+      await discard(res);
+      throw new Error(`Failed to fetch last block: ${res.status}`);
+    }
     const data: { result: { block_index: number } } = await res.json();
 
     const result = await syncOrders(db, apiBase);

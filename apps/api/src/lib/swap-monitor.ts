@@ -1,3 +1,4 @@
+import { discard } from "./net";
 // Swap confirmation monitor — checks pending fills for blockchain confirmation
 // and detects anomalous UTXO spends on active listings.
 
@@ -27,6 +28,9 @@ async function fetchTxStatus(txid: string): Promise<TxInfo | null> {
       signal: AbortSignal.timeout(10_000),
     });
     if (res.ok) return await res.json();
+    // Blockstream is tried immediately below, so without this both providers'
+    // responses are open at the same time.
+    await discard(res);
   } catch {
     // fallthrough
   }
@@ -36,6 +40,7 @@ async function fetchTxStatus(txid: string): Promise<TxInfo | null> {
       signal: AbortSignal.timeout(10_000),
     });
     if (res.ok) return await res.json();
+    await discard(res);
   } catch {
     // both failed
   }
@@ -57,6 +62,7 @@ async function checkUtxoSpent(txid: string, vout: number): Promise<UtxoStatus> {
       const data: { spent: boolean; txid?: string } = await res.json();
       return data;
     }
+    await discard(res);
   } catch {
     // fallthrough
   }
@@ -69,6 +75,7 @@ async function checkUtxoSpent(txid: string, vout: number): Promise<UtxoStatus> {
       const data: { spent: boolean; txid?: string } = await res.json();
       return data;
     }
+    await discard(res);
   } catch {
     // both failed
   }

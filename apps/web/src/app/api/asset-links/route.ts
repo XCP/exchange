@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { discard } from '@/lib/net'
 
 /**
  * Website and social links declared in an asset's enhanced-info JSON.
@@ -143,7 +144,10 @@ export async function GET(request: Request) {
       next: { revalidate: 3600 },
       signal: AbortSignal.timeout(TIMEOUT_MS),
     })
-    if (!metaRes.ok) return respond(EMPTY)
+    if (!metaRes.ok) {
+      await discard(metaRes)
+      return respond(EMPTY)
+    }
     const description: unknown = (await metaRes.json())?.result?.description
     if (typeof description !== 'string') return respond(EMPTY)
 
@@ -157,7 +161,12 @@ export async function GET(request: Request) {
       headers: { Accept: 'application/json' },
       redirect: 'follow',
     })
-    if (!res.ok) return respond(EMPTY)
+    if (!res.ok) {
+      // A third-party host named by an on-chain description, so failures here
+      // are routine rather than exceptional.
+      await discard(res)
+      return respond(EMPTY)
+    }
 
     // Length is a hint, not a promise, so the text is truncated regardless.
     const body = (await res.text()).slice(0, MAX_BYTES)

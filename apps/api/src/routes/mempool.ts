@@ -1,4 +1,5 @@
 import { cacheControl } from "../utils/cache";
+import { discard } from "../lib/net";
 
 /**
  * The unconfirmed side of the DEX, normalised and served from our own edge.
@@ -133,7 +134,10 @@ export async function handleMempool(
     const res = await fetch(`${env.CP_API_BASE}/mempool/events?limit=500`, {
       signal: AbortSignal.timeout(6000),
     });
-    if (!res.ok) throw new Error(`upstream ${res.status}`);
+    if (!res.ok) {
+      await discard(res);
+      throw new Error(`upstream ${res.status}`);
+    }
     const body = (await res.json()) as { result?: MempoolEvent[] };
     raw = body.result ?? [];
   } catch {

@@ -2,6 +2,7 @@ import { API_TIMEOUT_MS } from "../lib/constants";
 import { batchExec } from "../lib/batch";
 import { buildPoolSnapshotStmt, refreshPoolAggregates } from "./pools";
 import { deleteState, getState, setState } from "./state";
+import { discard } from "../lib/net";
 
 interface CounterpartyPoolResponse {
   result: Record<string, unknown>[];
@@ -19,7 +20,10 @@ async function fetchPoolsPage(
   if (cursor) url.searchParams.set("cursor", cursor);
 
   const res = await fetch(url.toString(), { signal: AbortSignal.timeout(API_TIMEOUT_MS) });
-  if (!res.ok) throw new Error(`Failed to fetch pools: ${res.status}`);
+  if (!res.ok) {
+    await discard(res);
+    throw new Error(`Failed to fetch pools: ${res.status}`);
+  }
   return res.json();
 }
 

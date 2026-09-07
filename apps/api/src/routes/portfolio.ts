@@ -1,5 +1,6 @@
 import { API_TIMEOUT_MS } from "../lib/constants";
 import { cacheControl } from "../utils/cache";
+import { discard } from "../lib/net";
 
 const BALANCE_CACHE_TTL = 86400; // 1 day in seconds
 
@@ -42,7 +43,10 @@ async function fetchBalances(
     const res = await fetch(url.toString(), {
       signal: AbortSignal.timeout(API_TIMEOUT_MS),
     });
-    if (!res.ok) throw new Error(`Counterparty API error: ${res.status}`);
+    if (!res.ok) {
+      await discard(res);
+      throw new Error(`Counterparty API error: ${res.status}`);
+    }
 
     const data: CounterpartyBalanceResponse = await res.json();
 

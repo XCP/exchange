@@ -1,3 +1,4 @@
+import { discard } from "./net";
 const PRICE_URL = "https://api.xcp.io/v2/price";
 
 export interface UsdAnchors {
@@ -36,7 +37,10 @@ export async function fetchUsdAnchors(): Promise<UsdAnchors> {
       signal: AbortSignal.timeout(6_000),
       cf: { cacheTtl: 600, cacheEverything: true },
     });
-    if (!response.ok) return { XCP: null, BTC: null };
+    if (!response.ok) {
+      await discard(response);
+      return { XCP: null, BTC: null };
+    }
     return parseUsdAnchors(await response.json());
   } catch {
     return { XCP: null, BTC: null };

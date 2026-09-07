@@ -5,6 +5,7 @@
 
 import { Transaction, SigHash } from "@scure/btc-signer";
 import { hex } from "@scure/base";
+import { discard } from "./net";
 
 const MEMPOOL_API = "https://mempool.space/api";
 const BLOCKSTREAM_API = "https://blockstream.info/api";
@@ -45,7 +46,10 @@ export async function getFeeRate(): Promise<number> {
   if (cachedFeeRate && now - feeRateTimestamp < 30_000) return cachedFeeRate;
   try {
     const res = await fetch(`${MEMPOOL_API}/v1/fees/recommended`);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) {
+      await discard(res);
+      throw new Error(`HTTP ${res.status}`);
+    }
     const data: FeeRecommendation = await res.json();
     cachedFeeRate = Math.max(data.hourFee ?? 3, 1);
     feeRateTimestamp = now;
@@ -65,6 +69,9 @@ export async function fetchAddressUtxos(address: string): Promise<Utxo[]> {
       signal: AbortSignal.timeout(10_000),
     });
     if (res.ok) return await res.json();
+    // Blockstream is opened immediately below, so without this both providers'
+    // responses are held at once.
+    await discard(res);
   } catch {
     // fallthrough to blockstream
   }
@@ -73,7 +80,10 @@ export async function fetchAddressUtxos(address: string): Promise<Utxo[]> {
   const res = await fetch(`${BLOCKSTREAM_API}/address/${address}/utxo`, {
     signal: AbortSignal.timeout(10_000),
   });
-  if (!res.ok) throw new Error(`Failed to fetch UTXOs for ${address}`);
+  if (!res.ok) {
+    await discard(res);
+    throw new Error(`Failed to fetch UTXOs for ${address}`);
+  }
   return await res.json();
 }
 
@@ -91,7 +101,10 @@ async function fetchRawTx(txid: string): Promise<string> {
   const res = await fetch(`${BLOCKSTREAM_API}/tx/${txid}/hex`, {
     signal: AbortSignal.timeout(10_000),
   });
-  if (!res.ok) throw new Error(`Failed to fetch raw tx ${txid}`);
+  if (!res.ok) {
+    await discard(res);
+    throw new Error(`Failed to fetch raw tx ${txid}`);
+  }
   return (await res.text()).trim();
 }
 
@@ -104,6 +117,7 @@ async function fetchTxInfo(txid: string): Promise<{
       signal: AbortSignal.timeout(10_000),
     });
     if (res.ok) return await res.json();
+    await discard(res);
   } catch {
     // fallthrough
   }
@@ -111,7 +125,10 @@ async function fetchTxInfo(txid: string): Promise<{
   const res = await fetch(`${BLOCKSTREAM_API}/tx/${txid}`, {
     signal: AbortSignal.timeout(10_000),
   });
-  if (!res.ok) throw new Error(`Failed to fetch tx info ${txid}`);
+  if (!res.ok) {
+    await discard(res);
+    throw new Error(`Failed to fetch tx info ${txid}`);
+  }
   return await res.json();
 }
 
