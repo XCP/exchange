@@ -3,6 +3,9 @@ import { useState, type ComponentProps, type ReactNode } from 'react'
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { SWRConfig } from 'swr'
+import { DisplayPreferencesProvider } from '@/lib/display-preferences'
+import { writeRaw } from '@/lib/preferences'
+import SettingsPage from '@/app/settings/page'
 import { LimitWidget } from '@/components/limit-widget'
 import { SwapWidget } from '@/components/swap-widget'
 import { PoolManagePanel } from '@/components/pool/pool-manage-panel'
@@ -63,6 +66,23 @@ const limitProps = { asset: 'ASSET', assetLabel: 'ASSET', quoteAsset: 'XCP', quo
 const swapProps = { giveAsset: 'XCP', getAsset: 'ASSET', giveLabel: 'XCP', getLabel: 'ASSET', onSelect: vi.fn(), onFlip: vi.fn(), slippage: 1, slippageAuto: false, onAutoSlippage: vi.fn(), feeRate: 1.56, expiration: 5000 }
 
 describe('production trading forms', () => {
+  it('keeps complete input drafts and serialized amounts canonical when display preferences change', async () => {
+    writeRaw('numberLocale', null)
+    writeRaw('fiatCurrency', null)
+    mount(<DisplayPreferencesProvider><SettingsPage /><LimitWidget {...limitProps} seedPrice="1" /></DisplayPreferencesProvider>)
+    const amount = screen.getByRole('textbox', { name: 'Amount' }) as HTMLInputElement
+    await userEvent.type(amount, '0,5')
+    await userEvent.selectOptions(screen.getByLabelText('Number format'), 'fr-FR')
+    expect(amount.value).toBe('0,5')
+    expect((screen.getByRole('button', { name: /sell/i }) as HTMLButtonElement).disabled).toBe(true)
+    expect(mocks.compose).not.toHaveBeenCalled()
+    await userEvent.clear(amount)
+    await userEvent.type(amount, '100000000.00000001')
+    await userEvent.selectOptions(screen.getByLabelText('Number format'), 'ja-JP')
+    expect(amount.value).toBe('100000000.00000001')
+    await userEvent.click(screen.getByRole('button', { name: /sell/i }))
+    expect(mocks.compose).toHaveBeenCalledWith(expect.objectContaining({ give_quantity: '10000000000000001', get_quantity: '10000000000000001' }))
+  })
   it('refuses invalid sequential and seeded amounts in Limit, then sends exact large digits', async () => {
     mount(<LimitWidget {...limitProps} seedPrice="1" seedAmount="1e5" />)
     const amount = screen.getByRole('textbox', { name: 'Amount' }) as HTMLInputElement

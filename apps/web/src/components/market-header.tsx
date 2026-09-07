@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import Image from 'next/image'
-import { formatAmount } from '@/utils/format-amount'
+import { useDisplayPreferences } from '@/lib/display-preferences'
 import { XCP_IMG_BASE } from '@/utils/constants'
 import type { TradingPairData } from '@/lib/hooks/useTradingPair'
 
@@ -37,6 +37,7 @@ function bestTimeframe(p: TradingPairData | undefined): Timeframe {
 }
 
 export function MarketHeader({ pairData, baseSymbol, quoteSymbol, market, isLoading, actionSlot }: MarketHeaderProps) {
+  const { formatAmount, displayText } = useDisplayPreferences()
   const [tfOverride, setTfOverride] = useState<Timeframe | null>(null)
   const tf = tfOverride ?? bestTimeframe(pairData)
   const stats = getStats(pairData, tf)
@@ -87,7 +88,7 @@ export function MarketHeader({ pairData, baseSymbol, quoteSymbol, market, isLoad
           <span className={`rounded-sm px-2 py-0.5 text-xs font-medium ${
             isPositive ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'
           }`}>
-            {isPositive ? '+' : ''}{stats.change.toFixed(1)}%
+            {isPositive ? '+' : ''}{displayText(stats.change.toFixed(1))}%
           </span>
         )}
 
@@ -115,7 +116,7 @@ export function MarketHeader({ pairData, baseSymbol, quoteSymbol, market, isLoad
           <div>
             <div className="text-xs text-zinc-500">Trades</div>
             <div className="text-xs text-zinc-300 font-mono">
-              {stats.count != null && stats.count > 0 ? stats.count : '—'}
+              {stats.count != null && stats.count > 0 ? displayText(String(stats.count)) : '—'}
             </div>
           </div>
         </div>

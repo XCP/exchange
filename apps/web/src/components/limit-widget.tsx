@@ -13,7 +13,7 @@ import { usePairStats } from '@/lib/hooks/usePairStats'
 import { useOrderBook } from '@/lib/hooks/useOrderBook'
 import { OrderBookLadder } from '@/components/order-book-ladder'
 import { useXcpPrice } from '@/lib/hooks/useNetworkInfo'
-import { formatAmount } from '@/utils/format-amount'
+import { useDisplayPreferences } from '@/lib/display-preferences'
 import { toBase, totalToBase, fromBase, sanitizeAmountInput, rawErrorMessage, big, num, isPositive, DIVISIBLE_DECIMALS, ROUND_DOWN } from '@/utils/numeric'
 import { validExpiration } from '@/utils/form-settings'
 import { COMPOSE_STATUS_LABELS } from '@/utils/constants'
@@ -73,6 +73,7 @@ export function LimitWidget({
   seedPrice?: string
   seedAmount?: string
 }) {
+  const { formatAmount, fiat } = useDisplayPreferences()
   const { address } = useWallet()
   const { status: txStatus, txid, error: txError, composeOrder, reset } = useCompose()
   const { xcpUsd } = useXcpPrice()
@@ -249,7 +250,7 @@ export function LimitWidget({
             value={price}
             error={price && !priceResult.ok ? rawErrorMessage(priceResult.error, quoteAsset) : null}
             onChange={(v) => setPrice(sanitizeAmountInput(v))}
-            placeholder={marketPrice ? formatAmount(marketPrice) : '0'}
+            placeholder={marketPrice ? big(marketPrice).toFixed() : '0'}
             // A chip, not plain text: this leg is as selectable as the other
             // two, and rendering it as a label made the quote look fixed.
             chip={
@@ -322,7 +323,7 @@ export function LimitWidget({
               // what makes the sections equal height. Without one, this field
               // rendered visibly shorter than the rest of the card.
               <div className="flex items-center justify-between gap-2">
-                <span>{totalUsd != null ? `≈ $${totalUsd.toFixed(2)}` : ''}</span>
+                <span>{totalUsd != null ? `≈ ${fiat(totalUsd)}` : ''}</span>
                 {address && spendAsset && side === 'sell' && balanceKnown ? (
                   <button
                     onClick={() => setAmount(balanceNormalized)}
@@ -349,7 +350,7 @@ export function LimitWidget({
                 Total <span className="text-zinc-300">{total > 0 ? formatAmount(total) : '0'} {quoteLabel}</span>
               </span>
               <span className="text-zinc-500">
-                {totalUsd != null ? `≈ $${totalUsd.toFixed(2)}` : ''}
+                {totalUsd != null ? `≈ ${fiat(totalUsd)}` : ''}
               </span>
             </div>
           </PanelSection>
@@ -360,7 +361,7 @@ export function LimitWidget({
               value={total > 0 ? formatAmount(total) : ''}
               readOnly
               chip={<AssetChip asset={quoteAsset} label={quoteLabel} />}
-              sub={totalUsd != null ? `≈ $${totalUsd.toFixed(2)}` : undefined}
+              sub={totalUsd != null ? `≈ ${fiat(totalUsd)}` : undefined}
               meta={
                 address && side === 'buy' ? (
                   <span className="text-xs text-zinc-500">

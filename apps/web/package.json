@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "lint:display": "eslint src/lib/display-format.ts src/lib/display-preferences.tsx src/lib/preferences.ts src/app/settings/page.tsx src/app/api/fx/route.ts src/app/layout.tsx src/components/top-bar.tsx src/components/market-header.tsx",
     "test": "vitest run",
     "check": "tsc --noEmit && vitest run",
     "lint:amounts": "eslint src/utils/numeric.ts src/utils/quantity-param.ts src/utils/quote-quantity.ts src/utils/form-settings.ts src/components/form-settings.tsx src/components/ui/form-kit.tsx src/components/limit-widget.tsx src/components/swap-widget.tsx src/components/trade-form.tsx src/components/dispense-widget.tsx src/components/pool/pool-manage-panel.tsx src/components/portfolio/portfolio-utxos.tsx src/lib/hooks/useAssetInfo.ts src/lib/hooks/useFormSettings.ts src/lib/hooks/usePools.ts tests vitest.config.mts \"src/app/api/cp/[...path]/route.ts\" src/components/order-book-ladder.tsx src/utils/trading-pair.ts src/lib/hooks/useOrderBook.ts e2e playwright.config.ts \"src/app/atomic/[[...retired]]/page.tsx\"",

@@ -29,35 +29,48 @@ const PREFIX = 'xcpdex:'
  * preference on one page have to stay in step, hence the local set.
  */
 const listeners = new Set<() => void>()
+const memory = new Map<string, string | null>()
 
 function notify() {
   for (const l of listeners) l()
 }
 
+function onStorage(event: StorageEvent) {
+  if (event.storageArea && event.storageArea !== window.localStorage) return
+  if (event.key === null) memory.clear()
+  else if (event.key.startsWith(PREFIX)) memory.set(event.key.slice(PREFIX.length), event.newValue)
+  else return
+  notify()
+}
+
 function subscribe(onChange: () => void) {
   listeners.add(onChange)
-  window.addEventListener('storage', onChange)
+  if (listeners.size === 1) window.addEventListener('storage', onStorage)
   return () => {
     listeners.delete(onChange)
-    window.removeEventListener('storage', onChange)
+    if (!listeners.size) window.removeEventListener('storage', onStorage)
   }
 }
 
 /** Storage can throw outright — Safari private mode, disabled cookies. */
 function readRaw(key: string): string | null {
+  if (memory.has(key)) return memory.get(key) ?? null
   try {
-    return window.localStorage.getItem(PREFIX + key)
+    const value = window.localStorage.getItem(PREFIX + key)
+    memory.set(key, value)
+    return value
   } catch {
     return null
   }
 }
 
 export function writeRaw(key: string, value: string | null) {
+  memory.set(key, value)
   try {
     if (value === null) window.localStorage.removeItem(PREFIX + key)
     else window.localStorage.setItem(PREFIX + key, value)
   } catch {
-    // A preference that cannot be saved is not worth failing a render over.
+    // The choice remains shared in memory if persistence is unavailable.
   }
   notify()
 }

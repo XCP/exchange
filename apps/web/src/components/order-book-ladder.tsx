@@ -2,6 +2,7 @@
 
 import type { OrderBookEntry } from '@/types/trading'
 import { big, num, ROUND_DOWN } from '@/utils/numeric'
+import { useDisplayPreferences } from '@/lib/display-preferences'
 
 /** Rows per side. Matches DispenserList so the two asides read the same. */
 const ROWS = 8
@@ -41,6 +42,7 @@ export function OrderBookLadder({
   quoteLabel: string
   onPickPrice?: (price: string) => void
 }) {
+  const { displayText } = useDisplayPreferences()
   /**
    * Asks are reversed so the CHEAPEST ask sits at the bottom of its block,
    * touching the spread. The API hands them back best-first, which is the
@@ -70,8 +72,8 @@ export function OrderBookLadder({
           style={{ width: `${barWidth(entry.amountPlain ?? entry.amount)}%` }}
         />
         <span className="relative z-10 flex w-full items-baseline justify-between gap-2">
-          <span className={`font-medium tabular-nums ${tone}`}>{entry.price}</span>
-          <span className="tabular-nums text-zinc-500">{entry.amount}</span>
+          <span className={`font-medium tabular-nums ${tone}`}>{displayText(entry.price)}</span>
+          <span className="tabular-nums text-zinc-500">{displayText(entry.amount)}</span>
         </span>
       </>
     )
@@ -135,7 +137,7 @@ export function OrderBookLadder({
           <div className="my-1.5 flex items-center gap-2 px-2">
             <span className="h-px flex-1 bg-zinc-800" />
             <span className="tabular-nums text-[10px] text-zinc-500">
-              {big(spread).isGreaterThan(0) ? `${spread} · ${spreadPct}%` : 'no spread'}
+              {big(spread).isGreaterThan(0) ? `${displayText(spread)} · ${displayText(spreadPct)}%` : 'no spread'}
             </span>
             <span className="h-px flex-1 bg-zinc-800" />
           </div>

@@ -15,7 +15,7 @@ import { useMempoolDispenses } from '@/lib/hooks/useMempool'
 import { useBtcBalance } from '@/lib/hooks/useBtcBalance'
 import { useBtcPrice } from '@/lib/hooks/useNetworkInfo'
 import { useSatsMode } from '@/lib/sats-context'
-import { formatAmount } from '@/utils/format-amount'
+import { useDisplayPreferences } from '@/lib/display-preferences'
 import { formatBtcAmount, formatPrice } from '@/utils/format-price'
 import { toBase, fromBase, sanitizeAmountInput, rawErrorMessage, big, num, fromSats, ROUND_DOWN } from '@/utils/numeric'
 import { validFeeRate } from '@/utils/form-settings'
@@ -83,6 +83,7 @@ export function DispenseWidget({
   /** True when this asset has no single-unit dispensers to offer. */
   lotOnly?: boolean
 }) {
+  const { formatAmount, fiat, displayText } = useDisplayPreferences()
   const { address } = useWallet()
   const { status: txStatus, txid, error: txError, composeDispense, composeDispenser, reset } = useCompose()
   const { satsMode } = useSatsMode()
@@ -357,11 +358,11 @@ export function DispenseWidget({
           <PanelSection>
             <AmountField
               label="You send"
-              value={btc > 0 ? formatBtcAmount(btc, satsMode, false) : ''}
+              value={btc > 0 ? displayText(formatBtcAmount(btc, satsMode, false)) : ''}
               readOnly
               placeholder={satsMode ? '0' : '0.00000000'}
               chip={<AssetChip asset="BTC" />}
-              sub={btcUsd != null && btc > 0 ? `≈ $${btcUsd.toFixed(2)}` : undefined}
+              sub={btcUsd != null && btc > 0 ? `≈ ${fiat(btcUsd)}` : undefined}
               meta={
                 /**
                  * What is available, in the units being bought. "170
@@ -555,6 +556,7 @@ function CreateDispenser({
   txError: string | null
   reset: () => void
 }) {
+  const { formatAmount, fiat } = useDisplayPreferences()
   const { address } = useWallet()
   const btcPrice = useBtcPrice()
   const [price, setPrice] = useState('')
@@ -707,7 +709,7 @@ function CreateDispenser({
               sub={
                 priceNum > 0
                   ? usdPerToken != null
-                    ? `≈ $${usdPerToken.toFixed(2)}`
+                    ? `≈ ${fiat(usdPerToken)}`
                     : undefined
                   : 'Each payment releases one token.'
               }
@@ -914,6 +916,7 @@ export function DispenserList({
    */
   onPickDispenser?: () => void
 }) {
+  const { formatAmount, displayText } = useDisplayPreferences()
   const { satsMode } = useSatsMode()
   const rows = dispensers.slice(0, ROWS)
   const depths = rows.map((d) => big(d.give_remaining_normalized))
@@ -963,7 +966,7 @@ export function DispenserList({
             // worse lie than one that says it is being drained.
             title={busy ? 'Unconfirmed buy in flight — may be empty next block' : undefined}
           >
-            {formatPrice(d.price_normalized, satsMode)}
+            {displayText(formatPrice(d.price_normalized, satsMode))}
           </span>
           <span className="flex items-baseline gap-1.5">
             <span className="tabular-nums text-zinc-500">
@@ -1020,7 +1023,7 @@ export function DispenserList({
               <div className="relative flex w-full overflow-hidden rounded-lg border border-amber-500/40 bg-amber-500/10 px-2 py-1.5 text-xs">
                 <span className="flex w-full items-baseline justify-between gap-2">
                   <span className="font-medium tabular-nums text-amber-300">
-                    {formatPrice(yourPrice, satsMode)}
+                    {displayText(formatPrice(yourPrice, satsMode))}
                   </span>
                   <span className="tabular-nums text-amber-400/80">
                     {num(yourEscrow) > 0 ? `you · ${formatAmount(yourEscrow)}` : 'you'}

@@ -1,0 +1,11 @@
+# Display preference contract
+
+Exchange's interface remains English; it has no translated source catalogs. `/settings`, linked from the header, independently selects a number format and fiat display currency. Number format defaults to the interface language (`en-US`); an explicit format survives browser language changes and navigation. Fiat defaults to USD. Interface language and numeric locale never infer or override fiat currency, including an explicit USD selection. The existing BTC/sats denomination toggle is independent too.
+
+Preferences use the existing `xcpdex:` storage namespace (`numberLocale`, `fiatCurrency`). Choices work in memory when storage is blocked or full, synchronize within a tab and through storage events, and use English/USD server snapshots for hydration. Clearing browser storage restores defaults. No amount or price draft is persisted.
+
+Coverage is intentionally bounded: header tickers and fees, market headers, order-book and dispenser ladders, and swap/limit/dispenser/pool summaries. Exact authorization rows and editable amount/price fields retain canonical decimal-point strings. Number display never feeds quote or compose serialization; book clicks use their separate canonical price. Charts, historical USD analytics and other browse tables retain their existing explicit units and formatting. This is not a complete localization/catalog migration.
+
+Fiat conversions are reference displays, using the same Frankfurter ECB feed as Launchpad through `/api/fx`. Supported choices are USD, EUR, JPY, CNY, HKD, GBP, KRW and BRL. VES is not offered without dependable conversion coverage. One provider owns the shared request and hourly refresh; failures clear conversion data and retry after one minute. USD requires no FX request. Invalid/future rates, rates older than seven days, and missing currency coverage produce explicitly labeled USD, never a fabricated rate of one under another code. Valid responses have a bounded edge cache; failures are not cached.
+
+Regression checks cover exact grouped integers above JavaScript's safe integer limit, decimal subunits, choices under blocked/quota storage, cross-tab changes, open-tab FX refresh/failure/retry, actual book presets, and production form serialization while display settings change. Existing canonical-amount and browser-locale suites remain in force.
