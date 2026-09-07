@@ -1,11 +1,13 @@
 'use client'
 
-import { Suspense, useState } from 'react'
+import { Suspense, useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { useWallet } from '@/lib/wallet/wallet-context'
 import { friendlyError } from '@xcp/wallet-sdk'
 import { DEX_API_BASE } from '@/utils/constants'
+import { parseAmountDraft } from '@xcp/wallet-sdk/amounts'
+import { verifySellerPsbt } from '@/utils/atomic-listing'
 
 type SellStatus = 'idle' | 'preparing' | 'signing' | 'submitting' | 'success' | 'error'
 
@@ -40,14 +42,28 @@ function SellPageInner() {
   const [assetQuantity, setAssetQuantity] = useState(qtyParam ?? '')
   const [priceSats, setPriceSats] = useState('')
   const [expiry, setExpiry] = useState<string>('none')
+  const voutDraft = parseAmountDraft(utxoVout, { decimals: 0, maxRaw: 0xffffffffn })
+  const quantityDraft = parseAmountDraft(assetQuantity, { decimals: 0, minRaw: 1n })
+  const priceDraft = parseAmountDraft(priceSats, { decimals: 0, minRaw: 1n, maxRaw: 2_100_000_000_000_000n })
+  const amountsValid = voutDraft.status === 'valid' && quantityDraft.status === 'valid' && priceDraft.status === 'valid'
+  const intentVersion = useRef(0)
+  useEffect(() => { intentVersion.current++ }, [address, utxoTxid, utxoVout, asset, assetQuantity, priceSats, expiry])
+  const retainPaste = (draft: string, setDraft: (text: string) => void) => (event: React.ClipboardEvent<HTMLInputElement>) => {
+    event.preventDefault()
+    const start = event.currentTarget.selectionStart ?? draft.length
+    const end = event.currentTarget.selectionEnd ?? start
+    setDraft(draft.slice(0, start) + event.clipboardData.getData('text') + draft.slice(end))
+  }
 
   async function handleSell() {
     if (!address) return
     setError(null)
 
-    const vout = parseInt(utxoVout, 10)
-    const qty = parseInt(assetQuantity, 10)
-    const price = parseInt(priceSats, 10)
+    if (voutDraft.status !== 'valid' || quantityDraft.status !== 'valid' || priceDraft.status !== 'valid') return
+    const vout = Number(voutDraft.raw)
+    const qty = quantityDraft.raw.toString()
+    const price = priceDraft.raw.toString()
+    const version = intentVersion.current
 
     if (!utxoTxid || !/^[0-9a-f]{64}$/i.test(utxoTxid)) {
       setError('Invalid UTXO txid')
@@ -59,14 +75,6 @@ function SellPageInner() {
     }
     if (!asset) {
       setError('Asset name is required')
-      return
-    }
-    if (isNaN(qty) || qty <= 0) {
-      setError('Quantity must be a positive integer')
-      return
-    }
-    if (isNaN(price) || price <= 0) {
-      setError('Price must be a positive integer (sats)')
       return
     }
 
@@ -81,6 +89,7 @@ function SellPageInner() {
           utxo_txid: utxoTxid,
           utxo_vout: vout,
           asset,
+          asset_quantity: qty,
           price_sats: price,
         }),
       })
@@ -88,12 +97,15 @@ function SellPageInner() {
       if (!prepRes.ok) {
         throw new Error(prepData.error || prepData.details || 'Failed to prepare listing')
       }
+      if (version !== intentVersion.current) { setStatus('idle'); return }
+      verifySellerPsbt(prepData.psbt_hex, { txid: utxoTxid, vout, address, price: priceDraft.raw })
 
       // Step 2: Sign PSBT via wallet extension
       // Seller signs with SIGHASH_SINGLE|ANYONECANPAY (0x83) for atomic swap
       setStatus('signing')
       const SIGHASH_SINGLE_ANYONECANPAY = 0x83
       const signedPsbtHex = await signPsbt(prepData.psbt_hex, undefined, [SIGHASH_SINGLE_ANYONECANPAY])
+      if (version !== intentVersion.current) { setStatus('idle'); return }
 
       // Step 3: Submit signed PSBT to create the listing
       setStatus('submitting')
@@ -187,7 +199,11 @@ function SellPageInner() {
                 <div>
                   <label className="text-[10px] text-zinc-500 mb-1 block">UTXO Vout</label>
                   <input
-                    type="number"
+                    type="text"
+                    inputMode="numeric"
+                    aria-label="UTXO Vout"
+                    aria-invalid={voutDraft.status !== 'valid'}
+                    onPaste={retainPaste(utxoVout, setUtxoVout)}
                     value={utxoVout}
                     onChange={(e) => setUtxoVout(e.target.value)}
                     min={0}
@@ -225,9 +241,13 @@ function SellPageInner() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-[10px] text-zinc-500 mb-1 block">Quantity</label>
+                  <label className="text-[10px] text-zinc-500 mb-1 block">Quantity (raw units)</label>
                   <input
-                    type="number"
+                    type="text"
+                    inputMode="numeric"
+                    aria-label="Quantity (raw units)"
+                    aria-invalid={!!assetQuantity && quantityDraft.status !== 'valid'}
+                    onPaste={retainPaste(assetQuantity, setAssetQuantity)}
                     value={assetQuantity}
                     onChange={(e) => setAssetQuantity(e.target.value)}
                     placeholder="Amount"
@@ -239,7 +259,11 @@ function SellPageInner() {
                 <div>
                   <label className="text-[10px] text-zinc-500 mb-1 block">Price (sats)</label>
                   <input
-                    type="number"
+                    type="text"
+                    inputMode="numeric"
+                    aria-label="Price (sats)"
+                    aria-invalid={!!priceSats && priceDraft.status !== 'valid'}
+                    onPaste={retainPaste(priceSats, setPriceSats)}
                     value={priceSats}
                     onChange={(e) => setPriceSats(e.target.value)}
                     placeholder="Total price in sats"
@@ -248,6 +272,10 @@ function SellPageInner() {
                   />
                 </div>
               </div>
+
+              <p className="break-all text-[10px] text-zinc-400">Atomic listings transfer the entire UTXO. Quantity is in raw base units; 100000000 raw units equals 1 divisible token.</p>
+              {!amountsValid && (priceSats || assetQuantity) && <p role="alert" className="text-[10px] text-amber-400">Enter complete plain integers in range. Price and quantity must be positive; punctuation, signs, and exponents are invalid.</p>}
+              {amountsValid && <p className="break-all text-xs text-zinc-300">List all {quantityDraft.canonical} raw units of {asset} for exactly {priceDraft.canonical} sats.</p>}
 
               <div>
                 <label className="text-[10px] text-zinc-500 mb-1 block">Listing Expiry</label>
@@ -273,7 +301,7 @@ function SellPageInner() {
               <div className="flex items-center gap-3 pt-1">
                 <button
                   onClick={handleSell}
-                  disabled={status !== 'idle' || !address}
+                  disabled={status !== 'idle' || !address || !amountsValid}
                   className="px-4 py-2 bg-orange-600 hover:bg-orange-500 disabled:bg-zinc-800 disabled:text-zinc-600 text-white text-xs font-bold rounded-sm transition-colors"
                 >
                   {buttonLabel}

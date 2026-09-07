@@ -106,6 +106,7 @@ export default function LiquidityPage() {
         walletStatus={walletStatus}
         address={address}
         slippagePercent={poolSlippage}
+            feeRate={feeRate}
         tab={tab}
         onTabChange={(next) => sync(next, a, b)}
         legA={a.name}

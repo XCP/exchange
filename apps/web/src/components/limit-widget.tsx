@@ -14,7 +14,8 @@ import { useOrderBook } from '@/lib/hooks/useOrderBook'
 import { OrderBookLadder } from '@/components/order-book-ladder'
 import { useXcpPrice } from '@/lib/hooks/useNetworkInfo'
 import { formatAmount } from '@/utils/format-amount'
-import { toBase, totalToBase, sanitizeAmountInput, rawErrorMessage, big, num, isPositive, DIVISIBLE_DECIMALS, ROUND_DOWN } from '@/utils/numeric'
+import { toBase, totalToBase, fromBase, sanitizeAmountInput, rawErrorMessage, big, num, isPositive, DIVISIBLE_DECIMALS, ROUND_DOWN } from '@/utils/numeric'
+import { validExpiration } from '@/utils/form-settings'
 import { COMPOSE_STATUS_LABELS } from '@/utils/constants'
 
 /**
@@ -76,16 +77,10 @@ export function LimitWidget({
   const { status: txStatus, txid, error: txError, composeOrder, reset } = useCompose()
   const { xcpUsd } = useXcpPrice()
   /**
-   * Sanitised on the way in — a seed arrives from a URL, which anyone can
-   * write, and these feed straight into BigNumber conversions.
-   *
-   * Divisibility is not known yet at mount (it is fetched), so these are
-   * cleaned as divisible. That is the permissive reading; the field's own
-   * onChange re-cleans against the real answer as soon as it is edited, and
-   * an out-of-range value is refused by toBase at submit either way.
+   * URL seeds remain visible drafts and pass the same validation as typing.
    */
-  const [price, setPrice] = useState(() => sanitizeAmountInput(seedPrice ?? '', undefined))
-  const [amount, setAmount] = useState(() => sanitizeAmountInput(seedAmount ?? '', undefined))
+  const [price, setPrice] = useState(() => sanitizeAmountInput(seedPrice ?? ''))
+  const [amount, setAmount] = useState(() => sanitizeAmountInput(seedAmount ?? ''))
   /** Which leg the asset picker is choosing for. */
   const [selectorLeg, setSelectorLeg] = useState<'base' | 'quote' | null>(null)
 
@@ -123,9 +118,9 @@ export function LimitWidget({
   const samePair = !!asset && asset === quoteAsset
 
   // Book entries carry formatted decimal strings, not numbers.
-  const bookPrice = (v: string | undefined) => (isPositive(v) ? num(v) : null)
-  const bestBid = bookPrice(bids?.[0]?.price)
-  const bestAsk = bookPrice(asks?.[0]?.price)
+  const bookPrice = (v: string | undefined) => (isPositive(v) ? v! : null)
+  const bestBid = bookPrice(bids?.[0]?.pricePlain ?? bids?.[0]?.price)
+  const bestAsk = bookPrice(asks?.[0]?.pricePlain ?? asks?.[0]?.price)
   const lastPrice = pairData?.last_price ?? null
 
   const priceNum = num(price)
@@ -145,7 +140,8 @@ export function LimitWidget({
   const spendAmount = side === 'buy' ? total : amountNum
 
   const amountResult = toBase(amount, baseDivisible)
-  const totalResult = totalToBase(price, amount, quoteDivisible)
+  const priceResult = toBase(price, true)
+  const totalResult = totalToBase(price, amount, quoteDivisible, side === 'sell' ? 'ceil' : 'floor')
   const inputError =
     !amountResult.ok && amount.trim() !== ''
       ? { error: amountResult.error, asset }
@@ -158,10 +154,12 @@ export function LimitWidget({
       (inputError.asset === quoteAsset && (!!quoteInfoError || quoteInfoNotFound)))
 
   const busy = txStatus === 'composing' || txStatus === 'signing' || txStatus === 'broadcasting'
-  const insufficient = balanceKnown && spendAmount > balance
+  const insufficient = balanceKnown && big(side === 'buy' && totalResult.ok ? fromBase(totalResult.base, quoteDivisible) : amount).isGreaterThan(big(balanceNormalized))
   const ready =
     !!asset &&
     !samePair &&
+    validExpiration(expiration) &&
+    priceResult.ok &&
     priceNum > 0 &&
     amountResult.ok &&
     amountResult.raw > 0 &&
@@ -221,7 +219,7 @@ export function LimitWidget({
     !!address &&
     baseDivisible !== undefined &&
     isPositive(balanceNormalized) &&
-    (side === 'sell' || priceNum > 0)
+    (side === 'sell' || (priceResult.ok && priceResult.base !== '0'))
   const applyBalancePreset = (pct: number) => {
     if (!canPreset || balanceNormalized === null) return
     if (side === 'sell' && pct === 100) {
@@ -230,12 +228,14 @@ export function LimitWidget({
     }
     const spend = big(balanceNormalized).times(pct).dividedBy(100)
     const next = side === 'buy' ? spend.dividedBy(big(price)) : spend
-    setAmount(next.toFixed(baseDivisible ? DIVISIBLE_DECIMALS : 0, ROUND_DOWN).replace(/\.?0+$/, ''))
+    const fixed = next.toFixed(baseDivisible ? DIVISIBLE_DECIMALS : 0, ROUND_DOWN)
+    setAmount(fixed.includes('.') ? fixed.replace(/\.?0+$/, '') : fixed)
   }
   const applyOffset = (pct: number) => {
     if (!marketPrice) return
     // Exact: the offset is applied to the book price without a float multiply.
-    const adjusted = big(marketPrice).times(side === 'buy' ? 1 - pct / 100 : 1 + pct / 100)
+    const fraction = big(pct).dividedBy(100)
+    const adjusted = big(marketPrice).times(side === 'buy' ? big(1).minus(fraction) : big(1).plus(fraction))
     setPrice(adjusted.toFixed(DIVISIBLE_DECIMALS, 1).replace(/\.?0+$/, ''))
   }
 
@@ -247,7 +247,8 @@ export function LimitWidget({
           <AmountField
             label={asset && !samePair ? `Price · ${quoteLabel} per ${assetLabel}` : 'Price'}
             value={price}
-            onChange={(v) => setPrice(sanitizeAmountInput(v, true))}
+            error={price && !priceResult.ok ? rawErrorMessage(priceResult.error, quoteAsset) : null}
+            onChange={(v) => setPrice(sanitizeAmountInput(v))}
             placeholder={marketPrice ? formatAmount(marketPrice) : '0'}
             // A chip, not plain text: this leg is as selectable as the other
             // two, and rendering it as a label made the quote look fixed.
@@ -305,7 +306,8 @@ export function LimitWidget({
           <AmountField
             label="Amount"
             value={amount}
-            onChange={(v) => setAmount(sanitizeAmountInput(v, baseDivisible))}
+            error={amount && !amountResult.ok ? rawErrorMessage(amountResult.error, asset) : null}
+            onChange={(v) => setAmount(sanitizeAmountInput(v))}
             chip={
               asset ? (
                 <AssetChip asset={asset} label={assetLabel} onClick={() => setSelectorLeg('base')} />
@@ -371,6 +373,10 @@ export function LimitWidget({
         )}
 
         <PanelSection className="space-y-2">
+          {!validExpiration(expiration) && <FormNotice tone="error">Correct the expiration in Settings before submitting.</FormNotice>}
+          {amountResult.ok && totalResult.ok && <p className="break-all text-xs text-zinc-300">
+            {side === 'buy' ? 'Spend at most' : 'Receive at least'} {fromBase(totalResult.base, quoteDivisible)} {quoteLabel} for {fromBase(amountResult.base, baseDivisible)} {assetLabel}.
+          </p>}
           {samePair && (
             <FormNotice tone="error">
               {assetLabel} is on both sides of this order. Pick a different asset to price it in.

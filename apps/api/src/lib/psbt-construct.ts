@@ -6,6 +6,7 @@
 import { Transaction, SigHash } from "@scure/btc-signer";
 import { hex } from "@scure/base";
 import { discard } from "./net";
+import { assertAtomicPurchasesAvailable } from "./atomic-purchase-policy";
 
 const MEMPOOL_API = "https://mempool.space/api";
 const BLOCKSTREAM_API = "https://blockstream.info/api";
@@ -217,6 +218,9 @@ export async function constructBuyerPsbt(params: {
   feeRate: number;
   feeAddress?: string;
 }): Promise<{ psbtHex: string; platformFeeSats: number }> {
+  // Independent of HTTP guards: direct callers must not prepare this unsafe
+  // delivery layout, fetch funding coins, or produce a signable transaction.
+  assertAtomicPurchasesAvailable();
   const { listing, buyerAddress, feeRate, feeAddress } = params;
 
   // Parse seller's PSBT to get witnessUtxo for input 0

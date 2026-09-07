@@ -5,6 +5,8 @@ node_modules/
 .dev.vars
 dist/
 .test-dist/
+test-results/
+playwright-report/
 *.tsbuildinfo
 .env
 .env.local

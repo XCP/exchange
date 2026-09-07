@@ -52,13 +52,13 @@ export function OrderBookLadder({
   // One depth scale across both sides, so a bar's length means the same thing
   // above and below the spread. Scaling each side to its own max would make a
   // thin side look as deep as a heavy one.
-  const amounts = [...askRows, ...bidRows].map((r) => big(r.amount))
+  const amounts = [...askRows, ...bidRows].map((r) => big(r.amountPlain ?? r.amount))
   const maxAmount = amounts.reduce((a, b) => (b.isGreaterThan(a) ? b : a), big(0))
   const barWidth = (amount: string) =>
     maxAmount.isGreaterThan(0) ? Math.max(4, num(big(amount).dividedBy(maxAmount).times(100))) : 4
 
   const row = (entry: OrderBookEntry, side: 'bid' | 'ask') => {
-    const pick = big(entry.price).toFixed(8, ROUND_DOWN)
+    const pick = big(entry.pricePlain ?? entry.price).toFixed(8, ROUND_DOWN)
     const pickable = !!onPickPrice && big(pick).isGreaterThan(0)
     const tone = side === 'bid' ? 'text-green-400' : 'text-red-400'
     const fill = side === 'bid' ? 'bg-green-500/15' : 'bg-red-500/15'
@@ -67,7 +67,7 @@ export function OrderBookLadder({
         <span
           aria-hidden
           className={`absolute inset-y-0 right-0 rounded-lg ${fill}`}
-          style={{ width: `${barWidth(entry.amount)}%` }}
+          style={{ width: `${barWidth(entry.amountPlain ?? entry.amount)}%` }}
         />
         <span className="relative z-10 flex w-full items-baseline justify-between gap-2">
           <span className={`font-medium tabular-nums ${tone}`}>{entry.price}</span>

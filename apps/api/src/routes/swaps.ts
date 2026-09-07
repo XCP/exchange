@@ -6,7 +6,7 @@
 // Cancel: POST /swaps/:id/prepare-cancel → POST /swaps/:id/cancel (BIP-322 signed)
 // Browse: GET /swaps, GET /swaps/:id
 
-import { Transaction } from "@scure/btc-signer";
+import { Address, OutScript, Transaction } from "@scure/btc-signer";
 import { hex as hexCodec } from "@scure/base";
 import { mergeAndFinalize, broadcastTx } from "../lib/psbt";
 import {
@@ -19,8 +19,18 @@ import {
 import { verifyUtxoAsset } from "../lib/counterparty";
 import { verifyBip322Simple } from "../lib/bip322-verify";
 import type { Env } from "../index";
+import { listingAmounts } from "../lib/atomic-amounts";
+import { assertAtomicPurchasesAvailable, ATOMIC_DELIVERY_ERROR_CODE, ATOMIC_DELIVERY_UNAVAILABLE } from "../lib/atomic-purchase-policy";
 
 const CANCEL_CHALLENGE_MAX_AGE_MS = 5 * 60 * 1000; // 5 minutes
+
+// Core sends attached assets to the first spendable output. The current atomic
+// fill layout pays the seller there, so both new and pending fills must stop.
+// This is deliberately a code gate, not an environment override.
+function atomicDeliveryUnavailable() {
+  try { assertAtomicPurchasesAvailable(); return null; }
+  catch { return Response.json({ error: ATOMIC_DELIVERY_UNAVAILABLE, code: ATOMIC_DELIVERY_ERROR_CODE }, { status: 503 }); }
+}
 
 const PSBT_OPTS = {
   allowUnknownInputs: true,
@@ -257,9 +267,11 @@ export async function handlePrepareListingPsbt(
 
   const seller_address = String(body.seller_address ?? "");
   const utxo_txid = String(body.utxo_txid ?? "");
-  const utxo_vout = Number(body.utxo_vout);
+  let amounts: ReturnType<typeof listingAmounts>;
+  try { amounts = listingAmounts(body); }
+  catch (error) { return Response.json({ error: "Invalid transaction amount", details: error instanceof Error ? error.message : "Invalid amount" }, { status: 400 }); }
+  const { utxo_vout, price_sats, asset_quantity } = amounts;
   const asset = String(body.asset ?? "");
-  const price_sats = Number(body.price_sats);
 
   // Validate
   const errors: string[] = [];
@@ -303,7 +315,8 @@ export async function handlePrepareListingPsbt(
     env.CP_API_BASE,
     utxo_txid,
     utxo_vout,
-    asset
+    asset,
+    asset_quantity
   );
   if (!assetCheck.verified) {
     return Response.json(
@@ -364,11 +377,12 @@ export async function handleCompleteListingPsbt(
 
   const seller_address = String(body.seller_address ?? "");
   const utxo_txid = String(body.utxo_txid ?? "");
-  const utxo_vout = Number(body.utxo_vout);
+  let amounts: ReturnType<typeof listingAmounts>;
+  try { amounts = listingAmounts(body); }
+  catch (error) { return Response.json({ error: "Invalid transaction amount", details: error instanceof Error ? error.message : "Invalid amount" }, { status: 400 }); }
+  const { utxo_vout, price_sats, asset_quantity } = amounts;
   const asset = String(body.asset ?? "");
   const asset_longname = body.asset_longname ? String(body.asset_longname) : null;
-  const asset_quantity = Number(body.asset_quantity);
-  const price_sats = Number(body.price_sats);
   const signed_psbt_hex = String(body.signed_psbt_hex ?? "");
   const expires_at = body.expires_at ? String(body.expires_at) : null;
 
@@ -376,7 +390,7 @@ export async function handleCompleteListingPsbt(
   const errors: string[] = [];
   if (!seller_address) errors.push("seller_address is required");
   if (!asset) errors.push("asset is required");
-  // asset_quantity from client is advisory — server verifies from Counterparty API
+  // The raw quantity must match the entire UTXO before it can be listed.
   if (!/^[0-9a-f]{64}$/i.test(utxo_txid))
     errors.push("utxo_txid must be a 64-char hex string");
   if (!Number.isInteger(utxo_vout) || utxo_vout < 0)
@@ -420,7 +434,7 @@ export async function handleCompleteListingPsbt(
       return Response.json({ error: "Signed PSBT has no outputs" }, { status: 400 });
     }
     const out = tx.getOutput(0);
-    if (out.amount !== BigInt(price_sats)) {
+    if (out.amount !== BigInt(price_sats) || !out.script || hexCodec.encode(out.script) !== hexCodec.encode(OutScript.encode(Address().decode(seller_address)))) {
       return Response.json(
         { error: `Output amount mismatch: expected ${price_sats}, got ${out.amount}` },
         { status: 400 }
@@ -464,7 +478,8 @@ export async function handleCompleteListingPsbt(
     env.CP_API_BASE,
     utxo_txid,
     utxo_vout,
-    asset
+    asset,
+    asset_quantity
   );
   if (!assetCheck.verified) {
     return Response.json(
@@ -473,7 +488,7 @@ export async function handleCompleteListingPsbt(
     );
   }
   // Use the verified quantity from the Counterparty API (normalized for display)
-  const verified_quantity = assetCheck.quantity_normalized ?? String(assetCheck.quantity ?? asset_quantity);
+  const verified_quantity = assetCheck.quantity_normalized!;
 
   const id = crypto.randomUUID();
 
@@ -526,6 +541,8 @@ export async function handlePrepareFill(
   env: Env,
   id: string
 ): Promise<Response> {
+  const deliveryError = atomicDeliveryUnavailable();
+  if (deliveryError) return deliveryError;
   const db = env.DB;
   let body: Record<string, unknown>;
   try {
@@ -673,6 +690,8 @@ export async function handleCompleteFill(
   db: D1Database,
   id: string
 ): Promise<Response> {
+  const deliveryError = atomicDeliveryUnavailable();
+  if (deliveryError) return deliveryError;
   let body: Record<string, unknown>;
   try {
     body = await request.json();

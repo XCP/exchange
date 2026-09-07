@@ -6,14 +6,18 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "vitest run",
+    "check": "tsc --noEmit && vitest run",
+    "lint:amounts": "eslint src/utils/numeric.ts src/utils/quantity-param.ts src/utils/quote-quantity.ts src/utils/form-settings.ts src/components/form-settings.tsx src/components/ui/form-kit.tsx src/components/limit-widget.tsx src/components/swap-widget.tsx src/components/trade-form.tsx src/components/dispense-widget.tsx src/components/pool/pool-manage-panel.tsx src/components/portfolio/portfolio-utxos.tsx src/lib/hooks/useAssetInfo.ts src/lib/hooks/useFormSettings.ts src/lib/hooks/usePools.ts tests vitest.config.mts src/app/atomic/sell/page.tsx \"src/app/api/cp/[...path]/route.ts\" src/components/order-book-ladder.tsx src/utils/atomic-listing.ts src/utils/trading-pair.ts src/lib/hooks/useOrderBook.ts e2e playwright.config.ts \"src/app/atomic/buy/[id]/page.client.tsx\" src/utils/atomic-purchase-policy.ts",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@noble/curves": "^1.9.7",
     "@noble/hashes": "^1.8.0",
     "@scure/base": "^2.2.0",
     "@scure/btc-signer": "^2.2.0",
-    "@xcp/wallet-sdk": "github:XCP/wallet-sdk#v0.4.1",
+    "@xcp/wallet-sdk": "github:XCP/wallet-sdk#79f190308d4b60cc3ec9023beada21e0ee776213",
     "babel-plugin-react-compiler": "^1.0.0",
     "bignumber.js": "^9.3.1",
     "date-fns": "^4.1.0",
@@ -28,14 +32,19 @@
   },
   "devDependencies": {
     "@opennextjs/cloudflare": "1.20.2",
+    "@playwright/test": "^1.63.0",
     "@tailwindcss/postcss": "^4",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.3.2",
+    "jsdom": "^26.1.0",
     "tailwindcss": "^4",
     "typescript": "^5",
+    "vitest": "^4.1.11",
     "wrangler": "4.125.0"
   }
 }

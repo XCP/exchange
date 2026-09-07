@@ -6,6 +6,7 @@ import {
   calculatePricePlain,
   calculatePrice,
   calculateAmount,
+  calculateAmountPlain,
   calculateTotal,
 } from '@/utils/trading-pair'
 import type { Order, OrderBookEntry } from '@/types/trading'
@@ -33,12 +34,16 @@ function processOrders(orders: Order[]): OrderBookData {
     price: calculatePrice(order),
     amount: calculateAmount(order),
     total: calculateTotal(order),
+    pricePlain: calculatePricePlain(order),
+    amountPlain: calculateAmountPlain(order),
   }))
 
   const asks: OrderBookEntry[] = sellOrders.map(order => ({
     price: calculatePrice(order),
     amount: calculateAmount(order),
     total: calculateTotal(order),
+    pricePlain: calculatePricePlain(order),
+    amountPlain: calculateAmountPlain(order),
   }))
 
   // Calculate spread

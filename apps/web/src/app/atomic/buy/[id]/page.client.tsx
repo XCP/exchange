@@ -12,6 +12,7 @@ import { formatAmount } from '@/utils/format-amount'
 import { formatPrice } from '@/utils/format-price'
 import { DEX_API_BASE, XCP_IMG_BASE } from '@/utils/constants'
 import { fromSats } from '@/utils/numeric'
+import { ATOMIC_PURCHASES_AVAILABLE, ATOMIC_DELIVERY_UNAVAILABLE, assertAtomicPurchasesAvailable } from '@/utils/atomic-purchase-policy'
 
 type BuyStatus = 'idle' | 'preparing' | 'signing' | 'submitting' | 'success' | 'error'
 
@@ -30,6 +31,7 @@ export default function BuyPage({ params }: { params: Promise<{ id: string }> })
     setError(null)
 
     try {
+      assertAtomicPurchasesAvailable()
       // Step 1: Request server to construct buyer's PSBT
       setStatus('preparing')
       const prepRes = await fetch(`${DEX_API_BASE}/swaps/${listing.id}/prepare-fill`, {
@@ -169,7 +171,7 @@ export default function BuyPage({ params }: { params: Promise<{ id: string }> })
   const unitPrice = totalSats / listing.asset_quantity
 
   const isOwnListing = address === listing.seller_address
-  const canBuy = address && !isOwnListing && status === 'idle'
+  const canBuy = ATOMIC_PURCHASES_AVAILABLE && address && !isOwnListing && status === 'idle'
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
@@ -190,6 +192,7 @@ export default function BuyPage({ params }: { params: Promise<{ id: string }> })
 
           {/* Listing details */}
           <div className="px-4 py-3 border-b border-zinc-800 space-y-2">
+            {!ATOMIC_PURCHASES_AVAILABLE && <p role="alert" className="text-yellow-500 text-xs">{ATOMIC_DELIVERY_UNAVAILABLE}</p>}
             <div className="flex items-center gap-2">
               <Image
                 src={`${XCP_IMG_BASE}/icon/${listing.asset}`}

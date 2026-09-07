@@ -210,14 +210,24 @@ function AttachModal({
           <div>
             <label className="text-[10px] text-zinc-500 mb-1 block">Quantity</label>
             <input
+              id="attach-quantity"
+              aria-label="Quantity to attach"
               inputMode="decimal"
               value={quantity}
-              onChange={(e) => setQuantity(sanitizeAmountInput(e.target.value, divisible))}
+              onChange={(e) => setQuantity(sanitizeAmountInput(e.target.value))}
+              onPaste={(event) => {
+                event.preventDefault()
+                const start = event.currentTarget.selectionStart ?? quantity.length
+                const end = event.currentTarget.selectionEnd ?? start
+                setQuantity(quantity.slice(0, start) + event.clipboardData.getData('text') + quantity.slice(end))
+              }}
+              aria-invalid={!!quantityError}
+              aria-describedby={quantityError ? 'attach-quantity-error' : undefined}
               placeholder={divisible === false ? 'Whole units' : 'Amount to attach'}
               className="w-full bg-zinc-900 border border-zinc-800 rounded-sm px-2.5 py-1.5 text-xs text-zinc-200 placeholder-zinc-700 font-mono focus:outline-none focus:border-zinc-600"
             />
             {quantityError && (
-              <p className="mt-1 text-[10px] text-amber-400">
+              <p id="attach-quantity-error" role="alert" className="mt-1 text-[10px] text-amber-400">
                 {quantityError === 'unknown-divisibility' && infoNotFound
                   ? `${asset} was not found.`
                   : quantityError === 'unknown-divisibility' && infoError

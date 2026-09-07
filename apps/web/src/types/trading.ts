@@ -38,6 +38,9 @@ export interface OrderBookEntry {
   price: string
   amount: string
   total: string
+  /** Exact ungrouped values for presets and arithmetic; formatted cells are display only. */
+  pricePlain?: string
+  amountPlain?: string
 }
 
 export interface Dispenser {

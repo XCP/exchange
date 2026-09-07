@@ -1,4 +1,6 @@
 import { API_TIMEOUT_MS } from "./constants";
+import { parseRawInteger, rawToInput } from "@xcp/wallet-sdk/amounts";
+import { parseJsonLossless } from "./lossless-json";
 
 /** The longest we will wait on a node that asked us to come back later. */
 const MAX_RETRY_DELAY_MS = 10_000;
@@ -193,14 +195,13 @@ export async function verifyUtxoAsset(
   utxoTxid: string,
   utxoVout: number,
   expectedAsset: string,
-  expectedQuantity?: number
-): Promise<{ verified: boolean; error?: string; quantity?: number; quantity_normalized?: string }> {
+  expectedQuantity?: string
+): Promise<{ verified: boolean; error?: string; quantity?: string; quantity_normalized?: string }> {
   try {
     const res = await fetchWithRetry(
       `${apiBase}/utxos/${utxoTxid}:${utxoVout}/balances?verbose=true`
     );
-    const data: { result: Array<{ asset: string; quantity: number; quantity_normalized: string; asset_longname: string | null }> } =
-      await res.json();
+    const data = parseJsonLossless<{ result: Array<{ asset: string; quantity: number | string; asset_longname: string | null; asset_info?: { divisible?: boolean } }> }>(await res.text());
 
     const match = data.result.find(
       (b) => b.asset === expectedAsset || b.asset_longname === expectedAsset
@@ -213,21 +214,22 @@ export async function verifyUtxoAsset(
       };
     }
 
-    if (match.quantity <= 0) {
+    const quantity = parseRawInteger(match.quantity, { min: 1n });
+    if (typeof match.asset_info?.divisible !== "boolean") {
       return {
         verified: false,
-        error: `UTXO has zero quantity of ${expectedAsset}`,
+        error: `Divisibility is unavailable for ${expectedAsset}`,
       };
     }
 
-    if (expectedQuantity !== undefined && match.quantity < expectedQuantity) {
+    if (expectedQuantity !== undefined && quantity !== parseRawInteger(expectedQuantity, { min: 1n })) {
       return {
         verified: false,
-        error: `UTXO holds ${match.quantity} of ${expectedAsset}, expected at least ${expectedQuantity}`,
+        error: `Atomic listings transfer the entire UTXO: it holds ${quantity} raw units of ${expectedAsset}, but ${expectedQuantity} were requested`,
       };
     }
 
-    return { verified: true, quantity: match.quantity, quantity_normalized: match.quantity_normalized };
+    return { verified: true, quantity: quantity.toString(), quantity_normalized: rawToInput(quantity, match.asset_info.divisible ? 8 : 0) };
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
     return { verified: false, error: `Failed to verify UTXO asset: ${msg}` };

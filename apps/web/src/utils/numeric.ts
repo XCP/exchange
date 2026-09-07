@@ -1,4 +1,5 @@
 import BigNumber from 'bignumber.js'
+import { parseAmountDraft, rawToInput, parseRawInteger } from '@xcp/wallet-sdk/amounts'
 
 /**
  * Counterparty quantities are integers in one of exactly two scales: a
@@ -17,8 +18,8 @@ import BigNumber from 'bignumber.js'
  * conventions below are lifted from the wallet extension's core/numeric,
  * which is the most exercised version of this in the codebase:
  *
- *   - ROUND_DOWN everywhere. Rounding a quantity UP invents value the user
- *     does not have; rounding down at worst leaves a base unit behind.
+ *   - Typed amounts are never rounded. Derived bounds name their direction:
+ *     spend ceilings round down, receive floors round up.
  *   - No scientific notation. `String(1e21)` is "1e+21", which Counterparty
  *     will reject or misread; toFixed() keeps plain digits.
  *   - Base units leave as STRINGS. Above 2^53 a JS number cannot hold them
@@ -125,29 +126,17 @@ export type RawResult =
  * truncate under a value they are about to sign.
  */
 export function toBase(amount: string, divisible: boolean | undefined): RawResult {
-  const decimals = decimalsFor(divisible)
-  if (decimals === undefined) return { ok: false, error: 'unknown-divisibility' }
-
-  const text = amount.trim()
-  if (text === '' || !/^\d*(\.\d*)?$/.test(text)) return { ok: false, error: 'not-a-number' }
-
-  const value = new BigNumber(text)
-  if (!value.isFinite()) return { ok: false, error: 'not-a-number' }
-  if (value.isNegative()) return { ok: false, error: 'negative' }
-  // Parenthesised deliberately: `??` binds looser than `>`, so the unbraced
-  // form parses as `decimalPlaces() ?? (0 > decimals)` and rejects every
-  // fractional input on a divisible asset.
-  if ((value.decimalPlaces() ?? 0) > decimals) {
-    return {
-      ok: false,
-      error: decimals === 0 ? 'fractional-indivisible' : 'too-many-decimals',
-    }
+  if (divisible === undefined) return { ok: false, error: 'unknown-divisibility' }
+  const parsed = parseAmountDraft(amount, { decimals: divisible ? 8 : 0 })
+  if (parsed.status === 'valid') {
+    return { ok: true, base: parsed.raw.toString(), raw: Number(parsed.raw) }
   }
-
-  // shiftedBy is exact decimal-point movement, not a float multiply.
-  const base = value.shiftedBy(decimals)
-  if (base.isGreaterThan(MAX_INT)) return { ok: false, error: 'above-max-int' }
-  return { ok: true, base: base.toFixed(0), raw: base.toNumber() }
+  const error = parsed.status === 'invalid' && parsed.code === 'amount_precision'
+    ? divisible ? 'too-many-decimals' : 'fractional-indivisible'
+    : parsed.status === 'invalid' && parsed.code === 'amount_range'
+      ? 'above-max-int'
+      : 'not-a-number'
+  return { ok: false, error }
 }
 
 /**
@@ -155,11 +144,12 @@ export function toBase(amount: string, divisible: boolean | undefined): RawResul
  * notation — safe to put in an input or show on screen.
  */
 export function fromBase(base: string | number, divisible: boolean | undefined): string {
-  const decimals = decimalsFor(divisible)
-  if (decimals === undefined) return '0'
-  const value = new BigNumber(base)
-  if (!value.isFinite()) return '0'
-  return value.shiftedBy(-decimals).toFixed(decimals).replace(/\.?0+$/, '') || '0'
+  if (divisible === undefined) return ''
+  try {
+    return rawToInput(base, divisible ? 8 : 0)
+  } catch {
+    return ''
+  }
 }
 
 /** Base units as a display number. For comparisons and formatting, never to re-encode. */
@@ -174,10 +164,14 @@ export function fromBaseNumber(base: string | number, divisible: boolean | undef
  * Multiply a base-unit quantity by a plain ratio (a slippage haircut, a
  * percentage), rounding DOWN so the result is never more than intended.
  */
-export function scaleBase(base: string | number, factor: number): string {
-  const value = new BigNumber(base).times(factor)
-  if (!value.isFinite()) return '0'
-  return BigNumber.min(value, MAX_INT).integerValue(BigNumber.ROUND_DOWN).toFixed(0)
+export function scaleBase(base: string | number, factor: number | string): string {
+  const ratio = big(factor)
+  if (!ratio.isFinite() || ratio.isNegative() || ratio.isGreaterThan(1)) return '0'
+  try {
+    return big(parseRawInteger(base).toString()).times(ratio).integerValue(BigNumber.ROUND_DOWN).toFixed(0)
+  } catch {
+    return '0'
+  }
 }
 
 /**
@@ -188,9 +182,18 @@ export function scaleBase(base: string | number, factor: number): string {
  * quantity. In that one-base-unit case the only representable minimum is one. A zero/negative
  * factor still returns zero so this helper remains explicit about a 100%+ tolerance.
  */
-export function minimumBase(base: string | number, factor: number): string {
+export function minimumBase(base: string | number, factor: number | string): string {
+  try { parseRawInteger(base) } catch { return '0' }
+  const ratio = big(factor)
+  if (!ratio.isFinite() || ratio.isLessThanOrEqualTo(0) || ratio.isGreaterThan(1)) return '0'
   const scaled = scaleBase(base, factor)
-  return big(base).isGreaterThan(0) && factor > 0 && scaled === '0' ? '1' : scaled
+  return big(base).isGreaterThan(0) && scaled === '0' ? '1' : scaled
+}
+
+/** Subtract the percentage in decimal arithmetic before multiplying raw
+ * units; a binary `1 - percent / 100` can shift a large minimum by units. */
+export function slippageMinimum(base: string | number, percent: number): string {
+  return minimumBase(base, big(100).minus(percent).dividedBy(100).toFixed())
 }
 
 /**
@@ -198,21 +201,24 @@ export function minimumBase(base: string | number, factor: number): string {
  *
  * Done in human units and converted once. Multiplying two already-scaled
  * integers would be wrong by a factor of 1e8, which is the classic limit-order
- * bug. Excess precision is rounded DOWN here rather than rejected, because the
+ * bug. Derived precision is rounded in the caller's specified direction, because the
  * total is derived rather than typed — the user never chose those digits.
  */
 export function totalToBase(
   price: string,
   amount: string,
   quoteDivisible: boolean | undefined,
+  rounding: 'floor' | 'ceil' = 'floor',
 ): RawResult {
   const decimals = decimalsFor(quoteDivisible)
   if (decimals === undefined) return { ok: false, error: 'unknown-divisibility' }
+  const grammar = { decimals: 8 as const, maxRaw: 922337203685477580700000000n }
+  if (parseAmountDraft(price, grammar).status !== 'valid' || parseAmountDraft(amount, grammar).status !== 'valid') {
+    return { ok: false, error: 'not-a-number' }
+  }
   const p = new BigNumber(price)
   const a = new BigNumber(amount)
-  if (!p.isFinite() || !a.isFinite()) return { ok: false, error: 'not-a-number' }
-  if (p.isNegative() || a.isNegative()) return { ok: false, error: 'negative' }
-  const base = p.times(a).shiftedBy(decimals).integerValue(BigNumber.ROUND_DOWN)
+  const base = p.times(a).shiftedBy(decimals).integerValue(rounding === 'floor' ? BigNumber.ROUND_FLOOR : BigNumber.ROUND_CEIL)
   if (base.isGreaterThan(MAX_INT)) return { ok: false, error: 'above-max-int' }
   return { ok: true, base: base.toFixed(0), raw: base.toNumber() }
 }
@@ -231,29 +237,15 @@ export function rawErrorMessage(error: RawError, asset: string): string {
     case 'negative':
       return 'Enter a positive amount.'
     case 'not-a-number':
-      return 'Enter an amount.'
+      return 'Enter a complete amount using digits and a period. Do not use commas, spaces, signs, or exponent notation.'
   }
 }
 
 /**
- * What an amount input should accept for this asset.
- *
- * An indivisible asset TRUNCATES at the decimal point rather than deleting
- * it: stripping the dot out of "2.5" yields "25", ten times what was typed.
- * Dropping the fraction gives "2", which is at worst less than intended.
+ * Keep every edit visible. Validation, not an input mask, decides whether
+ * a draft may be quoted or composed. Dropping a character from "-5" or
+ * "1e5" silently turns the following keystrokes into a different amount.
  */
-export function sanitizeAmountInput(value: string, divisible: boolean | undefined): string {
-  if (divisible === false) {
-    const digits = value.replace(/[^0-9.]/g, '')
-    const dot = digits.indexOf('.')
-    return dot === -1 ? digits : digits.slice(0, dot)
-  }
-  const stripped = value.replace(/[^0-9.]/g, '')
-  const firstDot = stripped.indexOf('.')
-  if (firstDot === -1) return stripped
-  // Collapse repeated decimal points to the first one.
-  const head = stripped.slice(0, firstDot + 1)
-  const tail = stripped.slice(firstDot + 1).replace(/\./g, '')
-  // Excess precision is refused by toBase; trimming here keeps the field honest.
-  return head + tail.slice(0, DIVISIBLE_DECIMALS)
+export function sanitizeAmountInput(value: string): string {
+  return value
 }

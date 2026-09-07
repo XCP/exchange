@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import useSWR from 'swr'
 import { AssetSelect } from '@/components/asset-select'
 import { Panel, PanelSection, AmountField, AssetChip, SelectAssetChip, FlipButton, BalancePresets } from '@/components/ui/form-kit'
@@ -23,8 +23,10 @@ import { useDebounced } from '@/lib/hooks/useDebounced'
 import { useXcpPrice, useBtcPrice, useFeeRate } from '@/lib/hooks/useNetworkInfo'
 import { fetcher, counterpartyUrl } from '@/lib/api/client'
 import { formatAmount } from '@/utils/format-amount'
-import { toBase, fromBase, fromBaseNumber, minimumBase, sanitizeAmountInput, rawErrorMessage, num, big, isPositive, DIVISIBLE_DECIMALS, ROUND_DOWN } from '@/utils/numeric'
+import { toBase, fromBase, fromBaseNumber, slippageMinimum, sanitizeAmountInput, rawErrorMessage, num, big, isPositive, DIVISIBLE_DECIMALS, ROUND_DOWN } from '@/utils/numeric'
 import { COMPOSE_STATUS_LABELS } from '@/utils/constants'
+import { parseRawInteger } from '@xcp/wallet-sdk/amounts'
+import { validExpiration, validFeeRate, validSlippage } from '@/utils/form-settings'
 
 /**
  * Market swap against whichever venue is cheaper.
@@ -96,7 +98,7 @@ interface CpBookOrder {
 }
 
 /** A raw quantity as bigint, whether it arrived as a digit string or a number. */
-const rawBig = (v: number | string): bigint => (typeof v === 'string' ? BigInt(v) : BigInt(Math.round(v)))
+const rawBig = (v: number | string): bigint => parseRawInteger(v)
 
 /** Trim the padding zeros off a fixed-decimal string before it enters a field. */
 function trimZeros(value: string): string {
@@ -180,21 +182,31 @@ export function SwapWidget({
   // Each leg converts with its own flag — a div/indiv pair uses both scales.
   const giveResult = toBase(amount, giveDivisible)
   const giveRaw = giveResult.ok ? giveResult.raw : 0
+  const giveBase = giveResult.ok && giveResult.base !== '0' ? giveResult.base : null
   const amountError = !giveResult.ok && amount.trim() !== '' ? giveResult.error : null
 
   // Quote the number that was actually typed, not each keystroke on the way
   // to it: "1000" would otherwise fire four requests, three for amounts
   // nobody asked about, and late answers can land out of order.
-  const debouncedRaw = useDebounced(giveRaw, QUOTE_DEBOUNCE_MS)
+  const debouncedRaw = useDebounced(giveBase, QUOTE_DEBOUNCE_MS)
   const quoteUrl =
-    giveAsset && getAsset && debouncedRaw > 0
+    giveAsset && getAsset && giveBase !== null && giveBase === debouncedRaw
       ? counterpartyUrl(`/pools/${giveAsset}/${getAsset}/quote?quantity=${debouncedRaw}`)
       : null
   const fetchQuote = (url: string): Promise<Quote> =>
-    fetcher(url).then((d) => (d as { result: Quote }).result)
+    fetcher(url).then((d) => {
+      const result = (d as { result: Quote }).result
+      if (!result.message) {
+        parseRawInteger(result.estimated_output)
+        parseRawInteger(result.pool_output)
+        parseRawInteger(result.book_output)
+        parseRawInteger(result.give_remaining ?? 0)
+      }
+      return result
+    })
   const { data: quote, isValidating, mutate: mutateQuote } = useSWR<Quote>(quoteUrl, fetchQuote, {
     refreshInterval: QUOTE_REFRESH_MS,
-    keepPreviousData: true,
+    keepPreviousData: false,
     onSuccess: () => setLastQuoteAt(Date.now()),
   })
   /**
@@ -203,7 +215,7 @@ export function SwapWidget({
    * yet. Both cases must dim the output; showing a crisp number priced from a
    * different amount is the one thing this form must never do.
    */
-  const staleQuote = isValidating || giveRaw !== debouncedRaw
+  const staleQuote = isValidating || giveBase !== debouncedRaw
 
   const outRaw = quote?.estimated_output ?? 0
   const out = fromBaseNumber(outRaw, getDivisible)
@@ -228,7 +240,11 @@ export function SwapWidget({
   const blocked = samePair || noMarket || noLiquidity
 
   const busy = txStatus === 'composing' || txStatus === 'signing' || txStatus === 'broadcasting'
-  const insufficient = balanceKnown && amountNum > balance
+  const insufficient = balanceKnown && big(amount).isGreaterThan(big(balanceNormalized))
+  const [preparing, setPreparing] = useState(false)
+  const intentVersion = useRef(0)
+  useEffect(() => { intentVersion.current++ }, [giveAsset, getAsset, amount, slippage, expiration, feeRate, address, giveDivisible, getDivisible])
+  const settingsValid = validFeeRate(feeRate) && validExpiration(expiration) && validSlippage(slippage)
   const ready =
     !!giveAsset &&
     !!getAsset &&
@@ -237,6 +253,9 @@ export function SwapWidget({
     outRaw > 0 &&
     getDivisible !== undefined &&
     !busy &&
+    !preparing &&
+    !staleQuote &&
+    settingsValid &&
     balanceKnown &&
     !insufficient &&
     !blocked
@@ -380,8 +399,8 @@ export function SwapWidget({
           }
         : null
     if (!simPool && book.length === 0) return null
-    return quoteAfterMempool({ pool: simPool, book }, pendingAhead, rawBig(giveRaw))
-  }, [pendingAhead, giveRaw, poolLoading, restingBook, restingBookError, pool, giveAsset, getAsset, quote?.fee_bps])
+    return quoteAfterMempool({ pool: simPool, book }, pendingAhead, rawBig(giveBase!))
+  }, [pendingAhead, giveRaw, giveBase, poolLoading, restingBook, restingBookError, pool, giveAsset, getAsset, quote?.fee_bps])
   const mempoolDrop = mempoolQuote?.dropPercent ?? 0
   // Core's quote, scaled by what the replay says the mempool leaves of it.
   // Scaled rather than used directly so any drift between the port and the
@@ -390,7 +409,7 @@ export function SwapWidget({
     mempoolQuote && mempoolQuote.baseline > 0n && outRaw > 0
       ? Number((rawBig(outRaw) * mempoolQuote.output) / mempoolQuote.baseline)
       : null
-  const minReceivedRaw = minimumBase(outRaw, 1 - slippage / 100)
+  const minReceivedRaw = slippageMinimum(outRaw, slippage)
   // The guarantee row is above what the mempool leaves: this order, as priced,
   // rests instead of filling if the pending ones confirm first.
   const minBelowMempool = afterMempoolRaw !== null && num(minReceivedRaw) > afterMempoolRaw
@@ -431,19 +450,25 @@ export function SwapWidget({
 
   const submit = async () => {
     if (!ready || !quote || !quoteUrl) return
+    const version = intentVersion.current
+    setPreparing(true)
     // Re-quote at the last moment: a quote up to a minute old is fine to show
     // but not to sign against, and a pool that moved under us should stop the
     // trade rather than silently fill worse.
     let fresh = quote
     try {
       fresh = await fetchQuote(quoteUrl)
+      if (version !== intentVersion.current) return
       mutateQuote(fresh, { revalidate: false })
-      if (fresh.estimated_output / quote.estimated_output < STALE_QUOTE_TOLERANCE) {
+      if (fresh.message || parseRawInteger(fresh.estimated_output) < parseRawInteger(minReceivedRaw) || fresh.estimated_output / quote.estimated_output < STALE_QUOTE_TOLERANCE) {
         setPriceMoved(true)
         return
       }
     } catch {
-      // Fall back to the polled quote rather than blocking on a flaky refetch.
+      setPriceMoved(true)
+      return
+    } finally {
+      setPreparing(false)
     }
     setPriceMoved(false)
     if (!giveResult.ok) return
@@ -453,7 +478,8 @@ export function SwapWidget({
       give_asset: giveAsset,
       give_quantity: giveResult.base,
       get_asset: getAsset,
-      get_quantity: minimumBase(fresh.estimated_output, 1 - slippage / 100),
+      // Keep the exact floor the user reviewed; a refetch cannot lower it.
+      get_quantity: minReceivedRaw,
       expiration,
       fee_rate: feeRate || undefined,
     })
@@ -496,7 +522,8 @@ export function SwapWidget({
           <AmountField
             label="Sell"
             value={amount}
-            onChange={(v) => { setAmount(sanitizeAmountInput(v, giveDivisible)); setPriceMoved(false) }}
+            onChange={(v) => { setAmount(sanitizeAmountInput(v)); setPriceMoved(false) }}
+            error={amountError ? rawErrorMessage(amountError, giveAsset) : null}
             chip={giveChip}
             meta={presetRow}
             sub={
@@ -637,7 +664,7 @@ export function SwapWidget({
                   : undefined
               }
             >
-              {formatAmount(fromBaseNumber(minReceivedRaw, getDivisible))} {getAsset}
+              {fromBase(minReceivedRaw, getDivisible)} {getAsset}
               {minBelowMempool && <span className="text-zinc-500"> · above the mempool estimate</span>}
             </Row>
             </dl>
@@ -688,9 +715,10 @@ export function SwapWidget({
               remainder rests as an open order until someone takes it.
             </FormNotice>
           )}
+          {!settingsValid && <FormNotice tone="error">Correct the fee rate, slippage, or expiration in Settings before submitting.</FormNotice>}
           {priceMoved && (
             <FormNotice tone="warn">
-              The rate moved while you were reading it. Check the new quote and submit again.
+              The quote changed or could not be reconfirmed. Review it and submit again.
             </FormNotice>
           )}
           {balanceError && (

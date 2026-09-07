@@ -1,3 +1,5 @@
+import { quoteQuantity } from '@/utils/quote-quantity'
+import { parseRawInteger } from '@xcp/wallet-sdk/amounts'
 import useSWR from 'swr'
 import { counterpartyUrl, dexUrl, fetcher } from '@/lib/api/client'
 import { useDexSWR } from '@/lib/api/use-dex-swr'
@@ -376,17 +378,22 @@ export interface PoolSwapQuote {
 export function usePoolSwapQuote(
   sellAsset: string | null,
   receiveAsset: string | null,
-  sellQuantityRaw: number
+  sellQuantityRaw: number | string | null
 ) {
-  const enabled = !!sellAsset && !!receiveAsset && sellQuantityRaw > 0
-  const { data, error, isLoading } = useSWR<{ result: PoolSwapQuote }>(
+  const quantity = quoteQuantity(sellQuantityRaw)
+  const enabled = !!sellAsset && !!receiveAsset && quantity !== null
+  const { data, error, isLoading, isValidating, mutate } = useSWR<{ result: PoolSwapQuote }>(
     enabled
-      ? counterpartyUrl(`/pools/${sellAsset}/${receiveAsset}/quote?quantity=${sellQuantityRaw}&verbose=true`)
+      ? counterpartyUrl(`/pools/${sellAsset}/${receiveAsset}/quote?quantity=${quantity}&verbose=true`)
       : null,
-    fetcher,
-    { keepPreviousData: true, dedupingInterval: 5000 }
+    async (url: string) => {
+      const data = await fetcher<{ result: PoolSwapQuote }>(url)
+      for (const value of [data.result.estimated_output, data.result.pool_output, data.result.book_output, data.result.give_remaining]) parseRawInteger(value)
+      return data
+    },
+    { keepPreviousData: false, dedupingInterval: 5000 }
   )
-  return { quote: data?.result ?? null, isLoading, error }
+  return { quote: data?.result ?? null, isLoading, isValidating, error, refreshQuote: async () => (await mutate())?.result ?? null }
 }
 
 export interface PoolDisplayAmounts {
@@ -441,11 +448,12 @@ export function useAddressPools(address: string | null) {
   }
 }
 
-export function usePoolDepositQuote(assetA: string | null, assetB: string | null, quantityRaw: number | null) {
-  const enabled = !!assetA && !!assetB && quantityRaw != null && quantityRaw > 0
-  const { data, error, isLoading } = useSWR<{ result: PoolDepositQuote }>(
+export function usePoolDepositQuote(assetA: string | null, assetB: string | null, quantityRaw: number | string | null) {
+  const quantity = quoteQuantity(quantityRaw)
+  const enabled = !!assetA && !!assetB && quantity !== null
+  const { data, error, isLoading, isValidating, mutate } = useSWR<{ result: PoolDepositQuote }>(
     enabled
-      ? counterpartyUrl(`/pools/${encodeURIComponent(assetA!)}/${encodeURIComponent(assetB!)}/quote/deposit?quantity=${quantityRaw}`)
+      ? counterpartyUrl(`/pools/${encodeURIComponent(assetA!)}/${encodeURIComponent(assetB!)}/quote/deposit?quantity=${quantity}`)
       : null,
     fetcher,
     { refreshInterval: 30_000 },
@@ -455,14 +463,17 @@ export function usePoolDepositQuote(assetA: string | null, assetB: string | null
     quote: data?.result ?? null,
     error,
     isLoading,
+    isValidating,
+    refreshQuote: async () => (await mutate())?.result ?? null,
   }
 }
 
-export function usePoolWithdrawQuote(assetA: string | null, assetB: string | null, quantityRaw: number | null) {
-  const enabled = !!assetA && !!assetB && quantityRaw != null && quantityRaw > 0
-  const { data, error, isLoading } = useSWR<{ result: PoolWithdrawQuote }>(
+export function usePoolWithdrawQuote(assetA: string | null, assetB: string | null, quantityRaw: number | string | null) {
+  const quantity = quoteQuantity(quantityRaw)
+  const enabled = !!assetA && !!assetB && quantity !== null
+  const { data, error, isLoading, isValidating, mutate } = useSWR<{ result: PoolWithdrawQuote }>(
     enabled
-      ? counterpartyUrl(`/pools/${encodeURIComponent(assetA!)}/${encodeURIComponent(assetB!)}/quote/withdraw?quantity=${quantityRaw}`)
+      ? counterpartyUrl(`/pools/${encodeURIComponent(assetA!)}/${encodeURIComponent(assetB!)}/quote/withdraw?quantity=${quantity}`)
       : null,
     fetcher,
     { refreshInterval: 30_000 },
@@ -472,5 +483,7 @@ export function usePoolWithdrawQuote(assetA: string | null, assetB: string | nul
     quote: data?.result ?? null,
     error,
     isLoading,
+    isValidating,
+    refreshQuote: async () => (await mutate())?.result ?? null,
   }
 }

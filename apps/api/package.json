@@ -20,6 +20,7 @@
     "@noble/hashes": "^2.0.1",
     "@scure/base": "^2.0.0",
     "@scure/btc-signer": "^2.0.1",
+    "@xcp/wallet-sdk": "github:XCP/wallet-sdk#79f190308d4b60cc3ec9023beada21e0ee776213",
     "hono": "^4.13.3"
   }
 }
