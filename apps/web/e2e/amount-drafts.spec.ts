@@ -1,5 +1,15 @@
 import { expect, test } from '@playwright/test'
 
+test('legacy atomic routes show retirement without a trading form', async ({ page }) => {
+  for (const path of ['/atomic', '/atomic/sell?asset=WHOLE', '/atomic/buy/old-listing']) {
+    await page.goto(path)
+    await expect(page.getByRole('heading', { name: 'Atomic trading has been retired' })).toBeVisible()
+    await expect(page.getByRole('link', { name: 'Open Marketplace' })).toHaveAttribute('href', 'https://digirare.com/')
+    await expect(page.getByRole('textbox', { name: 'Amount', exact: true })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: /confirm purchase|create listing/i })).toHaveCount(0)
+  }
+})
+
 for (const locale of ['en-US', 'de-DE', 'fr-FR', 'es-VE', 'ja-JP', 'zh-CN']) {
   test.describe(locale, () => {
     test.use({ locale })

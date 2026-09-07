@@ -1,6 +1,6 @@
 # Amount and transaction boundaries
 
-Exchange's transaction fields use the additive `@xcp/wallet-sdk/amounts` contract, pinned to immutable SDK commit `79f190308d4b60cc3ec9023beada21e0ee776213`. The API uses its standalone CommonJS entry for the existing compiled test runner. Both packages use the same parser; there is no local copy of the numeric grammar.
+Exchange's transaction fields use the additive `@xcp/wallet-sdk/amounts` contract, pinned to immutable SDK commit `79f190308d4b60cc3ec9023beada21e0ee776213`. The web app uses its pure amount parser; there is no local copy of the numeric grammar.
 
 The protocol review was based on Counterparty Core `67e10db3ee266068c1effc4e83653df39ace5ca8`, including `lib/api/compose.py`, `lib/parser/composer.py`, and the order, dispenser, attach, pooldeposit and poolwithdraw message definitions. Raw quantities are integers bounded by Core's signed 64-bit maximum. Precision belongs to each asset: zero decimals for an indivisible token, eight for a divisible token, and eight for LP tokens. Unknown divisibility disables the transaction.
 
@@ -12,13 +12,13 @@ Fee rate, expiry and slippage have different field rules. Fractional sat/vB fees
 
 Swap and pool submission reconfirm the quote and abort on failure or changed account/assets/amount/settings. A refetch cannot lower the reviewed swap minimum. Pool withdrawal minima map by asset name when the displayed leg order differs from Core's. The generic Counterparty relay validates raw quote and field-aware compose parameters too; it forwards response bytes without re-encoding quantities.
 
-Atomic listings explicitly use raw inventory units and must match the entire UTXO. The server reads raw quantities losslessly and derives the display amount using that asset's divisibility. It no longer accepts `Number`-coerced price/vout strings or silently substitutes a different inventory quantity. The seller checks its selected input, sighash, seller payment address and exact price before signing. Atomic purchases are temporarily disabled because the existing output ordering sends attached assets back to the seller; see [the release blocker](atomic-purchase-release-blocker.md). Restoring purchases needs separate Core parsing and wallet signing fixtures.
+Atomic PSBT trading has been retired from Exchange. Old `/atomic` links show a retirement notice with a Marketplace link; mutation APIs return HTTP 410. Historical listing reads and database records are preserved. PSBT constructors, sign/fill pages, and the old fill monitor were removed. See [the retirement note](atomic-psbt-retirement.md).
 
 ## Verification
 
-- `npm run check --workspace apps/web`: TypeScript, shared vectors, sequential production component interactions, wrong/stale metadata, raw quote/compose serialization, relay bypasses, and custom atomic policy tests.
-- `npm run lint:amounts --workspace apps/web`: changed transaction source and test lint. The existing full `npm run lint --workspace apps/web` has eight errors in unrelated atomic/explore pagination, analytics, and search components; this patch does not suppress those rules.
-- `npm test --workspace apps/api`: existing API/replay suite plus exact atomic inventory, raw API validation, and prepare/complete purchase guards.
+- `npm run check --workspace apps/web`: TypeScript, shared vectors, sequential production component interactions, wrong/stale metadata, raw quote/compose serialization, relay bypasses, and the retired atomic page.
+- `npm run lint:amounts --workspace apps/web`: changed transaction source and test lint. The full `npm run lint --workspace apps/web` has existing errors in unrelated explore pagination, analytics, and search components; this patch does not suppress those rules.
+- `npm test --workspace apps/api`: existing API/replay suite plus a retired-mutation boundary check.
 - `npm run test:e2e --workspace apps/web`: real Chromium typing and clipboard tests on the actual Next amount fields for `en-US`, `de-DE`, `fr-FR`, `es-VE`, `ja-JP`, and `zh-CN`, using only fixture API reads and no connected wallet.
 - `npm run build --workspace apps/web`: production compilation and route generation.
 

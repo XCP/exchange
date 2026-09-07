@@ -22,8 +22,7 @@ import { formatAddress } from '@/utils/format-address'
  * header, a hand-rolled tab row and CSS-grid pseudo-tables, which made the
  * same data look like a different product depending on how you arrived.
  *
- * Swaps is gone. The atomic-swap surface is being kept off the front end for
- * now; the routes still exist, nothing links to them.
+ * Exchange PSBT trading is retired; legacy routes link to Marketplace.
  *
  * Pools are not a tab here either — an LP token is a share of two other
  * assets, and the number that matters is what it redeems for, which is what

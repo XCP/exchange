@@ -1,9 +1,6 @@
 // @vitest-environment node
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { Address, OutScript, Transaction } from '@scure/btc-signer'
-import { hex } from '@scure/base'
 import { GET } from '@/app/api/cp/[...path]/route'
-import { verifySellerPsbt } from '@/utils/atomic-listing'
 
 afterEach(() => vi.unstubAllGlobals())
 
@@ -30,21 +27,3 @@ describe('same-origin Counterparty relay', () => {
   })
 })
 
-describe('custom atomic seller authorization', () => {
-  const address = '1BoatSLRHtKNngkdXEeobR76b53LETtpyT'
-  const txid = 'a'.repeat(64)
-  const intent = { address, txid, vout: 0, price: 1001n }
-  const fixture = ({ price = 1001n, vout = 0, seller = address, extra = false, sighash = 0x83 } = {}) => {
-    const tx = new Transaction({ allowLegacyWitnessUtxo: true })
-    tx.addInput({ txid, index: vout, sighashType: sighash, witnessUtxo: { script: OutScript.encode(Address().decode(address)), amount: 546n } })
-    tx.addOutputAddress(seller, price)
-    if (extra) tx.addOutputAddress(address, 1n)
-    return hex.encode(tx.toPSBT())
-  }
-  it('accepts the selected outpoint and exact seller payment', () => {
-    expect(() => verifySellerPsbt(fixture(), intent)).not.toThrow()
-  })
-  it.each([{ price: 1000n }, { vout: 1 }, { seller: '1BitcoinEaterAddressDontSendf59kuE' }, { extra: true }, { sighash: 1 }])('blocks changed seller intent %o', (change) => {
-    expect(() => verifySellerPsbt(fixture(change), intent)).toThrow()
-  })
-})

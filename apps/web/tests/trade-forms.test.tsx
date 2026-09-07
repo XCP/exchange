@@ -99,7 +99,7 @@ describe('production trading forms', () => {
     await userEvent.clear(amount)
     await userEvent.type(amount, '100000000.00000001')
     await waitFor(() => expect(mocks.fetcher).toHaveBeenCalledWith(expect.stringContaining('quantity=10000000000000001')))
-    const submit = screen.getByRole('button', { name: /swap/i }) as HTMLButtonElement
+    const submit = await screen.findByRole('button', { name: /swap/i }) as HTMLButtonElement
     await waitFor(() => expect(submit.disabled).toBe(false))
     await userEvent.click(submit)
     await waitFor(() => expect(mocks.compose).toHaveBeenCalledWith(expect.objectContaining({ give_quantity: '10000000000000001', get_quantity: '99', fee_rate: 1.56 })))

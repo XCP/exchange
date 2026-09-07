@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react'
 import Image from 'next/image'
-import Link from 'next/link'
 import { useUtxoBalances } from '@/lib/hooks/useUtxoBalances'
 import { useCompose } from '@/lib/wallet/useCompose'
 import { useAssetInfo } from '@/lib/hooks/useAssetInfo'
@@ -84,12 +83,6 @@ export function PortfolioUtxos({ address }: { address: string }) {
                   </span>
                   <span className="max-sm:hidden"></span>
                   <div className="text-right flex items-center justify-end gap-2">
-                    <Link
-                      href={`/atomic/sell?utxo=${bal.utxo}&asset=${bal.asset}&qty=${bal.quantity}${bal.asset_longname ? `&longname=${bal.asset_longname}` : ''}`}
-                      className="px-2 py-0.5 bg-orange-600 hover:bg-orange-500 text-white text-[10px] font-bold rounded-sm transition-colors"
-                    >
-                      Sell
-                    </Link>
                     <DetachButton utxo={bal.utxo} onDone={() => mutate()} />
                   </div>
                 </div>
