@@ -31,6 +31,7 @@ import { handleAnalytics } from "./routes/analytics";
 import { handleOrdersLatest } from "./routes/orders-latest";
 import { handleSearch } from "./routes/search";
 import { handleBlock } from "./routes/block";
+import { handleStatus } from "./routes/status";
 import { handleTags, handleAssetTags } from "./routes/tags";
 import { handleDeals } from "./routes/deals";
 import { handleMempool } from "./routes/mempool";
@@ -263,70 +264,7 @@ app.route('/swaps', retiredSwapRoutes);
 
 // Status
 
-app.get('/status', async (c) => {
-  const db = c.env.DB;
-  const mode = await getMode(db);
-
-  const [tradeCount, pairCount, openOrderCount, dispenseCount, openDispenserCount, poolCount, candleCount, state] =
-    await db.batch([
-      db.prepare(`SELECT COUNT(*) as cnt FROM trades`),
-      db.prepare(`SELECT COUNT(*) as cnt FROM pair_stats`),
-      db.prepare(`SELECT COUNT(*) as cnt FROM orders WHERE status = 'open'`),
-      db.prepare(`SELECT COUNT(*) as cnt FROM dispenses`),
-      db.prepare(`SELECT COUNT(*) as cnt FROM dispensers WHERE status < 10`),
-      db.prepare(`SELECT COUNT(*) as cnt FROM pools`),
-      db.prepare(`SELECT COUNT(*) as cnt FROM candles`),
-      db.prepare(`SELECT key, value FROM indexer_state`),
-    ]);
-
-  const cnt = (r: D1Result) => (r.results[0] as { cnt: number } | undefined)?.cnt ?? 0;
-  const stateRows = state.results as { key: string; value: string }[];
-  const indexer = Object.fromEntries(
-    stateRows
-      .filter((r) => !['aggregation_offset'].includes(r.key))
-      .map((r) => [r.key, r.value])
-  );
-  const lastRunTime = Number(indexer.last_run_time ?? 0);
-  const indexerAgeSeconds = Number.isFinite(lastRunTime) && lastRunTime > 0
-    ? Math.max(0, Math.floor(Date.now() / 1000) - lastRunTime)
-    : null;
-  // The cron runs every two minutes. Fifteen minutes allows ordinary Worker
-  // scheduling jitter and transient upstream failures, while ensuring a
-  // poison block cannot leave /status green for hours just because the stale
-  // stored mode still says FOLLOWING.
-  const indexerHealthy =
-    mode === "FOLLOWING" && indexerAgeSeconds !== null && indexerAgeSeconds <= 15 * 60;
-
-  return Response.json({
-    ok: indexerHealthy,
-    mode,
-    indexer_healthy: indexerHealthy,
-    indexer_age_seconds: indexerAgeSeconds,
-    trades: cnt(tradeCount),
-    pairs: cnt(pairCount),
-    open_orders: cnt(openOrderCount),
-    dispenses: cnt(dispenseCount),
-    open_dispensers: cnt(openDispenserCount),
-    pools: cnt(poolCount),
-    candles: cnt(candleCount),
-    indexer,
-  }, {
-    // Seven unqualified COUNT(*)s, each O(table): ~1M rows read per call, of
-    // which candles alone is 523,780 and was measured at 557ms. This route
-    // sent no Cache-Control at all, and the cache middleware deliberately
-    // stores only what asks to be stored -- so every single call ran all
-    // seven against D1.
-    //
-    // Staleness costs a diagnostics endpoint nothing, and the TTL is matched
-    // to Bitcoin rather than to a round number: blocks arrive about every ten
-    // minutes, so none of these counters moves meaningfully inside five, and
-    // the indexer's own last_block_index is in the body for anyone who needs
-    // to judge freshness. 60s was tried first and was the wrong shape -- the
-    // callers arrive further apart than that, so nearly every request still
-    // missed and paid the full million rows.
-    headers: { 'Cache-Control': 'public, max-age=300' },
-  });
-});
+app.get('/status', (c) => handleStatus(c.env.DB));
 
 // Indexer Routes (auth handled by middleware)
 
