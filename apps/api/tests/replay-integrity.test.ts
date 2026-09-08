@@ -12,6 +12,7 @@ function same(actual: unknown, expected: unknown) {
 
 function fixture() {
   const sqlite = new DatabaseSync(":memory:");
+  const statements: string[] = [];
   for (const file of readdirSync("migrations").filter(file => file.endsWith(".sql")).sort()) {
     try { sqlite.exec(readFileSync(`migrations/${file}`, "utf8")); }
     catch (error) {
@@ -24,9 +25,10 @@ function fixture() {
     values: unknown[] = [];
     constructor(readonly sql: string) {}
     bind(...values: unknown[]) { this.values = values; return this; }
-    async all() { return { results: sqlite.prepare(this.sql).all(...this.values) }; }
-    async first() { return sqlite.prepare(this.sql).get(...this.values) ?? null; }
+    async all() { statements.push(this.sql); return { results: sqlite.prepare(this.sql).all(...this.values) }; }
+    async first() { statements.push(this.sql); return sqlite.prepare(this.sql).get(...this.values) ?? null; }
     async run() {
+      statements.push(this.sql);
       if (fail(this.sql)) throw new Error("Injected write failure");
       const result = sqlite.prepare(this.sql).run(...this.values);
       return { success: true, meta: { changes: Number(result.changes) }, results: [] };
@@ -43,7 +45,7 @@ function fixture() {
       } catch (error) { sqlite.exec("ROLLBACK"); throw error; }
     },
   } as unknown as D1Database;
-  return { sqlite, db, fail: (f: typeof fail) => { fail = f; } };
+  return { sqlite, db, statements, fail: (f: typeof fail) => { fail = f; } };
 }
 
 async function rejects(run: () => Promise<unknown>, text: string) {
@@ -156,6 +158,100 @@ test("real sync survives a later block failure without producing a stale checkpo
     failThird = false;
     assert.equal((await syncBlocks(h.db, "https://core.test", 10)).last_block, 3);
   } finally { globalThis.fetch = original; h.sqlite.close(); }
+});
+
+function interruptedEventBody() {
+  let pulls = 0;
+  return new Response(new ReadableStream<Uint8Array>({
+    pull(controller) {
+      if (pulls++ === 0) controller.enqueue(new TextEncoder().encode('{"result":[{"event":"CREDIT"'));
+      else controller.error(new Error("Network connection lost."));
+    },
+  }), { headers: { "Content-Type": "application/json" } });
+}
+
+test("a dropped event-page body resumes the same cursor without restarting sync or duplicating LP credits", async () => {
+  const h = fixture(); seed(h, "alice", 100);
+  h.sqlite.exec(`INSERT INTO pools(lp_asset,pair,asset_a,asset_b,updated_at) VALUES('LP','AAA_XCP','AAA','XCP',1);
+    INSERT INTO pool_updates(event,event_index,tx_hash,block_index,block_time,lp_asset,pair,asset_a,asset_b)
+    VALUES('OPEN_POOL',0,'open',1,1800000001,'LP','AAA_XCP','AAA','XCP');
+    INSERT OR REPLACE INTO indexer_state VALUES('indexer_mode','FOLLOWING');`);
+  await h.db.batch(checkpointStatements(h.db, block(1)));
+  h.statements.length = 0;
+  const original = globalThis.fetch;
+  const cursors: (string | null)[] = [];
+  let interrupted = false, requests = 0, syncRuns = 1;
+  globalThis.fetch = async input => {
+    requests++;
+    const url = new URL(String(input));
+    if (url.pathname.endsWith("/last")) return Response.json({ result: block(2) });
+    if (url.pathname.endsWith("/events")) {
+      const cursor = url.searchParams.get("cursor"); cursors.push(cursor);
+      if (cursor && !interrupted) { interrupted = true; return interruptedEventBody(); }
+      const eventIndex = cursor ? 2 : 1;
+      return Response.json({ result: [{ event: "CREDIT", event_index: eventIndex,
+        tx_hash: `credit${eventIndex}`, block_index: 2,
+        params: { address: "alice", asset: "LP", quantity: 10, quantity_normalized: 10 } }],
+        next_cursor: cursor ? null : 100 });
+    }
+    return Response.json({ result: block(Number(url.pathname.split("/")[2])) });
+  };
+  try {
+    // The old implementation only recovered on a subsequent scheduled invocation.
+    try { await syncBlocks(h.db, "https://core.test", 10); }
+    catch (error) {
+      assert.ok(String(error).includes("Network connection lost."));
+      syncRuns++;
+      await syncBlocks(h.db, "https://core.test", 10);
+    }
+    console.log(JSON.stringify({ scenario: "interrupted_event_page", syncRuns, requests,
+      eventPageRequests: cursors.length, sqlExecutions: h.statements.length }));
+    assert.equal(syncRuns, 1);
+    same(cursors, [null, "100", "100"]);
+    same(h.sqlite.prepare("SELECT balance_raw FROM pool_lp_balances").get(), { balance_raw: 120 });
+    same(h.sqlite.prepare("SELECT COUNT(*) n FROM pool_lp_balance_events").get(), { n: 2 });
+    same(h.sqlite.prepare("SELECT value FROM indexer_state WHERE key='last_block_index'").get(), { value: "2" });
+  } finally { globalThis.fetch = original; h.sqlite.close(); }
+});
+
+test("persistent event transport failure stops after one retry and preserves the committed checkpoint", async () => {
+  const h = fixture(); await h.db.batch(checkpointStatements(h.db, block(1)));
+  h.sqlite.exec("INSERT OR REPLACE INTO indexer_state VALUES('indexer_mode','FOLLOWING')");
+  const original = globalThis.fetch; let eventRequests = 0;
+  globalThis.fetch = async input => {
+    const path = new URL(String(input)).pathname;
+    if (path.endsWith("/last")) return Response.json({ result: block(2) });
+    if (path.endsWith("/events")) { eventRequests++; return interruptedEventBody(); }
+    return Response.json({ result: block(Number(path.split("/")[2])) });
+  };
+  try {
+    await rejects(() => syncBlocks(h.db, "https://core.test", 10), "Network connection lost.");
+    assert.equal(eventRequests, 2);
+    same(h.sqlite.prepare("SELECT value FROM indexer_state WHERE key='last_block_index'").get(), { value: "1" });
+    assert.equal(h.sqlite.prepare("SELECT value FROM indexer_state WHERE key='pending_block'").get(), undefined);
+    assert.equal(h.sqlite.prepare("SELECT value FROM indexer_state WHERE key='sync_lock'").get(), undefined);
+  } finally { globalThis.fetch = original; h.sqlite.close(); }
+});
+
+test("event-page HTTP throttling and invalid JSON do not trigger immediate transport retries", async () => {
+  for (const failure of [() => new Response(null, { status: 429 }), () => new Response('{"result":')]) {
+    const h = fixture(); await h.db.batch(checkpointStatements(h.db, block(1)));
+    h.sqlite.exec("INSERT OR REPLACE INTO indexer_state VALUES('indexer_mode','FOLLOWING')");
+    const original = globalThis.fetch; let eventRequests = 0;
+    globalThis.fetch = async input => {
+      const path = new URL(String(input)).pathname;
+      if (path.endsWith("/last")) return Response.json({ result: block(2) });
+      if (path.endsWith("/events")) { eventRequests++; return failure(); }
+      return Response.json({ result: block(Number(path.split("/")[2])) });
+    };
+    try {
+      let rejected = false;
+      try { await syncBlocks(h.db, "https://core.test", 10); } catch { rejected = true; }
+      assert.ok(rejected);
+      assert.equal(eventRequests, 1);
+      same(h.sqlite.prepare("SELECT value FROM indexer_state WHERE key='last_block_index'").get(), { value: "1" });
+    } finally { globalThis.fetch = original; h.sqlite.close(); }
+  }
 });
 
 test("real sync resumes an interrupted rollback after ledger deletion without losing its affected set or opening balance", async () => {

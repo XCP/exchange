@@ -212,6 +212,34 @@ async function fetchBlockInfo(
   return data.result;
 }
 
+interface BlockEventPage {
+  result: BlockEvent[];
+  next_cursor: number | null;
+}
+
+async function fetchBlockEventPage(url: URL, blockIndex: number): Promise<BlockEventPage> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const res = await fetch(url.toString(), { signal: AbortSignal.timeout(API_TIMEOUT_MS) });
+      if (!res.ok) {
+        await discard(res);
+        throw new Error(`Failed to fetch events for block ${blockIndex}: ${res.status}`);
+      }
+      return await res.json();
+    } catch (error) {
+      // workerd can receive response headers and then lose the connection while
+      // reading JSON. Retry this read-only page once, before any events or cursor
+      // are accepted, instead of repeating the entire sync on the next cron.
+      // HTTP throttling, invalid JSON and other application errors still fail.
+      const transportFailure = error instanceof Error &&
+        ["Network connection lost.", "fetch failed", "terminated"].includes(error.message);
+      if (attempt !== 0 || !transportFailure) throw error;
+      logInfo("BLOCK_EVENT_PAGE_RETRY", { block_index: blockIndex, cursor: url.searchParams.get("cursor") });
+      await new Promise<void>(resolve => setTimeout(resolve, 250));
+    }
+  }
+}
+
 async function fetchBlockEvents(
   apiBase: string,
   blockIndex: number
@@ -232,16 +260,7 @@ async function fetchBlockEvents(
     url.searchParams.set("limit", "100");
     if (cursor) url.searchParams.set("cursor", cursor);
 
-    const res = await fetch(url.toString(), { signal: AbortSignal.timeout(API_TIMEOUT_MS) });
-    if (!res.ok) {
-      await discard(res);
-      throw new Error(`Failed to fetch events for block ${blockIndex}: ${res.status}`);
-    }
-
-    const data: {
-      result: BlockEvent[];
-      next_cursor: number | null;
-    } = await res.json();
+    const data = await fetchBlockEventPage(url, blockIndex);
 
     events.push(...data.result);
 
