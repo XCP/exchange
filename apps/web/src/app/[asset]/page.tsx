@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
+import { cache } from 'react'
 import { assetExists, fetchAssetInfo, fetchDispenserStats, fetchPairStats, fetchPool } from '@/lib/api/server'
 import { buildPoolMetadata } from '@/lib/metadata'
 import PoolDetailPage from '@/components/pool/pool-detail'
@@ -10,6 +11,11 @@ interface Props {
   params: Promise<{ asset: string }>
 }
 
+// Metadata and the page use the same pool snapshot. Production service-binding
+// reads bypass Next's fetch memoization; share the parsed result only for this
+// render, including null, so a later request can retry or see changed reserves.
+const loadPool = cache(fetchPool)
+
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { asset } = await params
 
@@ -17,7 +23,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   // it wants a completely different card. Checked first because a pool has a
   // pair and reserves to describe, where the generic asset card would report
   // a supply nobody holds on purpose.
-  const pool = await fetchPool(asset.toUpperCase())
+  const pool = await loadPool(asset.toUpperCase())
   if (pool) {
     return buildPoolMetadata(
       asset.toUpperCase(),
@@ -65,7 +71,7 @@ export default async function Page({ params }: Props) {
   const upper = asset.toUpperCase()
   // A liquidity-pool token gets the pool view rather than the asset view.
   // Both are pages about an asset; only one of them is useful about this one.
-  const pool = await fetchPool(upper)
+  const pool = await loadPool(upper)
   if (pool) return <PoolDetailPage lpAsset={upper} />
   if ((await assetExists(asset)) === 'no') notFound()
   return <AssetPage params={params} />
