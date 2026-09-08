@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import { SWRProvider } from "@/lib/swr-provider";
 import { WalletProvider } from "@/lib/wallet/wallet-context";
 import { SatsProvider } from "@/lib/sats-context";
+import { DisplayPreferencesProvider } from "@/lib/display-preferences";
 import { TopBar } from "@/components/top-bar";
 import { Footer } from "@/components/footer";
 import { SitePresenceBadge } from "@/components/site-presence";
@@ -67,6 +68,7 @@ export default function RootLayout({
       >
         <FathomAnalytics />
         <SWRProvider>
+          <DisplayPreferencesProvider>
           <SatsProvider>
             <WalletProvider>
               <TopBar />
@@ -79,6 +81,7 @@ export default function RootLayout({
               <SitePresenceBadge />
             </WalletProvider>
           </SatsProvider>
+          </DisplayPreferencesProvider>
         </SWRProvider>
       </body>
     </html>

@@ -1,14 +1,16 @@
 'use client'
 
 import Link from 'next/link'
-import { RiTerminalBoxLine, RiGasStationFill } from 'react-icons/ri'
+import { RiTerminalBoxLine, RiGasStationFill, RiSettings3Line } from 'react-icons/ri'
 import { TopNav } from '@/components/top-nav'
 import { SearchPalette } from '@/components/search-palette'
 import { WalletButton } from '@/components/wallet-button'
 import { useBtcPrice, useXcpPrice, useFeeRate } from '@/lib/hooks/useNetworkInfo'
 import { useSatsMode } from '@/lib/sats-context'
+import { useDisplayPreferences } from '@/lib/display-preferences'
 
 export function TopBar() {
+  const { fiat, displayText } = useDisplayPreferences()
   const btcPrice = useBtcPrice()
   const { xcpUsd } = useXcpPrice()
   // The same hook every form calls for its default rate. Same SWR key means
@@ -17,8 +19,8 @@ export function TopBar() {
   const { satsMode, toggleSatsMode } = useSatsMode()
 
   return (
-    <header className="sticky top-0 z-50 flex items-center justify-between gap-2 sm:gap-4 border-b border-zinc-800 bg-zinc-950/95 backdrop-blur-sm px-4 py-2">
-      <div className="flex items-center gap-3 sm:gap-6">
+    <header className="sticky top-0 z-50 flex flex-wrap sm:flex-nowrap items-center justify-between gap-2 sm:gap-4 border-b border-zinc-800 bg-zinc-950/95 backdrop-blur-sm px-4 py-2">
+      <div className="flex items-center gap-3 sm:gap-6 max-sm:w-full max-sm:justify-between">
         <Link href="/" className="flex items-center gap-2.5 text-sm font-bold tracking-wider text-green-500 font-mono">
           <RiTerminalBoxLine className="text-lg relative" style={{ color: '#c8b898', top: '-0.5px' }} />
           <span className="hidden sm:inline">XCP DEX</span>
@@ -35,13 +37,13 @@ export function TopBar() {
         <Link href="/price/BTC" className="hidden md:flex items-center gap-2 group">
           <span className="text-xs text-zinc-500 group-hover:text-zinc-400">BTC</span>
           <span className="text-xs text-zinc-300 font-mono group-hover:text-zinc-100">
-            {btcPrice != null ? `$${btcPrice.toLocaleString()}` : '—'}
+            {btcPrice != null ? fiat(btcPrice) : '—'}
           </span>
         </Link>
         <Link href="/price/XCP" className="hidden md:flex items-center gap-2 group">
           <span className="text-xs text-zinc-500 group-hover:text-zinc-400">XCP</span>
           <span className="text-xs text-zinc-300 font-mono group-hover:text-zinc-100">
-            {xcpUsd != null ? `$${xcpUsd.toFixed(2)}` : '—'}
+            {xcpUsd != null ? fiat(xcpUsd) : '—'}
           </span>
         </Link>
         <button
@@ -68,11 +70,12 @@ export function TopBar() {
               nozzle and reads as a blank box. */}
           <RiGasStationFill className="text-sm text-zinc-500 group-hover:text-zinc-400" />
           <span className="text-xs text-zinc-300 font-mono group-hover:text-zinc-100">
-            {feeRate != null ? `${feeRate} sat/vB` : '—'}
+            {feeRate != null ? `${displayText(String(feeRate))} sat/vB` : '—'}
           </span>
         </a>
         <div className="h-4 w-px bg-zinc-800 hidden sm:block" />
         <WalletButton />
+        <Link href="/settings" aria-label="Display settings" title="Display settings" className="text-zinc-500 hover:text-zinc-100"><RiSettings3Line className="size-4" /></Link>
       </div>
     </header>
   )

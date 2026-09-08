@@ -14,7 +14,7 @@ import {
 import { Panel, PanelSection, AmountField, AssetChip, SelectAssetChip, MiniChip, CTA } from '@/components/ui/form-kit'
 import { Tabs, SegmentedList, SegmentedTrigger } from '@/components/ui/tabs'
 import { FormNotice, TxBroadcast } from '@/components/ui/form-notice'
-import { formatAmount } from '@/utils/format-amount'
+import { useDisplayPreferences } from '@/lib/display-preferences'
 import { poolFeeLabel } from '@/utils/pool-fee'
 import { useXcpPrice } from '@/lib/hooks/useNetworkInfo'
 import { toBase, fromBase, slippageMinimum, sanitizeAmountInput, rawErrorMessage, big, num, ROUND_DOWN } from '@/utils/numeric'
@@ -108,6 +108,7 @@ export function PoolManagePanel({
   /** Makes the leg chips clickable. Without it they are labels, as before. */
   onSelectAsset?: (which: 'a' | 'b') => void
 }) {
+  const { formatAmount, fiat } = useDisplayPreferences()
   const wallet = useConnectFlow()
   const [ownTab, setOwnTab] = useState<PoolManageTab>('deposit')
   const askedTab = controlledTab ?? ownTab
@@ -285,7 +286,7 @@ export function PoolManagePanel({
   const usdText = (forSide: 'a' | 'b') => {
     if (legUsd == null) return ''
     if (isFirstDeposit && xcpSide !== forSide) return ''
-    return `≈ $${legUsd.toFixed(2)}`
+    return `≈ ${fiat(legUsd)}`
   }
 
   /**

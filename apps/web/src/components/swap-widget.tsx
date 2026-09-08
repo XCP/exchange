@@ -22,7 +22,7 @@ import { useAssetInfo } from '@/lib/hooks/useAssetInfo'
 import { useDebounced } from '@/lib/hooks/useDebounced'
 import { useXcpPrice, useBtcPrice, useFeeRate } from '@/lib/hooks/useNetworkInfo'
 import { fetcher, counterpartyUrl } from '@/lib/api/client'
-import { formatAmount } from '@/utils/format-amount'
+import { useDisplayPreferences } from '@/lib/display-preferences'
 import { toBase, fromBase, fromBaseNumber, slippageMinimum, sanitizeAmountInput, rawErrorMessage, num, big, isPositive, DIVISIBLE_DECIMALS, ROUND_DOWN } from '@/utils/numeric'
 import { COMPOSE_STATUS_LABELS } from '@/utils/constants'
 import { parseRawInteger } from '@xcp/wallet-sdk/amounts'
@@ -134,6 +134,7 @@ export function SwapWidget({
   feeRate: number
   expiration: number
 }) {
+  const { formatAmount, fiat } = useDisplayPreferences()
   const { address } = useWallet()
   const { status: txStatus, txid, error: txError, composeOrder, reset } = useCompose()
   const { xcpUsd } = useXcpPrice()
@@ -266,7 +267,7 @@ export function SwapWidget({
   // through one.
   const xcpLeg = giveAsset === 'XCP' ? amountNum : getAsset === 'XCP' ? out : null
   const legUsd = xcpUsd && xcpLeg != null ? xcpLeg * xcpUsd : null
-  const usdLabel = legUsd != null ? `≈ $${legUsd.toFixed(2)}` : undefined
+  const usdLabel = legUsd != null ? `≈ ${fiat(legUsd)}` : undefined
 
   /**
    * The rate, priced off what actually FILLS.
@@ -593,7 +594,7 @@ export function SwapWidget({
               >
                 {rateText}
                 {rateBaseUsd !== null && (
-                  <span className="text-zinc-500"> (${rateBaseUsd.toFixed(2)})</span>
+                  <span className="text-zinc-500"> ({fiat(rateBaseUsd)})</span>
                 )}
               </button>
               <span className="flex shrink-0 items-center gap-2">
@@ -645,7 +646,7 @@ export function SwapWidget({
                 <span className={feeRate > 0 ? 'text-zinc-200' : undefined}>
                   {effectiveFeeRate} sat/vB
                   {txFeeUsd != null && (
-                    <span className="text-zinc-500"> (~${txFeeUsd.toFixed(2)})</span>
+                    <span className="text-zinc-500"> (~{fiat(txFeeUsd)})</span>
                   )}
                 </span>
               </Row>

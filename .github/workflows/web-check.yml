@@ -20,6 +20,7 @@ jobs:
       - run: npm ci
       - run: npm run check --workspace apps/web
       - run: npm run lint:amounts --workspace apps/web
+      - run: npm run lint:display --workspace apps/web
       - run: npm test --workspace apps/api
       - run: npx playwright install --with-deps chromium
         working-directory: apps/web
