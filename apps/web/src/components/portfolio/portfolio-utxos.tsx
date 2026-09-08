@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react'
 import Image from 'next/image'
-import Link from 'next/link'
 import { useUtxoBalances } from '@/lib/hooks/useUtxoBalances'
 import { useCompose } from '@/lib/wallet/useCompose'
 import { useAssetInfo } from '@/lib/hooks/useAssetInfo'
@@ -84,12 +83,6 @@ export function PortfolioUtxos({ address }: { address: string }) {
                   </span>
                   <span className="max-sm:hidden"></span>
                   <div className="text-right flex items-center justify-end gap-2">
-                    <Link
-                      href={`/atomic/sell?utxo=${bal.utxo}&asset=${bal.asset}&qty=${bal.quantity}${bal.asset_longname ? `&longname=${bal.asset_longname}` : ''}`}
-                      className="px-2 py-0.5 bg-orange-600 hover:bg-orange-500 text-white text-[10px] font-bold rounded-sm transition-colors"
-                    >
-                      Sell
-                    </Link>
                     <DetachButton utxo={bal.utxo} onDone={() => mutate()} />
                   </div>
                 </div>
@@ -210,14 +203,24 @@ function AttachModal({
           <div>
             <label className="text-[10px] text-zinc-500 mb-1 block">Quantity</label>
             <input
+              id="attach-quantity"
+              aria-label="Quantity to attach"
               inputMode="decimal"
               value={quantity}
-              onChange={(e) => setQuantity(sanitizeAmountInput(e.target.value, divisible))}
+              onChange={(e) => setQuantity(sanitizeAmountInput(e.target.value))}
+              onPaste={(event) => {
+                event.preventDefault()
+                const start = event.currentTarget.selectionStart ?? quantity.length
+                const end = event.currentTarget.selectionEnd ?? start
+                setQuantity(quantity.slice(0, start) + event.clipboardData.getData('text') + quantity.slice(end))
+              }}
+              aria-invalid={!!quantityError}
+              aria-describedby={quantityError ? 'attach-quantity-error' : undefined}
               placeholder={divisible === false ? 'Whole units' : 'Amount to attach'}
               className="w-full bg-zinc-900 border border-zinc-800 rounded-sm px-2.5 py-1.5 text-xs text-zinc-200 placeholder-zinc-700 font-mono focus:outline-none focus:border-zinc-600"
             />
             {quantityError && (
-              <p className="mt-1 text-[10px] text-amber-400">
+              <p id="attach-quantity-error" role="alert" className="mt-1 text-[10px] text-amber-400">
                 {quantityError === 'unknown-divisibility' && infoNotFound
                   ? `${asset} was not found.`
                   : quantityError === 'unknown-divisibility' && infoError

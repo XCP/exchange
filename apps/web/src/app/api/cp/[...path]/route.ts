@@ -1,4 +1,5 @@
 import { COUNTERPARTY_API_BASE } from '@/utils/constants'
+import { serializeComposeParams, serializeQuoteQuantity } from '@xcp/wallet-sdk'
 
 /**
  * Counterparty, relayed through our own origin.
@@ -38,7 +39,21 @@ export async function GET(
   // so take the base's origin and let the caller's path be the whole path. That
   // keeps this correct if the constant is ever pointed at another node.
   const origin = new URL(COUNTERPARTY_API_BASE).origin
-  const search = new URL(request.url).search
+  const query = new URL(request.url).searchParams
+  try {
+    const composeIndex = path.indexOf('compose')
+    if (composeIndex >= 0) {
+      if (composeIndex !== path.length - 2) throw new Error('Invalid compose path')
+      for (const name of query.keys()) if (query.getAll(name).length !== 1) throw new Error(`Duplicate parameter: ${name}`)
+      serializeComposeParams(path[composeIndex + 1], Object.fromEntries(query))
+    } else if (path.includes('quote') && path[1] === 'pools') {
+      if (query.getAll('quantity').length !== 1) throw new Error('One raw quantity is required')
+      serializeQuoteQuantity(query.get('quantity')!)
+    }
+  } catch (error) {
+    return Response.json({ error: 'Invalid transaction parameter', details: error instanceof Error ? error.message : 'Invalid amount' }, { status: 400 })
+  }
+  const search = query.size ? `?${query.toString()}` : ''
   const target = `${origin}/${path.map(encodeURIComponent).join('/')}${search}`
 
   let upstream: Response

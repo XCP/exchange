@@ -50,8 +50,7 @@ import { indexAllAssets, syncNewAssets } from "./indexer/assets";
 import { handleDispensersLatest, handleDispensesLatest } from "./routes/dispensers-latest";
 import { syncTags, syncTokenscanCollections, syncPepeWtfCollections, syncStampchainCollection, syncScannableNfts, syncKaleidoscope } from "./indexer/tags";
 import { syncLowQualityAssets } from "./indexer/low-quality";
-import { handleGetSwaps, handleGetSwap, handleCancelSwap, handlePrepareListingPsbt, handleCompleteListingPsbt, handlePrepareFill, handleCompleteFill, handlePrepareCancelSwap } from "./routes/swaps";
-import { checkPendingFills } from "./lib/swap-monitor";
+import { handleGetSwaps, handleGetSwap, retiredSwapRoutes } from "./routes/swaps";
 import { syncBlocks } from "./indexer/sync-block";
 import { syncPools } from "./indexer/pool-snapshot";
 import { runCatchupAggregation, runCatchupStats, runCatchupDispenserStats, aggregateCandlesForPair } from "./indexer/aggregate";
@@ -257,12 +256,7 @@ app.get('/openapi.json', () =>
 
 app.get('/swaps', (c) => handleGetSwaps(c.req.raw, c.env.DB));
 app.get('/swaps/:id', (c) => handleGetSwap(c.env.DB, c.req.param('id')));
-app.post('/swaps/prepare-listing', (c) => handlePrepareListingPsbt(c.req.raw, c.env));
-app.post('/swaps/complete-listing', (c) => handleCompleteListingPsbt(c.req.raw, c.env));
-app.post('/swaps/:id/prepare-fill', (c) => handlePrepareFill(c.req.raw, c.env, c.req.param('id')));
-app.post('/swaps/:id/complete-fill', (c) => handleCompleteFill(c.req.raw, c.env.DB, c.req.param('id')));
-app.post('/swaps/:id/prepare-cancel', (c) => handlePrepareCancelSwap(c.env.DB, c.req.param('id')));
-app.post('/swaps/:id/cancel', (c) => handleCancelSwap(c.req.raw, c.env.DB, c.req.param('id')));
+app.route('/swaps', retiredSwapRoutes);
 
 // Status
 
@@ -612,7 +606,6 @@ async function scheduled(env: Env): Promise<void> {
         await sweepGate("low_quality_synced_at", 86400, () =>
           syncLowQualityAssets(env.DB).catch((e) => console.error(`low-quality sync failed: ${e}`))
         );
-        await checkPendingFills(env.DB);
         await syncNewAssets(env.DB, 2);
         await backfillMissingLongnames(env.DB, 10);
         break;

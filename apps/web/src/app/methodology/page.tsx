@@ -58,9 +58,9 @@ export default function MethodologyPage() {
           </li>
         </ol>
         <P>
-          PSBT/UTXO swaps are currently excluded. They are a separate settlement mechanism and will only be
-          added with their own trade-ID namespace (code 3, already reserved) and a precise execution
-          definition. Markets are an explicit allowlist (<Code>/catalog/pairs</Code>), not everything the
+          PSBT/UTXO swaps are excluded. Exchange PSBT trading is retired; DigiRare Marketplace handles
+          PSBT trading. The unused trade-ID namespace code 3 remains reserved.
+          Markets are an explicit allowlist (<Code>/catalog/pairs</Code>), not everything the
           protocol has ever traded; each entry declares which execution sources actually feed it. CoinGecko
           and CoinMarketCap use separate profiles. The initial CoinGecko profile contains only{' '}
           <Code>XCP_BTC</Code>; additional Counterparty assets require exact CoinGecko identity approval.

@@ -17,7 +17,8 @@ import { useBtcPrice } from '@/lib/hooks/useNetworkInfo'
 import { useSatsMode } from '@/lib/sats-context'
 import { formatAmount } from '@/utils/format-amount'
 import { formatBtcAmount, formatPrice } from '@/utils/format-price'
-import { toBase, sanitizeAmountInput, rawErrorMessage, big, num, fromSats, ROUND_DOWN } from '@/utils/numeric'
+import { toBase, fromBase, sanitizeAmountInput, rawErrorMessage, big, num, fromSats, ROUND_DOWN } from '@/utils/numeric'
+import { validFeeRate } from '@/utils/form-settings'
 import { COMPOSE_STATUS_LABELS } from '@/utils/constants'
 import type { Dispenser } from '@/types/trading'
 
@@ -112,7 +113,8 @@ export function DispenseWidget({
    * buying a single unit will get.
    */
   const requested = big(tokensInput)
-  const typed = requested.isFinite() && requested.isGreaterThan(0)
+  const requestedResult = toBase(tokensInput, divisible)
+  const typed = requestedResult.ok && requestedResult.base !== '0'
   const pinnedIndex = pinnedAddress ? dispensers.findIndex((d) => d.source === pinnedAddress) : -1
   /** Dispensers somebody is already buying from, unconfirmed. */
   const contested = useMempoolDispenses()
@@ -252,7 +254,8 @@ export function DispenseWidget({
   const btcUsd = btcPrice ? btc * btcPrice : null
 
   const busy = txStatus === 'composing' || txStatus === 'signing' || txStatus === 'broadcasting'
-  const ready = !!selected && n > 0 && !busy && !oraclePriced
+  const ready = typed && !!selected && n > 0 && Number.isSafeInteger(n) && !busy && !oraclePriced &&
+    validFeeRate(feeRate) && !shortOfStock && !shortOfBalance && !rounded
 
   const submit = () => {
     if (!ready || !selected) return
@@ -292,7 +295,8 @@ export function DispenseWidget({
             <AmountField
               label="You receive"
               value={tokensInput}
-              onChange={(v) => setTokensInput(sanitizeAmountInput(v, divisible))}
+              error={tokensInput && !requestedResult.ok ? rawErrorMessage(requestedResult.error, asset) : null}
+              onChange={(v) => setTokensInput(sanitizeAmountInput(v))}
               chip={
                 <AssetChip
                   asset={asset}
@@ -334,7 +338,7 @@ export function DispenseWidget({
                 selected ? (
                   <>
                     {rounded
-                      ? `Rounds down to ${n} × ${formatAmount(selected.give_quantity_normalized)} = ${formatAmount(tokens)} ${asset}`
+                      ? `Choose a whole-lot amount: ${n} × ${formatAmount(selected.give_quantity_normalized)} = ${formatAmount(tokens)} ${asset}`
                       : `${n} dispense${n === 1 ? '' : 's'} × ${formatAmount(selected.give_quantity_normalized)} each`}
                     {/* Most dispensers vend a single unit, so only an unusual lot
                         size needs calling out — that is when "why can't I buy 7?"
@@ -375,6 +379,9 @@ export function DispenseWidget({
           </PanelSection>
 
           <PanelSection className="space-y-2">
+            {!validFeeRate(feeRate) && <FormNotice tone="error">Correct the fee rate in Settings before submitting.</FormNotice>}
+            {typed && n > 0 && <p className="break-all text-xs text-zinc-300">Pay {satsOwed.toFixed(0)} sats ({fromBase(satsOwed.toFixed(0), true)} BTC) for {perLot.times(n).toFixed()} {assetLabel}.</p>}
+            {(shortOfStock || shortOfBalance || rounded) && n > 0 && <button type="button" onClick={() => setTokensInput(perLot.times(n).toFixed())} className="text-xs text-amber-400 underline">Use {perLot.times(n).toFixed()} {assetLabel} ({n} whole lots)</button>}
             {/* Keyed on the LIST, not on the routed pick. Nothing is routed
                 until an amount is typed, and "no open dispensers" beside a
                 full list of them is the worst kind of wrong. */}
@@ -394,26 +401,18 @@ export function DispenseWidget({
                 confirms, so the amount you receive can&apos;t be fixed here. Pick another dispenser.
               </FormNotice>
             )}
-            {/* Warnings rather than errors: the order still works, it just
-                buys less than was typed. Balance is checked first — when both
-                bite, the one you can act on is the money.
-                
-                Each states what the order WILL buy rather than claiming the
-                field was rewritten, because it is not: the typed number stays
-                put so it can be corrected, and the sub-line and "You send"
-                already show the real figures. */}
+            {/* Keep the requested draft until the user explicitly accepts a
+                whole-lot amount that fits the balance and available stock. */}
             {shortOfBalance && (
               <FormNotice tone="warn">
                 Your bitcoin covers {formatAmount(perLot.times(affordableLots).toNumber())}{' '}
-                {assetLabel}, not {formatAmount(num(requested))} — this order buys{' '}
-                {formatAmount(tokens)}.
+                {assetLabel}. Choose a smaller whole-lot amount before buying.
               </FormNotice>
             )}
             {shortOfStock && !shortOfBalance && (
               <FormNotice tone="warn">
                 The cheapest dispenser holds {formatAmount(perLot.times(maxDispenses).toNumber())}{' '}
-                {assetLabel}, not {formatAmount(num(requested))} — this order buys{' '}
-                {formatAmount(tokens)}.
+                {assetLabel}. Choose a smaller whole-lot amount before buying.
               </FormNotice>
             )}
             {alsoPays.length > 0 && (
@@ -645,8 +644,9 @@ function CreateDispenser({
   }
 
   const busy = txStatus === 'composing' || txStatus === 'signing' || txStatus === 'broadcasting'
-  const overBalance = balanceKnown && escrowNum > balance
+  const overBalance = balanceKnown && big(escrow).isGreaterThan(big(balanceNormalized))
   const ready =
+    validFeeRate(feeRate) &&
     lotResult.ok &&
     escrowResult.ok &&
     escrowResult.raw > 0 &&
@@ -680,7 +680,8 @@ function CreateDispenser({
             <AmountField
               label={`Price per ${assetLabel}`}
               value={price}
-              onChange={(v) => setPrice(sanitizeAmountInput(v, true))}
+              onChange={(v) => setPrice(sanitizeAmountInput(v))}
+              error={price && !rateResult.ok ? rawErrorMessage(rateResult.error, 'BTC') : null}
               chip={<AssetChip asset="BTC" />}
               // Tapping a ladder row already MATCHES a price, so these are the
               // two moves the ladder can't express: sit above the best ask, or
@@ -717,7 +718,8 @@ function CreateDispenser({
             <AmountField
               label="Amount to escrow"
               value={escrow}
-              onChange={(v) => setEscrow(sanitizeAmountInput(v, divisible))}
+              onChange={(v) => setEscrow(sanitizeAmountInput(v))}
+              error={escrow && !escrowResult.ok ? rawErrorMessage(escrowResult.error, asset) : null}
               chip={
                 <AssetChip
                   asset={asset}

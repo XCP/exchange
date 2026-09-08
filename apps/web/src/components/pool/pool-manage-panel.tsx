@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useBalance } from '@/lib/hooks/useBalance'
 import { useCompose } from '@/lib/wallet/useCompose'
 import { useConnectFlow } from '@/lib/wallet/useConnectFlow'
@@ -17,8 +17,10 @@ import { FormNotice, TxBroadcast } from '@/components/ui/form-notice'
 import { formatAmount } from '@/utils/format-amount'
 import { poolFeeLabel } from '@/utils/pool-fee'
 import { useXcpPrice } from '@/lib/hooks/useNetworkInfo'
-import { toBase, fromBase, minimumBase, sanitizeAmountInput, big, num, ROUND_DOWN } from '@/utils/numeric'
+import { toBase, fromBase, slippageMinimum, sanitizeAmountInput, rawErrorMessage, big, num, ROUND_DOWN } from '@/utils/numeric'
 import { COMPOSE_STATUS_LABELS } from '@/utils/constants'
+import { parseRawInteger } from '@xcp/wallet-sdk/amounts'
+import { validFeeRate, validSlippage } from '@/utils/form-settings'
 
 /**
  * Add and remove liquidity for one pool.
@@ -45,11 +47,6 @@ export type PoolManageTab = 'deposit' | 'withdraw'
  * asset with a divisible one, so each leg carries its own flag; the LP token
  * itself is always divisible.
  */
-function toRawAmount(value: string, divisible: boolean | undefined) {
-  const result = toBase(value.replace(/,/g, ''), divisible)
-  return result.ok ? result : null
-}
-
 function fromRawAmount(value: number | string | null | undefined, divisible: boolean | undefined) {
   if (value == null) return ''
   return fromBase(value, divisible)
@@ -58,7 +55,7 @@ function fromRawAmount(value: number | string | null | undefined, divisible: boo
 /** Round DOWN — a minimum-received that rounds up is a promise the pool can break. */
 function applySlippage(raw: number | string | null | undefined, slippagePercent: number) {
   if (raw == null) return '0'
-  return minimumBase(raw, 1 - slippagePercent / 100)
+  return slippageMinimum(raw, slippagePercent)
 }
 
 export function PoolManagePanel({
@@ -67,6 +64,7 @@ export function PoolManagePanel({
   walletStatus,
   address,
   slippagePercent,
+  feeRate = 0,
   tab: controlledTab,
   onTabChange,
   legA,
@@ -89,6 +87,7 @@ export function PoolManagePanel({
    * rate, not an input like an amount.
    */
   slippagePercent: number
+  feeRate?: number
   /**
    * Optional, and only /liquidity passes it: there the tab IS the URL
    * (/liquidity/deposit vs /liquidity/withdrawal), so it has to be readable
@@ -193,28 +192,32 @@ export function PoolManagePanel({
       : assetB && (!!assetBInfoError || assetBInfoNotFound)
         ? assetB
         : null
-  const depositAResult = toRawAmount(depositA, assetADivisible)
+  const validationA = toBase(depositA, assetADivisible)
+  const depositAResult = validationA.ok ? validationA : null
   const depositARaw = depositAResult?.raw ?? 0
-  const { quote: depositQuote, isLoading: depositQuoteLoading } = usePoolDepositQuote(
+  const { quote: depositQuote, isLoading: depositQuoteLoading, isValidating: depositValidating, error: depositQuoteError, refreshQuote: refreshDepositQuote } = usePoolDepositQuote(
     assetA || null,
     assetB,
-    depositARaw,
+    depositAResult?.base ?? null,
   )
   const lpBalanceRaw = position?.balance.balance_raw ?? 0
+  const lpBalanceBase = (() => {
+    try { return parseRawInteger(lpBalanceRaw).toString() } catch { return null }
+  })()
   /**
    * Exact: an LP balance is a base-unit integer that can exceed 2^53, and
    * flooring is what keeps "Max" from asking for one unit more than is held.
    */
-  const withdrawBase = big(lpBalanceRaw)
+  const withdrawBase = big(lpBalanceBase ?? '0')
     .times(withdrawPct)
     .dividedBy(100)
     .integerValue(ROUND_DOWN)
     .toFixed(0)
-  const withdrawRaw = Number(withdrawBase)
-  const { quote: withdrawQuote, isLoading: withdrawQuoteLoading } = usePoolWithdrawQuote(
+  const withdrawRaw = num(withdrawBase)
+  const { quote: withdrawQuote, isLoading: withdrawQuoteLoading, isValidating: withdrawValidating, error: withdrawQuoteError, refreshQuote: refreshWithdrawQuote } = usePoolWithdrawQuote(
     assetA || null,
     assetB,
-    withdrawRaw,
+    withdrawBase,
   )
   const minLpQuantity = applySlippage(depositQuote?.quantity_minted_estimate, slippagePercent)
 
@@ -259,7 +262,8 @@ export function PoolManagePanel({
    */
   const isFirstDeposit = depositQuote?.first_deposit === true
   const depositBValue = isFirstDeposit ? depositB : quotedB
-  const depositBResult = toRawAmount(depositBValue, assetBDivisible)
+  const validationB = toBase(depositBValue, assetBDivisible)
+  const depositBResult = validationB.ok ? validationB : null
   const depositBRaw = depositBResult?.raw ?? 0
 
   /**
@@ -297,9 +301,22 @@ export function PoolManagePanel({
   const canonicalA = depositQuote?.asset_a ?? pool?.asset_a ?? null
   const balanceAReady = balanceA !== null && balanceANormalized !== null
   const balanceBReady = balanceB !== null && balanceBNormalized !== null
-  const depositAOverBalance = balanceAReady && num(depositA) > balanceA
-  const depositBOverBalance = balanceBReady && num(depositBValue) > balanceB
+  const depositAOverBalance = balanceAReady && big(depositA).isGreaterThan(big(balanceANormalized))
+  const depositBOverBalance = balanceBReady && big(depositBValue).isGreaterThan(big(balanceBNormalized))
+  const [preparing, setPreparing] = useState(false)
+  const [quoteChanged, setQuoteChanged] = useState(false)
+  const intentVersion = useRef(0)
+  useEffect(() => { intentVersion.current++ }, [depositA, depositBValue, withdrawBase, assetA, assetB, assetADivisible, assetBDivisible, address, slippagePercent, feeRate])
+  const validSettings = validSlippage(slippagePercent) && validFeeRate(feeRate)
+  const depositPairMatches = !!depositQuote &&
+    ((depositQuote.asset_a === assetA && depositQuote.asset_b === assetB) ||
+     (depositQuote.asset_a === assetB && depositQuote.asset_b === assetA))
+  const withdrawPairMatches = !!withdrawQuote &&
+    ((withdrawQuote.asset_a === assetA && withdrawQuote.asset_b === assetB) ||
+     (withdrawQuote.asset_a === assetB && withdrawQuote.asset_b === assetA))
   const depositValid =
+    validSettings && !preparing && !depositQuoteLoading && !depositValidating && !depositQuoteError && depositPairMatches &&
+    (isFirstDeposit || minLpQuantity !== '0') &&
     !!canonicalA &&
     !!depositAResult &&
     !!depositBResult &&
@@ -309,10 +326,21 @@ export function PoolManagePanel({
     balanceBReady &&
     !depositAOverBalance &&
     !depositBOverBalance
-  const withdrawValid = !!pool && withdrawRaw > 0 && withdrawRaw <= lpBalanceRaw
+  const withdrawValid = validSettings && !preparing && !withdrawQuoteLoading && !withdrawValidating && !withdrawQuoteError && withdrawPairMatches &&
+    !!pool && position?.address === address && position?.pool.lp_asset === pool.lp_asset &&
+    withdrawRaw > 0 && big(withdrawBase).isLessThanOrEqualTo(big(lpBalanceRaw)) &&
+    minQuantityA !== '0' && minQuantityB !== '0'
 
-  const submitDeposit = () => {
+  const submitDeposit = async () => {
     if (!depositValid || !canonicalA || !assetB) return
+    const version = intentVersion.current
+    setPreparing(true)
+    try {
+      const fresh = await refreshDepositQuote()
+      if (version !== intentVersion.current) return
+      if (!fresh || JSON.stringify(fresh) !== JSON.stringify(depositQuote)) { setQuoteChanged(true); return }
+    } catch { setQuoteChanged(true); return } finally { setPreparing(false) }
+    setQuoteChanged(false)
     /**
      * Composed in CONSENSUS order regardless of what is on screen. This is
      * the one place the two orders must be reconciled, and it is reconciled
@@ -327,11 +355,20 @@ export function PoolManagePanel({
       quantity_a: displayIsCanonical ? depositAResult!.base : depositBResult!.base,
       quantity_b: displayIsCanonical ? depositBResult!.base : depositAResult!.base,
       min_lp_quantity: minLpQuantity,
+      fee_rate: feeRate || undefined,
     })
   }
 
-  const submitWithdraw = () => {
+  const submitWithdraw = async () => {
     if (!withdrawValid || !pool) return
+    const version = intentVersion.current
+    setPreparing(true)
+    try {
+      const fresh = await refreshWithdrawQuote()
+      if (version !== intentVersion.current) return
+      if (!fresh || JSON.stringify(fresh) !== JSON.stringify(withdrawQuote)) { setQuoteChanged(true); return }
+    } catch { setQuoteChanged(true); return } finally { setPreparing(false) }
+    setQuoteChanged(false)
     // Same reconciliation as the deposit: the minimums are per-asset, and the
     // protocol names them by the pool's order rather than the screen's.
     const displayIsPoolOrder = pool.asset_a === assetA
@@ -340,6 +377,7 @@ export function PoolManagePanel({
       quantity: withdrawBase,
       min_quantity_a: displayIsPoolOrder ? minQuantityA : minQuantityB,
       min_quantity_b: displayIsPoolOrder ? minQuantityB : minQuantityA,
+      fee_rate: feeRate || undefined,
     })
   }
 
@@ -460,7 +498,8 @@ export function PoolManagePanel({
               <AmountField
                 label="Deposit"
                 value={depositA}
-                onChange={(v) => setDepositA(sanitizeAmountInput(v, assetADivisible))}
+                onChange={(v) => setDepositA(sanitizeAmountInput(v))}
+                error={depositA && !validationA.ok ? rawErrorMessage(validationA.error, assetA) : null}
                 chip={<AssetChip asset={assetA} onClick={onSelectAsset && (() => onSelectAsset('a'))} />}
                 sub={balanceLine(
                   balanceA,
@@ -479,9 +518,10 @@ export function PoolManagePanel({
                 // enforcing yet.
                 label={pool && !isFirstDeposit ? 'Paired deposit · at pool ratio' : 'Paired deposit'}
                 value={depositBValue}
+                error={depositBValue && !validationB.ok ? rawErrorMessage(validationB.error, assetB ?? 'asset') : null}
                 onChange={
                   isFirstDeposit
-                    ? (v) => setDepositB(sanitizeAmountInput(v, assetBDivisible))
+                    ? (v) => setDepositB(sanitizeAmountInput(v))
                     : undefined
                 }
                 readOnly={!isFirstDeposit}
@@ -527,7 +567,7 @@ export function PoolManagePanel({
                       {formatAmount(fromRawAmount(depositQuote?.quantity_minted_estimate, true) || 0)}
                     </PoolRow>
                     <PoolRow label={`Min LP · slippage ${slippagePercent}%`}>
-                      {formatAmount(fromRawAmount(minLpQuantity, true) || 0)}
+                      {fromRawAmount(minLpQuantity, true) || '—'}
                     </PoolRow>
                     {/* What the pool charges swappers, which is what an LP
                         earns. Shown instead of an APR: with this few pool
@@ -540,6 +580,8 @@ export function PoolManagePanel({
             )}
 
             <PanelSection className="space-y-2">
+              {!validSettings && <FormNotice tone="error">Correct the fee rate or slippage in Settings before submitting.</FormNotice>}
+              {quoteChanged && <FormNotice tone="warn">The quote changed or could not be reconfirmed. Review it and submit again.</FormNotice>}
               {detailsUnavailableAsset && (
                 <FormNotice tone="error">
                   Couldn&apos;t load {detailsUnavailableAsset}&apos;s details. Check the asset name or try again.
@@ -597,7 +639,7 @@ export function PoolManagePanel({
                         but as a consequence of the share, not the question. */}
                     <span>
                       {withdrawRaw > 0
-                        ? `${formatAmount(fromRawAmount(withdrawBase, true) || 0)} LP`
+                        ? `${fromRawAmount(withdrawBase, true)} LP`
                         : ''}
                     </span>
                     <span>Your LP: {formatAmount(lpBalance)}</span>
@@ -613,14 +655,14 @@ export function PoolManagePanel({
                 ) : withdrawQuote?.pool_exists && withdrawQuote.quantity_a_estimate != null ? (
                   <>
                     <PoolRow label="You receive (est.)">
-                      {formatAmount(fromRawAmount(withdrawQuote.quantity_a_estimate, assetADivisible) || 0)}{' '}
+                      {formatAmount(fromRawAmount(withdrawEstA, assetADivisible) || 0)}{' '}
                       {assetA} +{' '}
-                      {formatAmount(fromRawAmount(withdrawQuote.quantity_b_estimate, assetBDivisible) || 0)}{' '}
+                      {formatAmount(fromRawAmount(withdrawEstB, assetBDivisible) || 0)}{' '}
                       {assetB}
                     </PoolRow>
                     <PoolRow label={`Min received · slippage ${slippagePercent}%`}>
-                      {formatAmount(fromRawAmount(minQuantityA, assetADivisible) || 0)} {assetA} +{' '}
-                      {formatAmount(fromRawAmount(minQuantityB, assetBDivisible) || 0)} {assetB}
+                      {fromRawAmount(minQuantityA, assetADivisible) || '—'} {assetA} +{' '}
+                      {fromRawAmount(minQuantityB, assetBDivisible) || '—'} {assetB}
                     </PoolRow>
                   </>
                 ) : (
@@ -630,6 +672,8 @@ export function PoolManagePanel({
             )}
 
             <PanelSection className="space-y-2">
+              {!validSettings && <FormNotice tone="error">Correct the fee rate or slippage in Settings before submitting.</FormNotice>}
+              {quoteChanged && <FormNotice tone="warn">The quote changed or could not be reconfirmed. Review it and submit again.</FormNotice>}
               {!hasLpPosition && (
                 <FormNotice tone="error">You hold no LP tokens for this pool.</FormNotice>
               )}

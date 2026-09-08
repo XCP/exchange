@@ -1,13 +1,14 @@
 'use client'
 
-import { useState as useLocalState, useEffect } from 'react'
+import { useState as useLocalState, useEffect, useRef } from 'react'
 import { useWallet } from '@/lib/wallet/wallet-context'
 import { useCompose } from '@/lib/wallet/useCompose'
 import { useFeeRate } from '@/lib/hooks/useNetworkInfo'
 import { usePoolSwapQuote } from '@/lib/hooks/usePools'
 import { COMPOSE_STATUS_LABELS } from '@/utils/constants'
 import { formatAmount } from '@/utils/format-amount'
-import { toBase, fromBaseNumber, big, num, ROUND_DOWN, DIVISIBLE_DECIMALS } from '@/utils/numeric'
+import { toBase, totalToBase, fromBaseNumber, fromBase, rawErrorMessage, big, num } from '@/utils/numeric'
+import { serializeRawInteger } from '@xcp/wallet-sdk/amounts'
 import { useConnectFlow } from '@/lib/wallet/useConnectFlow'
 
 interface TradeFormProps {
@@ -21,26 +22,6 @@ interface TradeFormProps {
   setPriceInput: (v: string) => void
   amountInput: string
   setAmountInput: (v: string) => void
-}
-
-/**
- * A DERIVED amount (price x size, or a quoted fill) as base units.
- *
- * Derived rather than typed, so excess precision is rounded DOWN to what the
- * asset can hold rather than rejected — the user never chose those digits.
- * Rounding down never asks for more than intended.
- *
- * The old `Math.round(amount * 1e8)` was wrong in the other direction: it
- * accepted values the asset cannot represent, turning a fraction on an
- * indivisible asset into a different whole number, and losing digits past
- * 2^53. Null when there is no valid representation, so callers refuse.
- */
-function toRawQuantity(amount: number, divisible: boolean | undefined): string | null {
-  if (!Number.isFinite(amount) || amount <= 0) return null
-  const decimals = divisible === undefined ? undefined : divisible ? DIVISIBLE_DECIMALS : 0
-  if (decimals === undefined) return null
-  const result = toBase(big(amount).toFixed(decimals, ROUND_DOWN), divisible)
-  return result.ok ? result.base : null
 }
 
 export function TradeForm({
@@ -63,78 +44,44 @@ export function TradeForm({
   const feeRate = useFeeRate()
 
   const [orderType, setOrderType] = useLocalState<'limit' | 'market'>('limit')
+  const [preparing, setPreparing] = useLocalState(false)
+  const [quoteChanged, setQuoteChanged] = useLocalState(false)
+  const intentVersion = useRef(0)
+  useEffect(() => { intentVersion.current++ }, [amountInput, priceInput, orderType, tradeTab, baseSymbol, quoteSymbol, baseDivisible, quoteDivisible, walletStatus])
 
-  const handleSubmit = () => {
-    const price = num(priceInput)
-    const amount = num(amountInput?.replace(/,/g, ''))
-    if (!amount || baseDivisible === undefined || quoteDivisible === undefined) return
-
-    // Every leg converts with its OWN asset's flag; a null means the value
-    // has no valid representation and the order must not be composed.
-    const order = (
-      giveAsset: string,
-      give: string | null,
-      getAsset: string,
-      get: string | null,
-    ) => {
-      if (!give || !get) return
-      composeOrder({
-        give_asset: giveAsset,
-        give_quantity: give,
-        get_asset: getAsset,
-        get_quantity: get,
-      })
-    }
-
+  const typedDivisible = orderType === 'market' && tradeTab === 'buy' ? quoteDivisible : baseDivisible
+  const amountResult = toBase(amountInput, typedDivisible)
+  const totalResult = totalToBase(priceInput, amountInput, quoteDivisible, tradeTab === 'sell' ? 'ceil' : 'floor')
+  const handleSubmit = async () => {
+    if (!canSubmit || !amountResult.ok) return
     if (orderType === 'market') {
-      if (!preview?.received) return
-      if (tradeTab === 'buy') {
-        order(
-          quoteSymbol,
-          toRawQuantity(amount, quoteDivisible),
-          baseSymbol,
-          toRawQuantity(preview.received, baseDivisible),
-        )
-      } else {
-        order(
-          baseSymbol,
-          toRawQuantity(amount, baseDivisible),
-          quoteSymbol,
-          toRawQuantity(preview.received, quoteDivisible),
-        )
-      }
+      if (!swapQuote) return
+      const minimum = serializeRawInteger(swapQuote.estimated_output, { min: 1n })
+      const version = intentVersion.current
+      setPreparing(true)
+      try {
+        const fresh = await refreshQuote()
+        if (version !== intentVersion.current) return
+        if (!fresh || big(fresh.estimated_output).isLessThan(minimum)) { setQuoteChanged(true); return }
+      } catch { setQuoteChanged(true); return } finally { setPreparing(false) }
+      setQuoteChanged(false)
+      composeOrder({
+        give_asset: spendAsset, give_quantity: amountResult.base,
+        get_asset: receiveAsset, get_quantity: minimum,
+      })
       return
     }
-
-    if (!price) return
-
-    // The total is priced with BigNumber rather than `price * amount`, so the
-    // quote leg is exact before it is rounded to the asset's precision.
-    const total = num(big(price).times(amount))
-
-    if (tradeTab === 'buy') {
-      // Buy BASE: give QUOTE, get BASE
-      order(
-        quoteSymbol,
-        toRawQuantity(total, quoteDivisible),
-        baseSymbol,
-        toRawQuantity(amount, baseDivisible),
-      )
-    } else {
-      // Sell BASE: give BASE, get QUOTE
-      order(
-        baseSymbol,
-        toRawQuantity(amount, baseDivisible),
-        quoteSymbol,
-        toRawQuantity(total, quoteDivisible),
-      )
-    }
+    if (!totalResult.ok) return
+    composeOrder({
+      give_asset: tradeTab === 'buy' ? quoteSymbol : baseSymbol,
+      give_quantity: tradeTab === 'buy' ? totalResult.base : amountResult.base,
+      get_asset: tradeTab === 'buy' ? baseSymbol : quoteSymbol,
+      get_quantity: tradeTab === 'buy' ? amountResult.base : totalResult.base,
+    })
   }
-
-  const isBusy = txStatus === 'composing' || txStatus === 'signing' || txStatus === 'broadcasting'
-  const price = num(priceInput)
-  const amount = num(amountInput?.replace(/,/g, ''))
-  const isValid = orderType === 'market' ? amount > 0 : price > 0 && amount > 0
+  const isBusy = preparing || txStatus === 'composing' || txStatus === 'signing' || txStatus === 'broadcasting'
+  const isValid = amountResult.ok && amountResult.base !== '0' &&
+    (orderType === 'market' || (totalResult.ok && totalResult.base !== '0'))
 
   // ── Best-execution preview: quote this order against the book + pool ──
   const [debAmount, setDebAmount] = useLocalState(amountInput)
@@ -142,24 +89,26 @@ export function TradeForm({
   useEffect(() => {
     const t = setTimeout(() => setDebAmount(amountInput), 300)
     return () => clearTimeout(t)
-  }, [amountInput])
+  }, [amountInput, setDebAmount])
   useEffect(() => {
     const t = setTimeout(() => setDebPrice(priceInput), 300)
     return () => clearTimeout(t)
-  }, [priceInput])
+  }, [priceInput, setDebPrice])
 
-  const dAmount = num(debAmount?.replace(/,/g, ''))
+  const dAmount = num(debAmount)
   const dPrice = num(debPrice)
   const receiveAsset = tradeTab === 'buy' ? baseSymbol : quoteSymbol
   const receiveDivisible = tradeTab === 'buy' ? baseDivisible : quoteDivisible
   const sellDivisible = tradeTab === 'buy' ? quoteDivisible : baseDivisible
-  // What you'd sell to execute this order at market now (a buy spends price×amount of quote).
-  const sellHuman = orderType === 'market' ? dAmount : tradeTab === 'buy' ? dPrice * dAmount : dAmount
-  // The quote endpoint takes a number; the exact base string is what gets
-  // SIGNED, and that path goes through toRawQuantity in handleSubmit.
-  const sellQtyBase = sellHuman > 0 ? toRawQuantity(sellHuman, sellDivisible) : null
-  const sellQtyRaw = sellQtyBase ? Number(sellQtyBase) : 0
-  const { quote: swapQuote } = usePoolSwapQuote(sellQtyRaw > 0 ? spendAsset : null, receiveAsset, sellQtyRaw)
+  const debResult = toBase(debAmount, typedDivisible)
+  const debTotal = totalToBase(debPrice, debAmount, quoteDivisible, tradeTab === 'sell' ? 'ceil' : 'floor')
+  const inputsCurrent = debAmount === amountInput && (orderType === 'market' || debPrice === priceInput)
+  const sellQtyBase = isValid && inputsCurrent && debResult.ok
+    ? orderType === 'limit' && tradeTab === 'buy' ? debTotal.ok ? debTotal.base : null : debResult.base
+    : null
+  const sellQtyRaw = sellQtyBase ? num(sellQtyBase) : 0
+  const sellHuman = fromBaseNumber(sellQtyBase ?? '0', sellDivisible)
+  const { quote: swapQuote, isLoading: quoteLoading, isValidating: quoteValidating, error: quoteError, refreshQuote } = usePoolSwapQuote(sellQtyBase ? spendAsset : null, receiveAsset, sellQtyBase)
 
   const fromRaw = (raw: number | string, divisible: boolean) => fromBaseNumber(raw, divisible)
   let preview: {
@@ -225,15 +174,20 @@ export function TradeForm({
   const displayedPrice = orderType === 'market' && preview?.avgPrice != null ? formatAmount(preview.avgPrice) : priceInput
   const amountLabel = orderType === 'market' && tradeTab === 'buy' ? quoteSymbol : baseSymbol
   const totalValue = orderType === 'market'
-    ? preview?.received != null ? preview.received.toFixed(8) : '0.00000000'
+    ? swapQuote ? fromBase(swapQuote.estimated_output, receiveDivisible) : ''
     : priceInput && amountInput
-      ? big(priceInput).times(big(amountInput.replace(/,/g, ''))).toFixed(8)
+      ? big(priceInput).times(big(amountInput)).toFixed(8)
       : '0.00000000'
   const totalLabel = orderType === 'market' ? `Est receive (${receiveAsset})` : `Total (${quoteSymbol})`
-  const canSubmit = orderType === 'market' ? isValid && !!preview?.received : isValid
+  const canSubmit = !isBusy && isValid && (orderType !== 'market' || (inputsCurrent && !quoteLoading && !quoteValidating && !quoteError && !!preview?.received))
 
   return (
     <div className="p-3 border-b border-zinc-800">
+      {amountInput && !amountResult.ok && <p role="alert" className="mb-2 text-xs text-amber-400">{rawErrorMessage(amountResult.error, orderType === 'market' ? spendAsset : baseSymbol)}</p>}
+      {orderType === 'limit' && priceInput && !totalResult.ok && <p role="alert" className="mb-2 text-xs text-amber-400">{rawErrorMessage(totalResult.error, quoteSymbol)}</p>}
+      {isValid && <p className="mb-2 break-all text-xs text-zinc-400">{orderType === 'limit' && totalResult.ok ? 'Order total: ' + fromBase(totalResult.base, quoteDivisible) + ' ' + quoteSymbol : ''}</p>}
+      {orderType === 'market' && isValid && amountResult.ok && swapQuote && <p className="mb-2 break-all text-xs text-zinc-400">Spend {fromBase(amountResult.base, typedDivisible)} {spendAsset}; receive at least {fromBase(swapQuote.estimated_output, receiveDivisible)} {receiveAsset}.</p>}
+      {quoteChanged && <p role="alert" className="mb-2 text-xs text-amber-400">The quote changed or could not be reconfirmed. Review the latest amounts before submitting.</p>}
       {/* Buy/Sell toggle */}
       <div className="mb-3 flex rounded-sm overflow-hidden">
         <button
@@ -264,8 +218,16 @@ export function TradeForm({
           <label className="mb-1 block text-xs text-zinc-500">Amount ({amountLabel})</label>
           <input
             type="text"
+            aria-label={`Amount (${amountLabel})`}
+            aria-invalid={amountInput !== '' && !amountResult.ok}
             value={amountInput}
             onChange={(e) => setAmountInput(e.target.value)}
+            onPaste={(event) => {
+              event.preventDefault()
+              const start = event.currentTarget.selectionStart ?? amountInput.length
+              const end = event.currentTarget.selectionEnd ?? start
+              setAmountInput(amountInput.slice(0, start) + event.clipboardData.getData('text') + amountInput.slice(end))
+            }}
             placeholder="0"
             className="w-full rounded-sm border border-zinc-800 bg-zinc-900 px-3 py-1.5 text-xs text-zinc-200 placeholder-zinc-700 outline-none focus:border-zinc-600 transition-colors font-mono"
           />
@@ -291,9 +253,17 @@ export function TradeForm({
           <label className="mb-1 block text-xs text-zinc-500">Price ({quoteSymbol})</label>
           <input
             type="text"
+            aria-label={`Price (${quoteSymbol})`}
             value={displayedPrice}
             onChange={(e) => {
               if (orderType === 'limit') setPriceInput(e.target.value)
+            }}
+            onPaste={(event) => {
+              if (orderType !== 'limit') return
+              event.preventDefault()
+              const start = event.currentTarget.selectionStart ?? priceInput.length
+              const end = event.currentTarget.selectionEnd ?? start
+              setPriceInput(priceInput.slice(0, start) + event.clipboardData.getData('text') + priceInput.slice(end))
             }}
             disabled={orderType === 'market'}
             className={`w-full rounded-sm border border-zinc-800 bg-zinc-900 px-3 py-1.5 text-xs outline-none transition-colors font-mono ${

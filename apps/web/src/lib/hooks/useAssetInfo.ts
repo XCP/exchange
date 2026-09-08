@@ -33,11 +33,15 @@ export function useAssetInfo(asset: string | null | undefined) {
   const { data, error, isLoading, mutate } = useSWR<CounterpartyAssetResponse>(
     asset ? counterpartyUrl(`/assets/${encodeURIComponent(asset)}?verbose=true`) : null,
     fetcher,
+    { keepPreviousData: false },
   )
+  const result = data?.result
+  const matches = !!result && typeof result.divisible === 'boolean' &&
+    (result.asset === asset || result.asset_longname === asset)
 
   return {
-    info: data?.result ?? null,
-    error,
+    info: matches ? result : null,
+    error: result && !matches ? new Error('Asset metadata does not match the requested asset') : error,
     notFound: data != null && !data.result,
     isLoading,
     mutate,

@@ -1,7 +1,7 @@
 'use client'
 
 import Image from 'next/image'
-import { useState, type ReactNode } from 'react'
+import { useId, useState, type ReactNode } from 'react'
 import { XCP_IMG_BASE } from '@/utils/constants'
 
 /**
@@ -42,6 +42,7 @@ export function AmountField({
   sub,
   placeholder = '0',
   dim,
+  error,
 }: {
   label: string
   /** Right of the label — presets, balance, price hints. */
@@ -60,11 +61,13 @@ export function AmountField({
    * visibly not the answer yet.
    */
   dim?: boolean
+  error?: string | null
 }) {
+  const id = useId()
   return (
     <div>
       <div className="mb-1.5 flex items-center justify-between gap-2">
-        <span className="text-sm text-zinc-500">{label}</span>
+        <label htmlFor={id} className="text-sm text-zinc-500">{label}</label>
         {meta}
       </div>
       <div className="flex items-center gap-3">
@@ -84,9 +87,27 @@ export function AmountField({
           </span>
         ) : (
           <input
+            id={id}
             inputMode="decimal"
+            type="text"
             value={value}
-            onChange={(e) => onChange?.(e.target.value.replace(/[^0-9.]/g, ''))}
+            onChange={(e) => onChange?.(e.target.value)}
+            onPaste={(event) => {
+              // Read the clipboard before the single-line input removes CR/LF.
+              // The retained draft remains invalid even if the DOM cannot show
+              // its line breaks; the field's error explains the rejection.
+              event.preventDefault()
+              const input = event.currentTarget
+              const start = input.selectionStart ?? value.length
+              const end = input.selectionEnd ?? start
+              onChange?.(value.slice(0, start) + event.clipboardData.getData('text') + value.slice(end))
+            }}
+            onDrop={(event) => {
+              event.preventDefault()
+              onChange?.(event.dataTransfer.getData('text/plain'))
+            }}
+            aria-invalid={!!error}
+            aria-describedby={error ? `${id}-error` : undefined}
             placeholder={placeholder}
             className="min-w-0 flex-1 bg-transparent text-4xl font-light tabular-nums text-zinc-100 placeholder:text-zinc-600 focus:outline-none"
           />
@@ -94,6 +115,7 @@ export function AmountField({
         <div className="shrink-0">{chip}</div>
       </div>
       {sub && <div className="mt-1.5 text-xs text-zinc-500">{sub}</div>}
+      {error && <p id={`${id}-error`} role="alert" className="mt-1.5 text-xs text-amber-400">{error}</p>}
     </div>
   )
 }

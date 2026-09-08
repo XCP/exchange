@@ -3,6 +3,45 @@
 import { RiSettings3Line } from 'react-icons/ri'
 import { Popover } from '@/components/ui/popover'
 import { MiniChip } from '@/components/ui/form-kit'
+import { useId, useState } from 'react'
+import { parseAmountDraft } from '@xcp/wallet-sdk/amounts'
+
+/** Complete drafts survive every keystroke; invalid text cannot leave the
+ * previous valid fee/expiry in force behind the field. */
+export function SettingInput({ value, onChange, label, min, max, integer = false, placeholder }: {
+  value: number; onChange: (value: number) => void; label: string
+  min: number; max: number; integer?: boolean; placeholder?: string
+}) {
+  const id = useId()
+  const text = (v: number) => Number.isFinite(v) ? (placeholder && v === 0 ? '' : String(v)) : ''
+  const [draft, setDraft] = useState({ value, text: text(value) })
+  if (!Object.is(draft.value, value)) setDraft({ value, text: text(value) })
+  const invalid = !Number.isFinite(value)
+  const change = (next: string) => {
+    const parsed = parseAmountDraft(next, { decimals: integer ? 0 : 8 })
+    const amount = parsed.status === 'valid' ? Number(parsed.canonical) : NaN
+    const accepted = amount >= min && amount <= max ? amount : NaN
+    setDraft({ value: accepted, text: next })
+    onChange(accepted)
+  }
+  return <span>
+    <input id={id} type="text" inputMode={integer ? 'numeric' : 'decimal'} aria-label={label}
+      value={draft.text} placeholder={placeholder} aria-invalid={invalid}
+      aria-describedby={invalid ? `${id}-error` : undefined}
+      onChange={(event) => change(event.target.value)}
+      onPaste={(event) => {
+        event.preventDefault()
+        const start = event.currentTarget.selectionStart ?? draft.text.length
+        const end = event.currentTarget.selectionEnd ?? start
+        change(draft.text.slice(0, start) + event.clipboardData.getData('text') + draft.text.slice(end))
+      }}
+      onDrop={(event) => { event.preventDefault(); change(event.dataTransfer.getData('text/plain')) }}
+      className="w-20 rounded-md border border-zinc-700 bg-zinc-900 px-1.5 py-0.5 text-right text-[11px] text-zinc-200 focus:border-zinc-500 focus:outline-none" />
+    {invalid && <span id={`${id}-error`} role="alert" className="mt-1 block text-xs text-amber-400">
+      Enter {integer ? 'a whole number' : 'a decimal using a period'} from {min} to {max}.
+    </span>}
+  </span>
+}
 
 /**
  * The gear beside every form's tab row.
@@ -70,17 +109,11 @@ export function SlippageSetting({
             {s}%
           </MiniChip>
         ))}
-        <input
-          type="number"
-          min={0.1}
-          max={50}
-          step={0.1}
-          value={value}
-          onChange={(e) => {
-            onChange(Math.min(50, Math.max(0.1, Number(e.target.value) || 1)))
+        <SettingInput label="Max slippage" min={0.01} max={50} value={value}
+          onChange={(next) => {
+            onChange(next)
             onAutoChange(false)
           }}
-          className="w-16 rounded-md border border-zinc-700 bg-zinc-900 px-1.5 py-0.5 text-right text-[11px] text-zinc-200 focus:border-zinc-500 focus:outline-none"
         />
       </div>
       <p className="mt-1.5 text-[11px] leading-snug text-zinc-500">
@@ -117,15 +150,7 @@ export function PoolSlippageSetting({
             {s}%
           </MiniChip>
         ))}
-        <input
-          type="number"
-          min={0.1}
-          max={50}
-          step={0.1}
-          value={value}
-          onChange={(e) => onChange(Math.min(50, Math.max(0.1, Number(e.target.value) || 1)))}
-          className="w-16 rounded-md border border-zinc-700 bg-zinc-900 px-1.5 py-0.5 text-right text-[11px] text-zinc-200 focus:border-zinc-500 focus:outline-none"
-        />
+        <SettingInput label="Max slippage" min={0.01} max={50} value={value} onChange={onChange} />
       </div>
       <p className="mt-1.5 text-[11px] leading-snug text-zinc-500">
         The floor on what you accept back. Reserves can move between composing and
@@ -166,16 +191,10 @@ export function ExpirationSetting({
             {label}
           </MiniChip>
         ))}
-        <input
-          type="number"
-          min={1}
-          value={value}
-          onChange={(e) => onChange(Math.max(1, parseInt(e.target.value, 10) || 5000))}
-          className="w-20 rounded-md border border-zinc-700 bg-zinc-900 px-1.5 py-0.5 text-right text-[11px] text-zinc-200 focus:border-zinc-500 focus:outline-none"
-        />
+        <SettingInput label="Expiration in blocks" min={1} max={8064} integer value={value} onChange={onChange} />
       </div>
       <p className="mt-1.5 text-[11px] leading-snug text-zinc-500">
-        {value.toLocaleString()} blocks — roughly {days} day{days === 1 ? '' : 's'}.
+        {Number.isFinite(value) ? `${value.toLocaleString()} blocks — roughly ${days} days.` : 'Correct the expiration before submitting.'}
       </p>
     </label>
   )
@@ -220,19 +239,12 @@ export function FeeRateSetting({
             </MiniChip>
           </>
         )}
-        <input
-          type="number"
-          min={0}
-          value={value || ''}
-          placeholder="auto"
-          onChange={(e) => onChange(Math.max(0, parseInt(e.target.value, 10) || 0))}
-          className="w-16 rounded-md border border-zinc-700 bg-zinc-900 px-1.5 py-0.5 text-right text-[11px] text-zinc-200 placeholder:text-zinc-600 focus:border-zinc-500 focus:outline-none"
-        />
+        <SettingInput label="Fee rate in sat/vB" min={0} max={10_000} value={value} onChange={onChange} placeholder="auto" />
       </div>
       <p className="mt-1.5 text-[11px] leading-snug text-zinc-500">
         {value === 0
           ? `Auto uses the next-block rate${suggested != null ? ` (~${suggested} sat/vB)` : ''}.`
-          : `${value} sat/vB. ${hint ?? 'A higher rate confirms sooner.'}`}
+          : Number.isFinite(value) ? `${value} sat/vB. ${hint ?? 'A higher rate confirms sooner.'}` : 'Correct the fee rate before submitting.'}
       </p>
     </label>
   )

@@ -1,4 +1,5 @@
 import BigNumber from 'bignumber.js'
+import { fromBase } from '@/utils/numeric'
 import { formatCommas } from '@/utils/format-commas'
 import { QUOTE_ASSETS, QUOTE_KEYWORDS } from '@/utils/constants'
 import type { AssetInfo, Order } from '@/types/trading'
@@ -16,8 +17,8 @@ const isQuoteAssetFallback = (symbol: string): boolean => {
   return QUOTE_KEYWORDS.some(keyword => symbol.toUpperCase().includes(keyword))
 }
 
-const getAssetSymbol = (assetInfo: AssetInfo, fallback: string): string => {
-  return assetInfo.asset_longname ? assetInfo.asset_longname : fallback
+const getAssetSymbol = (assetInfo: AssetInfo | undefined, fallback: string): string => {
+  return assetInfo?.asset_longname || fallback
 }
 
 export function assetsToTradingPairFromSymbols(giveSymbol: string, getSymbol: string): [string, string] {
@@ -101,38 +102,37 @@ export function getTradingDirection(order: Order): 'buy' | 'sell' {
   return order.give_asset === quote ? 'buy' : 'sell'
 }
 
-export function calculatePrice(order: Order): string {
-  const [baseSymbol, quoteSymbol] = assetsToTradingPair(order)
-  const baseQuantity = new BigNumber(order.give_asset === baseSymbol ? order.give_quantity_normalized : order.get_quantity_normalized)
-  const quoteQuantity = new BigNumber(order.give_asset === quoteSymbol ? order.give_quantity_normalized : order.get_quantity_normalized)
-  const price = quoteQuantity.dividedBy(baseQuantity)
-  return formatCommas(price.toFixed(8))
+/** Scale each raw leg with that leg's metadata, never with the quote asset's scale. */
+function legQuantity(order: Order, leg: 'give' | 'get', remaining = false): string {
+  return fromBase(order[`${leg}_${remaining ? 'remaining' : 'quantity'}`], order[`${leg}_asset_info`]?.divisible)
 }
 
 export function calculatePricePlain(order: Order): string {
-  const [baseSymbol, quoteSymbol] = assetsToTradingPair(order)
-  const baseQuantity = new BigNumber(order.give_asset === baseSymbol ? order.give_quantity_normalized : order.get_quantity_normalized)
-  const quoteQuantity = new BigNumber(order.give_asset === quoteSymbol ? order.give_quantity_normalized : order.get_quantity_normalized)
-  const price = quoteQuantity.dividedBy(baseQuantity)
-  return price.toFixed(8)
+  // Raw asset IDs select the leg; a subasset display name does not equal its A-name.
+  const [baseSymbol] = assetsToTradingPair(order, true)
+  const baseLeg = order.give_asset === baseSymbol ? 'give' : 'get'
+  const base = new BigNumber(legQuantity(order, baseLeg))
+  const quote = new BigNumber(legQuantity(order, baseLeg === 'give' ? 'get' : 'give'))
+  return base.isPositive() && quote.isFinite() ? quote.dividedBy(base).toFixed(8) : ''
+}
+
+export function calculatePrice(order: Order): string {
+  const price = calculatePricePlain(order)
+  return price ? formatCommas(price) : '—'
+}
+
+export function calculateAmountPlain(order: Order): string {
+  const [baseSymbol] = assetsToTradingPair(order, true)
+  return legQuantity(order, order.give_asset === baseSymbol ? 'give' : 'get', order.status === 'open')
 }
 
 export function calculateAmount(order: Order): string {
-  const [baseSymbol] = assetsToTradingPair(order)
-  const baseQuantity = new BigNumber(
-    order.status === 'open'
-      ? order.give_asset === baseSymbol
-        ? order.give_remaining_normalized
-        : order.get_remaining_normalized
-      : order.give_asset === baseSymbol
-      ? order.give_quantity_normalized
-      : order.get_quantity_normalized
-  )
-  return formatCommas(baseQuantity.toFixed(8))
+  const amount = calculateAmountPlain(order)
+  return amount ? formatCommas(amount) : '—'
 }
 
 export function calculateTotal(order: Order): string {
-  const [, quoteSymbol] = assetsToTradingPair(order)
-  const quoteQuantity = new BigNumber(order.give_asset === quoteSymbol ? order.give_quantity_normalized : order.get_quantity_normalized)
-  return formatCommas(quoteQuantity.toFixed(8))
+  const [, quoteSymbol] = assetsToTradingPair(order, true)
+  const total = legQuantity(order, order.give_asset === quoteSymbol ? 'give' : 'get', order.status === 'open')
+  return total ? formatCommas(total) : '—'
 }

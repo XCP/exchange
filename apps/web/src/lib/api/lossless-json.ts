@@ -1,7 +1,7 @@
 /**
  * JSON parsing that does not silently round large integers.
  *
- * A Counterparty quantity is an unsigned 64-bit integer. `JSON.parse` has no
+ * A Counterparty quantity is a nonnegative signed 64-bit integer. `JSON.parse` has no
  * big-integer mode: a JSON integer above 2^53-1 is approximated to the
  * nearest double *during parsing*, before any application code runs. No
  * amount of BigNumber discipline downstream can recover those digits, because
