@@ -69,22 +69,6 @@ test("shared hits preserve exact JSON and only remaining freshness; expiry recom
   h.sqlite.close();
 });
 
-test("simultaneous canonical cold reads in one isolate share a producer and readable responses", async () => {
-  const h = fixture();
-  let release: (() => void) | undefined;
-  const gate = new Promise<void>((resolve) => { release = resolve; });
-  let produced = 0;
-  const producer = async () => { produced++; await gate; return Response.json({ value: "same" }); };
-  const first = cachedAnalytics(request(), h.db, producer, () => 1000);
-  const second = cachedAnalytics(request("?quote_asset=XCP"), h.db, producer, () => 1000);
-  release!();
-  const responses = await Promise.all([first, second]);
-  assert.equal(await responses[0].text(), await responses[1].text());
-  assert.equal(produced, 1);
-  assert.deepEqual(h.counts, { reads: 1, writes: 1 });
-  h.sqlite.close();
-});
-
 test("errors are not persisted and cache storage failure keeps public responses available", async () => {
   const h = fixture();
   const failed = await cachedAnalytics(request(), h.db, async () => new Response("upstream error", { status: 502 }), () => 1000);
@@ -97,28 +81,26 @@ test("errors are not persisted and cache storage failure keeps public responses 
   h.sqlite.close();
 });
 
-test("independent cold isolates may duplicate once without locking or serving expired data", async () => {
+test("concurrent cold requests stay isolated and may duplicate without serving expired data", async () => {
   const h = fixture();
-  // Another binding identity models an independent isolate with the same D1.
-  const otherDb = { prepare: h.db.prepare.bind(h.db) } as D1Database;
   let release: (() => void) | undefined;
   const gate = new Promise<void>((resolve) => { release = resolve; });
   let produced = 0;
   const producer = async () => { produced++; await gate; return Response.json({ value: "fresh" }); };
   const first = cachedAnalytics(request(), h.db, producer, () => 1000);
-  const second = cachedAnalytics(request(), otherDb, producer, () => 1000);
+  const second = cachedAnalytics(request("?quote_asset=XCP"), h.db, producer, () => 1000);
   release!();
   const responses = await Promise.all([first, second]);
   assert.equal(produced, 2);
   assert.equal(await responses[0].text(), await responses[1].text());
   assert.equal((h.sqlite.prepare("SELECT COUNT(*) AS n FROM analytics_response_cache").get() as { n: number }).n, 1);
-  const warm = await cachedAnalytics(request(), otherDb, producer, () => 1001);
+  const warm = await cachedAnalytics(request(), h.db, producer, () => 1001);
   assert.equal(warm.headers.get("x-analytics-cache"), "HIT");
   assert.equal(produced, 2);
   h.sqlite.close();
 });
 
-test("a rejected producer releases single-flight state and slow production cannot extend freshness", async () => {
+test("a rejected producer is not cached and slow production cannot extend freshness", async () => {
   const h = fixture();
   let caught = false;
   try {

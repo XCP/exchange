@@ -4,6 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "typegen": "wrangler types --include-runtime false",
+    "types:check": "wrangler types --include-runtime false --check",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
@@ -42,6 +44,6 @@
     "tailwindcss": "^4",
     "typescript": "^5",
     "vitest": "^4.1.11",
-    "wrangler": "4.125.0"
+    "wrangler": "4.129.1"
   }
 }

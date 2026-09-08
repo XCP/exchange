@@ -10,6 +10,7 @@ import { getMode } from "./state";
 import { checkpointStatements, findCommonCheckpoint, type BlockCheckpoint } from "./block-checkpoint";
 import { makePoolPair } from "../lib/pools";
 import { eventQuantity, normalizeRawQuantity, parseQuantity } from "../lib/quantity";
+import { logError, logInfo } from "../lib/log";
 import {
   findPoolPairByLpAsset,
   findPoolLpAsset,
@@ -694,7 +695,11 @@ export async function syncBlocks(
     }
   } else if (currentBlock.block_index < lastBlock) {
     // Chain tip went backwards - obvious reorg
-    console.log(`Reorg detected: chain tip ${currentBlock.block_index} < checkpoint ${lastBlock}`);
+    logInfo("CHAIN_REORG_DETECTED", {
+      reason: "tip_behind_checkpoint",
+      chain_tip: currentBlock.block_index,
+      checkpoint: lastBlock,
+    });
     rollbackCheckpoint = await findCommonCheckpoint(db, currentBlock.block_index, height => fetchBlockHash(apiBase, height));
   } else if (lastHashRow) {
     // Same-height reorg detection: verify our checkpoint block hash hasn't changed
@@ -702,10 +707,12 @@ export async function syncBlocks(
       ? currentBlock.block_hash
       : await fetchBlockHash(apiBase, lastBlock);
     if (checkpointHash !== lastHashRow.value) {
-      console.log(
-        `Reorg detected at block ${lastBlock}: hash mismatch ` +
-        `(stored=${lastHashRow.value.slice(0, 16)}... actual=${checkpointHash.slice(0, 16)}...)`
-      );
+      logInfo("CHAIN_REORG_DETECTED", {
+        reason: "checkpoint_hash_mismatch",
+        block_index: lastBlock,
+        stored_hash_prefix: lastHashRow.value.slice(0, 16),
+        actual_hash_prefix: checkpointHash.slice(0, 16),
+      });
       rollbackCheckpoint = await findCommonCheckpoint(db, lastBlock - 1, height => fetchBlockHash(apiBase, height));
     }
   }
@@ -994,7 +1001,7 @@ export async function syncBlocks(
         switch (event.event) {
           case "ORDER_MATCH": {
             if (!eventBlockTime) {
-              console.error(`Block ${blockIdx}: skipping ORDER_MATCH - no block_time`);
+              logError("BLOCK_EVENT_SKIPPED", { block_index: blockIdx, event: "ORDER_MATCH", reason: "missing_block_time" });
               break;
             }
             // Only insert completed order matches - pending/expired matches
@@ -1029,7 +1036,7 @@ export async function syncBlocks(
 
           case "OPEN_ORDER": {
             if (!eventBlockTime) {
-              console.error(`Block ${blockIdx}: skipping OPEN_ORDER - no block_time`);
+              logError("BLOCK_EVENT_SKIPPED", { block_index: blockIdx, event: "OPEN_ORDER", reason: "missing_block_time" });
               break;
             }
             const opened = processOpenOrder(params, blockIndex, eventBlockTime, now);
@@ -1093,7 +1100,7 @@ export async function syncBlocks(
 
           case "OPEN_DISPENSER": {
             if (!eventBlockTime) {
-              console.error(`Block ${blockIdx}: skipping OPEN_DISPENSER - no block_time`);
+              logError("BLOCK_EVENT_SKIPPED", { block_index: blockIdx, event: "OPEN_DISPENSER", reason: "missing_block_time" });
               break;
             }
             const dispenserStmt = processOpenDispenser(params, blockIndex, eventBlockTime, now);
@@ -1122,7 +1129,7 @@ export async function syncBlocks(
 
           case "DISPENSE": {
             if (!eventBlockTime) {
-              console.error(`Block ${blockIdx}: skipping DISPENSE - no block_time`);
+              logError("BLOCK_EVENT_SKIPPED", { block_index: blockIdx, event: "DISPENSE", reason: "missing_block_time" });
               break;
             }
             const dispense = processDispense(params, blockIndex, eventBlockTime);
@@ -1137,7 +1144,7 @@ export async function syncBlocks(
 
           case "OPEN_POOL": {
             if (!eventBlockTime) {
-              console.error(`Block ${blockIdx}: skipping OPEN_POOL - no block_time`);
+              logError("BLOCK_EVENT_SKIPPED", { block_index: blockIdx, event: "OPEN_POOL", reason: "missing_block_time" });
               break;
             }
             const pool = processOpenPool(params, event.event_index, blockIndex, eventBlockTime);
@@ -1153,7 +1160,7 @@ export async function syncBlocks(
 
           case "POOL_UPDATE": {
             if (!eventBlockTime) {
-              console.error(`Block ${blockIdx}: skipping POOL_UPDATE - no block_time`);
+              logError("BLOCK_EVENT_SKIPPED", { block_index: blockIdx, event: "POOL_UPDATE", reason: "missing_block_time" });
               break;
             }
             const assetA = params.asset_a as string | undefined;
@@ -1186,7 +1193,7 @@ export async function syncBlocks(
 
           case "NEW_POOL_DEPOSIT": {
             if (!eventBlockTime) {
-              console.error(`Block ${blockIdx}: skipping NEW_POOL_DEPOSIT - no block_time`);
+              logError("BLOCK_EVENT_SKIPPED", { block_index: blockIdx, event: "NEW_POOL_DEPOSIT", reason: "missing_block_time" });
               break;
             }
             const assetA = params.asset_a as string | undefined;
@@ -1215,7 +1222,7 @@ export async function syncBlocks(
 
           case "NEW_POOL_WITHDRAWAL": {
             if (!eventBlockTime) {
-              console.error(`Block ${blockIdx}: skipping NEW_POOL_WITHDRAWAL - no block_time`);
+              logError("BLOCK_EVENT_SKIPPED", { block_index: blockIdx, event: "NEW_POOL_WITHDRAWAL", reason: "missing_block_time" });
               break;
             }
             const assetA = params.asset_a as string | undefined;
@@ -1237,7 +1244,7 @@ export async function syncBlocks(
 
           case "POOL_MATCH": {
             if (!eventBlockTime) {
-              console.error(`Block ${blockIdx}: skipping POOL_MATCH - no block_time`);
+              logError("BLOCK_EVENT_SKIPPED", { block_index: blockIdx, event: "POOL_MATCH", reason: "missing_block_time" });
               break;
             }
             const assetA = params.asset_a as string | undefined;
@@ -1363,9 +1370,12 @@ export async function syncBlocks(
           }
         }
       } catch (e) {
-        console.error(
-          `Block ${blockIdx}: failed to process ${event.event} (event_index=${event.event_index}):`, e
-        );
+        logError("BLOCK_EVENT_PROCESSING_FAILED", {
+          block_index: blockIdx,
+          event: event.event,
+          event_index: event.event_index,
+          error: e,
+        });
         // Never advance the block checkpoint past a relevant event we failed
         // to understand. Retrying an idempotent block is recoverable; silently
         // omitting an order, fill, dispense, or pool mutation is not.
@@ -1398,8 +1408,11 @@ export async function syncBlocks(
       try {
         await batchExec(db, stmts.map((fn) => fn(db)));
       } catch (e) {
-        console.error(`Block ${blockIdx} batch error:`, e);
-        console.error(`Events in block: ${events.map((ev) => ev.event).join(",")}`);
+        logError("BLOCK_BATCH_FAILED", {
+          block_index: blockIdx,
+          events: events.map((ev) => ev.event),
+          error: e,
+        });
         throw e;
       }
     }
@@ -1458,10 +1471,10 @@ export async function syncBlocks(
         await pruneClosedDeals(db);
       }
       if (orderDeals > 0 || dispDeals > 0) {
-        console.log(`[deal-scores] Scored ${orderDeals} orders + ${dispDeals} dispensers`);
+        logInfo("DEAL_SCORES_UPDATED", { orders: orderDeals, dispensers: dispDeals });
       }
     } catch (e) {
-      console.error("[deal-scores] Incremental scoring failed:", e);
+      logError("DEAL_SCORE_UPDATE_FAILED", { error: e });
     }
   }
 

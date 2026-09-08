@@ -1,8 +1,11 @@
 name = "xcpdex-api"
 main = "src/index.ts"
-compatibility_date = "2025-01-01"
+compatibility_date = "2026-09-08"
+compatibility_flags = ["nodejs_compat"]
+upload_source_maps = true
 
-# Aggregator-facing custom domain; workers.dev stays on for existing consumers.
+# The root Worker is deliberately the production deployment. Aggregator-facing
+# custom domain; workers.dev stays on for existing consumers.
 workers_dev = true
 routes = [
   { pattern = "api.xcpdex.com", custom_domain = true },
@@ -20,7 +23,13 @@ routes = [
 # fully visible either way; only the log bodies are now 1-in-20.
 [observability]
 enabled = true
+
+[observability.logs]
 head_sampling_rate = 0.05
+
+[observability.traces]
+enabled = true
+head_sampling_rate = 0.01
 
 [limits]
 cpu_ms = 300000

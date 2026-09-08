@@ -9,6 +9,7 @@
     "rootDir": "."
   },
   "include": [
+    "worker-configuration.d.ts",
     "src/lib/pool-math.ts",
     "src/routes/defillama.ts",
     "src/routes/dispense-ohlc.ts",

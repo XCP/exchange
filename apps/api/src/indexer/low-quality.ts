@@ -1,5 +1,6 @@
 import { setState } from "./state";
 import { discard } from "../lib/net";
+import { logInfo } from "../lib/log";
 
 /**
  * Low-quality asset list, mirrored from xcp.io.
@@ -110,9 +111,11 @@ export async function syncLowQualityAssets(
   const pairsHidden = pairs.meta.changes ?? 0;
   const dispensersHidden = dispensers.meta.changes ?? 0;
   if (pairsHidden > 0 || dispensersHidden > 0) {
-    console.log(
-      `low-quality sync: ${assets.length} assets, hid ${pairsHidden} pairs, ${dispensersHidden} dispenser rows`
-    );
+    logInfo("LOW_QUALITY_SYNC_COMPLETED", {
+      assets: assets.length,
+      pairs_hidden: pairsHidden,
+      dispenser_rows_hidden: dispensersHidden,
+    });
   }
 
   return { assets: assets.length, pairs_hidden: pairsHidden, dispensers_hidden: dispensersHidden };

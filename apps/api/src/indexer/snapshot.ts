@@ -6,6 +6,7 @@ import { updateOrderBookStats } from "./stats";
 import { upsertDispenserAggregates } from "./dispenser-stats";
 import { setState, deleteState } from "./state";
 import { discard } from "../lib/net";
+import { logError } from "../lib/log";
 
 export async function syncOrders(
   db: D1Database,
@@ -28,7 +29,7 @@ export async function syncOrders(
         if (rawGive <= 0) continue;
         allOrders.push(normalizeOrder(order));
       } catch (e) {
-        console.error(`Failed to normalize order ${order.tx_hash}:`, e);
+        logError("ORDER_NORMALIZATION_FAILED", { tx_hash: order.tx_hash, error: e });
       }
     }
 
@@ -133,7 +134,7 @@ export async function syncDispensers(
           const norm = normalizeDispenser(d);
           if (norm) allDispensers.push(norm);
         } catch (e) {
-          console.error(`Failed to normalize dispenser ${d.tx_hash}:`, e);
+          logError("DISPENSER_NORMALIZATION_FAILED", { tx_hash: d.tx_hash, error: e });
         }
       }
 
@@ -230,7 +231,7 @@ export async function runSnapshotStep(
           const norm = normalizeDispenser(d);
           if (norm) chunk.push(norm);
         } catch (e) {
-          console.error(`Failed to normalize dispenser ${d.tx_hash}:`, e);
+          logError("DISPENSER_NORMALIZATION_FAILED", { tx_hash: d.tx_hash, error: e });
         }
       }
 
@@ -298,7 +299,7 @@ export async function runSnapshotStep(
   }
 
   // Unknown phase — reset to start rather than looping forever
-  console.error(`Unknown snapshot phase "${phase}", resetting to "orders"`);
+  logError("UNKNOWN_SNAPSHOT_PHASE", { phase, reset_to: "orders" });
   await setState(db, "snapshot_phase", "orders");
   return { step: "reset", previousPhase: phase };
 }
@@ -359,7 +360,7 @@ export async function reindexOrders(
         )
       );
     } catch (e) {
-      console.error(`Failed to normalize order ${order.tx_hash}:`, e);
+      logError("ORDER_NORMALIZATION_FAILED", { tx_hash: order.tx_hash, error: e });
     }
   }
 

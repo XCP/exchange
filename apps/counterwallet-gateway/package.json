@@ -4,15 +4,21 @@
   "private": true,
   "scripts": {
     "dev": "wrangler pages dev public",
-    "test": "tsc -p tsconfig.test.json && node --test .test-dist/tests/gateway.test.js",
+    "typegen": "wrangler types --include-runtime false",
+    "types:check": "wrangler types --include-runtime false --check",
+    "lint:promises": "oxlint --deny typescript/no-floating-promises src/ functions/",
+    "test": "tsc -p tsconfig.test.json && node --test .test-dist/tests/gateway.test.js && vitest run --config vitest.config.mts",
     "typecheck": "tsc --noEmit",
     "build:pages": "wrangler pages functions build functions --project-directory . --outdir .wrangler/pages-build",
-    "check": "npm run typecheck && npm test && npm run build:pages",
+    "check": "npm run types:check && npm run typecheck && npm run lint:promises && npm test && npm run build:pages",
     "deploy:pages": "wrangler pages deploy public --project-name counterwallet-api --branch main"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "5.20260822.1",
+    "@cloudflare/vitest-plugin": "1.1.5",
+    "@cloudflare/workers-types": "5.20260908.1",
+    "oxlint": "1.82.0",
     "typescript": "^5.7.0",
-    "wrangler": "4.125.0"
+    "vitest": "^4.1.0",
+    "wrangler": "4.129.1"
   }
 }

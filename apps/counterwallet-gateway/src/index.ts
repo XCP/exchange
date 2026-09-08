@@ -1,5 +1,11 @@
-export interface Env {
-  XCPDEX_API: Fetcher;
+export type Env = Cloudflare.Env;
+
+function logError(event: string, fields: Record<string, unknown> = {}): void {
+  console.error(JSON.stringify({ event, ...fields }, (_key, value) =>
+    value instanceof Error
+      ? { name: value.name, message: value.message, stack: value.stack }
+      : value
+  ));
 }
 
 const PRIMARY_HOST = "api.counterwallet.io";
@@ -451,7 +457,7 @@ async function proxyApi(
       })
     );
   } catch (error) {
-    console.error({ event: "GATEWAY_UPSTREAM_FAILURE", upstream: upstreamUrl.toString(), error });
+    logError("GATEWAY_UPSTREAM_FAILURE", { upstream: upstreamUrl.toString(), error });
     return Response.json(
       { error: "market-data upstream unavailable" },
       {
@@ -597,7 +603,7 @@ is not replaced with historical volume.</p>
       "no-store"
     );
   } catch (error) {
-    console.error({ event: "GATEWAY_STATUS_FAILURE", error });
+    logError("GATEWAY_STATUS_FAILURE", { error });
     return htmlResponse(
       request,
       "Counterparty DEX system status",
