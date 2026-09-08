@@ -19,6 +19,13 @@ import {
 import { verifyUtxoAsset } from "../lib/counterparty";
 import { verifyBip322Simple } from "../lib/bip322-verify";
 import type { Env } from "../index";
+import { readJsonObject, jsonBodyError } from "../lib/request-body";
+
+export const SWAP_DETAILS_MAX_BYTES = 64 * 1024;
+// D1 already limits the stored PSBT hex/row to 2 MB. This leaves >2 MiB for
+// signatures and JSON on the signed return trip; PSBT metadata itself has no
+// universal protocol size ceiling, so this is an endpoint resource budget.
+export const SWAP_PSBT_MAX_BYTES = 4 * 1024 * 1024;
 
 const CANCEL_CHALLENGE_MAX_AGE_MS = 5 * 60 * 1000; // 5 minutes
 
@@ -169,9 +176,9 @@ export async function handleCancelSwap(
 ): Promise<Response> {
   let body: Record<string, unknown>;
   try {
-    body = await request.json();
-  } catch {
-    return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+    body = await readJsonObject(request, SWAP_DETAILS_MAX_BYTES);
+  } catch (error) {
+    return jsonBodyError(error);
   }
 
   const seller_address = String(body.seller_address ?? "");
@@ -250,9 +257,9 @@ export async function handlePrepareListingPsbt(
   const db = env.DB;
   let body: Record<string, unknown>;
   try {
-    body = await request.json();
-  } catch {
-    return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+    body = await readJsonObject(request, SWAP_DETAILS_MAX_BYTES);
+  } catch (error) {
+    return jsonBodyError(error);
   }
 
   const seller_address = String(body.seller_address ?? "");
@@ -357,9 +364,9 @@ export async function handleCompleteListingPsbt(
   const db = env.DB;
   let body: Record<string, unknown>;
   try {
-    body = await request.json();
-  } catch {
-    return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+    body = await readJsonObject(request, SWAP_PSBT_MAX_BYTES);
+  } catch (error) {
+    return jsonBodyError(error);
   }
 
   const seller_address = String(body.seller_address ?? "");
@@ -529,9 +536,9 @@ export async function handlePrepareFill(
   const db = env.DB;
   let body: Record<string, unknown>;
   try {
-    body = await request.json();
-  } catch {
-    return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+    body = await readJsonObject(request, SWAP_DETAILS_MAX_BYTES);
+  } catch (error) {
+    return jsonBodyError(error);
   }
 
   const buyer_address = String(body.buyer_address ?? "");
@@ -675,9 +682,9 @@ export async function handleCompleteFill(
 ): Promise<Response> {
   let body: Record<string, unknown>;
   try {
-    body = await request.json();
-  } catch {
-    return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+    body = await readJsonObject(request, SWAP_PSBT_MAX_BYTES);
+  } catch (error) {
+    return jsonBodyError(error);
   }
 
   const fill_request_id = String(body.fill_request_id ?? "");
