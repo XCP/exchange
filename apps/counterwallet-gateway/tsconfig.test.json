@@ -8,5 +8,5 @@
     "outDir": ".test-dist",
     "rootDir": "."
   },
-  "include": ["src/**/*.ts", "tests/node-test.d.ts", "tests/**/*.test.ts"]
+  "include": ["worker-configuration.d.ts", "src/**/*.ts", "tests/node-test.d.ts", "tests/**/*.test.ts"]
 }

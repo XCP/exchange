@@ -8,7 +8,8 @@ import { cors } from 'hono/cors';
 import { bearerAuth } from 'hono/bearer-auth';
 
 import { LOCK_TIMEOUT_SECONDS } from "./lib/constants";
-import { fixScientificNotation } from "./lib/json";
+import { fixScientificNotationStream } from "./lib/json";
+import { logError, logInfo } from "./lib/log";
 import { handleOhlc } from "./routes/ohlc";
 import { handleDispenseOhlc } from "./routes/dispense-ohlc";
 import { handleCombinedOhlc } from "./routes/combined-ohlc";
@@ -60,13 +61,12 @@ import { getMode, setMode, deleteState } from "./indexer/state";
 import { updatePairStats, refreshStalePairStats, refreshLongWindowPairStats, backfillMissingLongnames } from "./indexer/stats";
 import { refreshStaleDispenserStats, refreshLongWindowDispenserStats } from "./indexer/dispenser-stats";
 
-export interface Env {
-  DB: D1Database;
-  CP_API_BASE: string;
+/** Secrets are not present in wrangler.toml by design; all configured service,
+ * storage, and variable bindings come from generated Cloudflare.Env types. */
+export type Env = Cloudflare.Env & {
   INDEXER_TOKEN?: string;
   FEE_ADDRESS?: string;
-  SITE_PRESENCE: DurableObjectNamespace;
-}
+};
 
 type Bindings = Env;
 
@@ -147,15 +147,18 @@ app.use('*', async (c, next) => {
   c.executionCtx.waitUntil(cache.put(c.req.raw, res.clone()));
 });
 
-// Fix scientific notation in JSON responses (e.g. 7.1e-7 -> 0.00000071).
+// Fix scientific notation in JSON responses (e.g. 7.1e-7 -> 0.00000071)
+// while preserving streaming and bounded memory use.
 app.use('*', async (c, next) => {
   await next();
   const ct = c.res.headers.get('Content-Type') || '';
-  if (ct.includes('application/json')) {
-    const text = await c.res.text();
-    c.res = new Response(fixScientificNotation(text), {
+  if (ct.includes('application/json') && c.res.body) {
+    const headers = new Headers(c.res.headers);
+    headers.delete('content-length');
+    c.res = new Response(fixScientificNotationStream(c.res.body), {
       status: c.res.status,
-      headers: c.res.headers,
+      statusText: c.res.statusText,
+      headers,
     });
   }
 });
@@ -524,33 +527,36 @@ async function scheduled(env: Env): Promise<void> {
       case "IDLE": break;
       case "BACKFILL_TRADES": {
         const r = await backfillTrades(env.DB, env.CP_API_BASE, 20);
-        console.log(`Cron: backfill trades - ${r.inserted} inserted, ${r.progress}% done`);
+        logInfo("CRON_BACKFILL_TRADES", { inserted: r.inserted, progress: r.progress });
         break;
       }
       case "BACKFILL_DISPENSES": {
         const r = await backfillDispenses(env.DB, env.CP_API_BASE, 20);
-        console.log(`Cron: backfill dispenses - ${r.inserted} inserted, ${r.progress}% done`);
+        logInfo("CRON_BACKFILL_DISPENSES", { inserted: r.inserted, progress: r.progress });
         break;
       }
       case "BACKFILL_DISPENSERS": {
         const r = await backfillDispensers(env.DB, env.CP_API_BASE, 20);
-        console.log(`Cron: backfill dispensers - ${r.inserted} inserted, ${r.progress}% done`);
+        logInfo("CRON_BACKFILL_DISPENSERS", { inserted: r.inserted, progress: r.progress });
         break;
       }
       case "SNAPSHOT_SYNC": {
         const r = await runSnapshotStep(env.DB, env.CP_API_BASE);
-        console.log(`Cron: snapshot sync - phase=${r.phase}, done=${r.done}`);
+        logInfo("CRON_SNAPSHOT_SYNC", { phase: r.phase, done: r.done });
         break;
       }
       case "BUILD_AGGREGATES": {
         const r = await runCatchupAggregation(env.DB);
-        console.log(`Cron: aggregation - done=${r.done}`);
+        logInfo("CRON_AGGREGATION", { done: r.done });
         break;
       }
       case "REFRESH_STATS": {
         const statResult = await runCatchupStats(env.DB);
         const dispResult = await runCatchupDispenserStats(env.DB);
-        console.log(`Cron: stats refresh - pairs=${statResult.processed}, dispensers=${dispResult.processed}`);
+        logInfo("CRON_STATS_REFRESH", {
+          pairs: statResult.processed,
+          dispensers: dispResult.processed,
+        });
         if (statResult.done && dispResult.done) {
           await setMode(env.DB, "FOLLOWING");
         }
@@ -594,7 +600,9 @@ async function scheduled(env: Env): Promise<void> {
         // stream rather than to be the primary path. Hourly matches the other
         // stale sweeps here.
         await sweepGate("pool_snapshot_swept_at", 3600, () =>
-          syncPools(env.DB, env.CP_API_BASE).catch((e) => console.error(`pool snapshot sweep failed: ${e}`))
+          syncPools(env.DB, env.CP_API_BASE).catch((error) =>
+            logError("POOL_SNAPSHOT_SWEEP_FAILED", { error })
+          )
         );
         await sweepGate("pair_stats_1y_swept_at", 86400, () => refreshLongWindowPairStats(env.DB));
         await sweepGate("dispenser_stats_1y_swept_at", 86400, () => refreshLongWindowDispenserStats(env.DB));
@@ -604,7 +612,9 @@ async function scheduled(env: Env): Promise<void> {
         // xcp.io's low-quality list moves when a human reviews a ring-trade candidate — days apart,
         // not minutes. Daily, and a throw here must not take the rest of the tick down with it.
         await sweepGate("low_quality_synced_at", 86400, () =>
-          syncLowQualityAssets(env.DB).catch((e) => console.error(`low-quality sync failed: ${e}`))
+          syncLowQualityAssets(env.DB).catch((error) =>
+            logError("LOW_QUALITY_SYNC_FAILED", { error })
+          )
         );
         await syncNewAssets(env.DB, 2);
         await backfillMissingLongnames(env.DB, 10);

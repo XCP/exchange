@@ -1,6 +1,7 @@
 import { API_TIMEOUT_MS } from "../lib/constants";
 import { cacheControl } from "../utils/cache";
 import { discard } from "../lib/net";
+import { logError } from "../lib/log";
 
 const BALANCE_CACHE_TTL = 86400; // 1 day in seconds
 
@@ -84,7 +85,7 @@ export async function handlePortfolioBids(
     assets = await fetchBalances(apiBase, address);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    console.error("fetchBalances failed:", msg);
+    logError("BALANCE_FETCH_FAILED", { error: msg });
     return Response.json(
       { error: `Failed to fetch balances: ${msg}` },
       { status: 502 }

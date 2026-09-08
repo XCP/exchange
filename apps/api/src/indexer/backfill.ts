@@ -2,6 +2,7 @@ import { normalizeOrderMatch, NormalizedTrade, normalizeDispensePrice, normalize
 import { fetchOrderMatches, fetchDispenses, fetchDispensers } from "../lib/counterparty";
 import { API_TIMEOUT_MS } from "../lib/constants";
 import { batchExec } from "../lib/batch";
+import { logError } from "../lib/log";
 import { getState, setState } from "./state";
 
 const BATCH_SIZE = 200;
@@ -151,7 +152,7 @@ export async function backfillTrades(
       try {
         trades.push(normalizeOrderMatch(match));
       } catch (e) {
-        console.error(`Failed to normalize match ${match.id}:`, e);
+        logError("ORDER_MATCH_NORMALIZATION_FAILED", { match_id: match.id, error: e });
       }
     }
 

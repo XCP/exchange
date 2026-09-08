@@ -1,6 +1,21 @@
 name = "counterwallet-api"
 pages_build_output_dir = "public"
-compatibility_date = "2025-01-01"
+compatibility_date = "2026-09-08"
+compatibility_flags = ["nodejs_compat"]
+
+# Pages' main branch is production and non-production branches are previews.
+# The service binding is intentionally identical in both: this gateway is a
+# read-only adapter over the production market-data API.
+
+[observability]
+enabled = true
+
+[observability.logs]
+head_sampling_rate = 1
+
+[observability.traces]
+enabled = true
+head_sampling_rate = 0.01
 
 # Pages Functions can keep API traffic inside Cloudflare even though the
 # api.counterwallet.io CNAME remains in Namecheap's authoritative DNS.

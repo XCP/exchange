@@ -1,7 +1,8 @@
 name = "xcpdex"
 main = ".open-next/worker.js"
-compatibility_date = "2025-01-01"
+compatibility_date = "2026-09-08"
 compatibility_flags = ["nodejs_compat"]
+upload_source_maps = true
 
 # Workers Logs. Neither exchange worker had this, so the p99 (329ms CPU, the
 # highest per-request of any worker on the account) could be measured but not
@@ -14,7 +15,13 @@ compatibility_flags = ["nodejs_compat"]
 # fully visible either way; only the log bodies are now 1-in-20.
 [observability]
 enabled = true
+
+[observability.logs]
 head_sampling_rate = 0.05
+
+[observability.traces]
+enabled = true
+head_sampling_rate = 0.01
 
 [assets]
 directory = ".open-next/assets"

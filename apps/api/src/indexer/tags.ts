@@ -1,5 +1,6 @@
 import { setState } from "./state";
 import { discard } from "../lib/net";
+import { logError, logInfo } from "../lib/log";
 
 // app.xcp.io retired 2026-06: its curated collection tags were already synced into D1, and new
 // collections come from the secondary sources below. syncTags() now refreshes counts from D1 only.
@@ -79,7 +80,7 @@ export async function syncTags(db: D1Database, tagType: string): Promise<{ tags:
 
   // 6. Apply exclusions (remove assets that belong to a different collection)
   const excluded = await applyExclusions(db);
-  if (excluded > 0) console.log(`tag sync: removed ${excluded} excluded tag_assets`);
+  if (excluded > 0) logInfo("TAG_EXCLUSIONS_APPLIED", { removed: excluded });
 
   // Record sync timestamp
   await setState(db, `last_tag_sync_${tagType}`, String(Math.floor(Date.now() / 1000)));
@@ -214,7 +215,7 @@ export async function syncPepeWtfCollections(db: D1Database): Promise<{ tags: nu
     // 2. Fetch the full asset list for this collection
     const assetRes = await fetch(`https://api.pepe.wtf/api/asset?collection=${encodeURIComponent(col.slug)}`);
     if (!assetRes.ok) {
-      console.error(`pepe.wtf asset fetch error for ${col.slug}: ${assetRes.status}`);
+      logError("PEPE_WTF_ASSET_FETCH_FAILED", { collection: col.slug, status: assetRes.status });
       // One iteration per collection, hundreds of them: continuing without
       // releasing this leaks a connection slot per failure.
       await discard(assetRes);
@@ -262,7 +263,11 @@ export async function syncPepeWtfCollections(db: D1Database): Promise<{ tags: nu
     }
 
     totalAssets += assets.length;
-    console.log(`pepe.wtf: inserted ${col.name} (${slug}) — ${assets.length} assets`);
+    logInfo("PEPE_WTF_COLLECTION_SYNCED", {
+      collection: col.name,
+      slug,
+      assets: assets.length,
+    });
   }
 
   // Update open orders + dispensers counts for any newly added tags
@@ -397,7 +402,7 @@ export async function syncStampchainCollection(db: D1Database): Promise<{ tags: 
 
   await setState(db, "last_tag_sync_stampchain", String(Math.floor(Date.now() / 1000)));
 
-  console.log(`stampchain: inserted ${name} (${slug}) — ${uniqueAssets.length} assets`);
+  logInfo("STAMPCHAIN_COLLECTION_SYNCED", { collection: name, slug, assets: uniqueAssets.length });
   return { tags: 1, assets: uniqueAssets.length };
 }
 
@@ -482,7 +487,7 @@ async function syncSimpleCollection(
 
   await setState(db, stateKey, String(Math.floor(Date.now() / 1000)));
 
-  console.log(`${name}: inserted (${slug}) — ${assets.length} assets`);
+  logInfo("COLLECTION_SYNCED", { collection: name, slug, assets: assets.length });
   return { tags: 1, assets: assets.length };
 }
 

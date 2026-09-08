@@ -12,6 +12,7 @@ import {
 import { makePoolPair } from "../lib/pools";
 import { calculatePoolLiquidityUsd } from "../lib/pool-math";
 import { fetchUsdAnchors } from "../lib/usd-price";
+import { logError } from "../lib/log";
 
 /**
  * CoinGecko integration endpoints, per CoinGecko's "Integration Ideal API
@@ -300,7 +301,7 @@ export async function handleCgHistoricalTrades(
   // quantizes some stored prices to 8dp; sub-1e-8 unit prices would collapse
   // to zero and corrupt ordering). Drop and log rather than publish.
   const quantizationLoss = (source: string, id: number, quantity: number) => {
-    console.error({ event: "PRICE_QUANTIZATION_LOSS", ticker_id: parsed.pair, source, id, quantity });
+    logError("PRICE_QUANTIZATION_LOSS", { ticker_id: parsed.pair, source, id, quantity });
   };
 
   const entries: CgTrade[] = [

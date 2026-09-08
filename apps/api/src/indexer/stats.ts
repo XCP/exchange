@@ -1,5 +1,6 @@
 import { batchExec } from "../lib/batch";
 import { discard } from "../lib/net";
+import { logInfo } from "../lib/log";
 
 /** Max items per SQL chunk - constrained by D1's 100 bound params per statement */
 const BULK_CHUNK = 95;
@@ -549,7 +550,7 @@ export async function updateOrderBookStats(
   // Close expired orders before computing stats
   const expired = await closeExpiredOrders(db, now);
   if (expired > 0) {
-    console.log(`Closed ${expired} expired orders`);
+    logInfo("EXPIRED_ORDERS_CLOSED", { count: expired });
   }
 
   const pairsWithOrders = await db
