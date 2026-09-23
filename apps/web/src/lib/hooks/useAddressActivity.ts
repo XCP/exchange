@@ -245,8 +245,8 @@ export function useAddressActivity(address: string | null) {
     asset: d.asset,
     href: `/${encodeURIComponent(d.asset)}`,
     summary: buying
-      ? `Bought ${fmt(units(d.dispense_quantity, d.asset_info?.divisible))} ${d.asset} for ${d.btc_amount_normalized ?? '0'} BTC`
-      : `Sold ${fmt(units(d.dispense_quantity, d.asset_info?.divisible))} ${d.asset} from your dispenser for ${d.btc_amount_normalized ?? '0'} BTC`,
+      ? `Bought ${fmt(units(d.dispense_quantity, d.asset_info?.divisible))} ${d.asset}; payment ${d.btc_amount_normalized ?? '0'} BTC (may cover multiple assets)`
+      : `Sold ${fmt(units(d.dispense_quantity, d.asset_info?.divisible))} ${d.asset} from your dispenser; payment ${d.btc_amount_normalized ?? '0'} BTC (may cover multiple assets)`,
   })
 
   for (const d of bought.data?.result ?? []) rows.push(dispense(d, true))

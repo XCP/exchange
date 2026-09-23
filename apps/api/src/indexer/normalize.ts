@@ -289,7 +289,8 @@ export function normalizeDispenser(d: CounterpartyDispenser): NormalizedDispense
 // Dispenses
 
 /**
- * Compute per-unit BTC price for a dispense event.
+ * Legacy raw payment/quantity field retained for audit. This is NOT the
+ * execution price of an asset in a bundle; use dispense-accounting.ts.
  */
 export function normalizeDispensePrice(dispenseQty: number, btcAmount: number): number {
   return dispenseQty > 0 ? parseFloat((btcAmount / dispenseQty).toFixed(8)) : 0;

@@ -13,15 +13,13 @@ export const DEFILLAMA_TRADE_VOLUME_SQL = `
     AND pair NOT IN (SELECT pair FROM pair_stats WHERE hidden = 1)
   GROUP BY quote_asset, source_type`;
 
-// A shared BTC payment can trigger multiple dispensers and is copied onto
-// every dispense row. Use the dispenser's protocol unit price, not btc_amount,
-// so the payment is never multiplied across assets or inflated by overpayment.
+// Allocation covers every asset in the output before the hidden-asset filter.
+// Its total cannot exceed the actual BTC payment, even for 151-asset bundles.
 export const DEFILLAMA_DISPENSER_VOLUME_SQL = `
   SELECT 'BTC' AS quote_asset, 'dispenser' AS source,
-         COALESCE(SUM(d.dispense_quantity * COALESCE(p.price, d.price)), 0) AS volume,
+         COALESCE(SUM(d.quote_volume), 0) AS volume,
          COUNT(*) AS trades
   FROM dispenses d
-  LEFT JOIN dispensers p ON p.tx_hash = d.dispenser_tx_hash
   WHERE d.block_time >= ? AND d.block_time < ?
     AND d.asset NOT IN (SELECT asset FROM dispenser_stats WHERE hidden = 1)`;
 
@@ -74,6 +72,7 @@ export async function handleDefiLlamaVolume(
   const cacheUrl = new URL(url.origin + url.pathname);
   cacheUrl.searchParams.set("start_timestamp", String(startTimestamp));
   cacheUrl.searchParams.set("end_timestamp", String(endTimestamp));
+  cacheUrl.searchParams.set("__accounting", "2");
   const cacheKey = new Request(cacheUrl.toString());
   const cached = await caches.default.match(cacheKey);
   if (cached) return cached;

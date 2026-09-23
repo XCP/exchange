@@ -7,7 +7,7 @@
     "typegen": "wrangler types --include-runtime false",
     "types:check": "wrangler types --include-runtime false --check",
     "lint:promises": "oxlint --deny typescript/no-floating-promises src/",
-    "test": "tsc -p tsconfig.test.json && node scripts/run-compiled-tests.mjs && node scripts/test-replay-migration.mjs && vitest run --config vitest.config.mts",
+    "test": "tsc -p tsconfig.test.json && node scripts/run-compiled-tests.mjs && node scripts/test-replay-migration.mjs && node scripts/test-dispense-accounting-migration.mjs && vitest run --config vitest.config.mts",
     "reconcile": "node scripts/reconcile.mjs",
     "deploy": "wrangler deploy",
     "migrate:local": "wrangler d1 migrations apply xcpdex --local",

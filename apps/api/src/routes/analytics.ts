@@ -28,14 +28,9 @@ async function buildAnalytics(
   const dispenseHidden = includeHidden ? "" : " AND asset NOT IN (SELECT asset FROM dispenser_stats WHERE hidden = 1)";
   const orderTradeOnly = " AND source_type = 'order'";
 
-  // Protocol-priced dispense notional (market-summary.ts's rule): one BTC
-  // payment can hit several dispensers and is stamped in FULL on every
-  // resulting dispense row, so SUM(btc_amount) double-counts and a buyer who
-  // touched a twenty-dispenser address was credited twenty times their
-  // spend. A correlated point lookup rather than a join, so the unqualified
-  // filter fragments above keep resolving against `dispenses` alone.
-  const dispenseNotional =
-    "(dispense_quantity * COALESCE((SELECT dp.price FROM dispensers dp WHERE dp.tx_hash = dispenses.dispenser_tx_hash), price))";
+  // Allocation is computed over the full BTC output at ingestion, BEFORE any
+  // asset/tag/visibility filtering. Summing payment or offer rates duplicates bundles.
+  const dispenseNotional = "quote_volume";
 
   // Collection tag filter subquery (each usage adds 1 bound ? param)
   const tagSub = `(SELECT ta.asset FROM tag_assets ta JOIN tags t ON ta.tag_id = t.id WHERE t.slug = ?)`;

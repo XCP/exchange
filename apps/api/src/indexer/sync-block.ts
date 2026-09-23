@@ -1,3 +1,5 @@
+import { accountDispensesInBlock } from "../lib/dispense-accounting";
+import { repairUnaccountedDispenses } from "./dispense-accounting-repair";
 import { OrderMatch, Order, CounterpartyDispenser, fetchOrderByHash } from "../lib/counterparty";
 import { API_TIMEOUT_MS, LOCK_TIMEOUT_SECONDS, MAX_PAGINATION_PAGES } from "../lib/constants";
 import { batchExec } from "../lib/batch";
@@ -914,6 +916,8 @@ export async function syncBlocks(
     lastBlock = rollbackTo;
   }
 
+  await repairUnaccountedDispenses(db, lastBlock);
+
   // Don't process more than maxBlocks at a time
   const targetBlock = Math.min(lastBlock + maxBlocks, currentBlock.block_index);
 
@@ -1434,6 +1438,12 @@ export async function syncBlocks(
         });
         throw e;
       }
+    }
+
+    // All outputs/assets in each transaction are now present. Retry after any
+    // interruption before advancing the checkpoint; never allocate per event/page.
+    if (events.some(event => event.event === "DISPENSE")) {
+      await accountDispensesInBlock(db, blockIdx);
     }
 
     // Height, hash and time describe the same applied block, even if this

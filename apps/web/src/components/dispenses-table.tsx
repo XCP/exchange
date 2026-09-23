@@ -4,7 +4,7 @@ import { formatAddress } from '@/utils/format-address'
 import { formatPrice } from '@/utils/format-price'
 import { useSatsMode } from '@/lib/sats-context'
 import type { Dispense } from '@/types/trading'
-import { big, num } from '@/utils/numeric'
+import { num } from '@/utils/numeric'
 
 function compactTime(ts: number): string {
   const diff = Math.floor(Date.now() / 1000 - ts)
@@ -42,7 +42,7 @@ export function DispensesTable({ dispenses, isLoading, asset }: { dispenses: Dis
             <th className="text-left font-normal px-2 py-1.5 w-10">Time</th>
             <th className="text-right font-normal px-2 py-1.5">Price</th>
             <th className="text-right font-normal px-2 py-1.5">{asset ?? 'Qty'}</th>
-            <th className="text-right font-normal px-2 py-1.5">{satsMode ? 'Sats' : 'BTC'}</th>
+            <th className="text-right font-normal px-2 py-1.5">Payment ({satsMode ? 'sats' : 'BTC'})</th>
             <th className="text-right font-normal px-2 py-1.5 max-sm:hidden">Buyer</th>
             <th className="text-right font-normal px-2 py-1.5 max-sm:hidden">Seller</th>
             <th className="font-normal px-2 py-1.5 w-6 max-sm:hidden"><span className="sr-only">Tx</span></th>
@@ -52,8 +52,7 @@ export function DispensesTable({ dispenses, isLoading, asset }: { dispenses: Dis
           {dispenses.map((d) => {
             const qty = num(d.dispense_quantity_normalized)
             const btc = num(d.btc_amount_normalized)
-            // Exact division: both operands came from the wire as strings.
-            const price = qty > 0 ? num(big(d.btc_amount_normalized).dividedBy(big(d.dispense_quantity_normalized))) : 0
+            // Raw CP records repeat the output payment for every bundled asset.
             return (
               <tr
                 key={`${d.tx_hash}-${d.dispense_index}`}
@@ -63,13 +62,13 @@ export function DispensesTable({ dispenses, isLoading, asset }: { dispenses: Dis
                   {d.block_time ? compactTime(d.block_time) : '—'}
                 </td>
                 <td className="text-right text-zinc-300 font-mono px-2 py-px">
-                  {formatPrice(price, satsMode)}
+                  <span title="Individual execution price is unavailable from this raw payment record">&mdash;</span>
                 </td>
                 <td className="text-right text-green-400 font-mono px-2 py-px">
                   {formatPrice(qty)}
                 </td>
                 <td className="text-right text-zinc-400 font-mono px-2 py-px">
-                  {formatPrice(btc, satsMode)}
+                  <span title="Total BTC output payment; may cover multiple assets">{formatPrice(btc, satsMode)}</span>
                 </td>
                 <td className="text-right text-zinc-500 font-mono px-2 py-px max-sm:hidden">
                   {formatAddress(d.destination)}

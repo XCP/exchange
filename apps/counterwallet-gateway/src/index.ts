@@ -337,7 +337,7 @@ use separate schemas and market inclusion policies for each data consumer.</p>
 <ul>
   <li>Order-book volume counts completed Counterparty settlements.</li>
   <li>Pool volume counts completed constant-product AMM fills.</li>
-  <li>BTC dispenser volume uses protocol-priced notional quantity and does not
+  <li>BTC dispenser volume allocates protocol notional across all assets per output, caps their combined volume at the BTC payment, and does not
   multiply a shared or overpaid Bitcoin output across multiple dispenses.</li>
   <li>BTC-quoted open DEX orders are excluded from published depth because the
   BTC leg is not committed at order creation. Only completed BTCPay settlements

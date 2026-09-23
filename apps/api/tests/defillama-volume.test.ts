@@ -1,3 +1,4 @@
+import { repriceDispensesSQL } from "../src/lib/dispense-accounting";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { test } from "node:test";
@@ -16,6 +17,10 @@ function fixture(): DatabaseSync {
     );
     CREATE TABLE pair_stats (pair TEXT PRIMARY KEY, hidden INTEGER DEFAULT 0);
     CREATE TABLE dispenses (
+      id INTEGER PRIMARY KEY, tx_hash TEXT, dispense_index INTEGER DEFAULT 0,
+      source TEXT DEFAULT 'seller', destination TEXT DEFAULT 'buyer',
+      quote_volume REAL NOT NULL DEFAULT 0, execution_price REAL NOT NULL DEFAULT 0,
+      payment_asset_count INTEGER NOT NULL DEFAULT 1,
       asset TEXT NOT NULL, block_time INTEGER NOT NULL, dispense_quantity REAL NOT NULL,
       btc_amount REAL NOT NULL, price REAL NOT NULL, dispenser_tx_hash TEXT NOT NULL
     );
@@ -61,12 +66,14 @@ test("DefiLlama dispenser volume uses protocol notional and honors hidden assets
   const db = fixture();
   db.prepare(`INSERT INTO dispensers VALUES ('rate', 0.0001)`).run();
   db.prepare(`INSERT INTO dispenser_stats VALUES ('HIDDEN', 1)`).run();
-  const add = db.prepare(`INSERT INTO dispenses VALUES (?,?,?,?,?,?)`);
+  const add = db.prepare(`INSERT INTO dispenses (asset,block_time,dispense_quantity,btc_amount,price,dispenser_tx_hash) VALUES (?,?,?,?,?,?)`);
   // Gross payment is deliberately much larger than protocol notional.
   add.run("CARD", 150, 2, 0.5, 0.25, "rate");
   add.run("HIDDEN", 160, 10, 1, 0.1, "rate");
   add.run("CARD", 200, 10, 1, 0.1, "rate");
 
+  db.exec("UPDATE dispenses SET tx_hash = CAST(id AS TEXT)");
+  db.exec(repriceDispensesSQL());
   const row = db.prepare(DEFILLAMA_DISPENSER_VOLUME_SQL).get(100, 200) as {
     quote_asset: string; source: string; volume: number; trades: number;
   };

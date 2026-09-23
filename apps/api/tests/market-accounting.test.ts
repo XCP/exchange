@@ -1,3 +1,4 @@
+import { repriceDispensesSQL } from "../src/lib/dispense-accounting";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { test } from "node:test";
@@ -26,6 +27,9 @@ function fixture(): DatabaseSync {
   db.exec(`
     CREATE TABLE dispenses (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
+      source TEXT NOT NULL DEFAULT 'seller', destination TEXT NOT NULL DEFAULT 'buyer',
+      quote_volume REAL NOT NULL DEFAULT 0, execution_price REAL NOT NULL DEFAULT 0,
+      payment_asset_count INTEGER NOT NULL DEFAULT 1,
       tx_hash TEXT NOT NULL,
       dispense_index INTEGER NOT NULL,
       asset TEXT NOT NULL,
@@ -50,8 +54,9 @@ function fixture(): DatabaseSync {
   for (let i = 0; i < 20; i++) {
     const dispenserTx = `disp${i}`;
     addDispenser.run(dispenserTx, 0.0001);
-    addDispense.run(SHARED_TX, i, `CARD${i}`, 1_786_600_000, 1, PAYMENT_BTC, PAYMENT_BTC, dispenserTx);
+    addDispense.run(SHARED_TX, i, `CARD${String(i).padStart(2, "0")}`, 1_786_600_000, 1, PAYMENT_BTC, PAYMENT_BTC, dispenserTx);
   }
+  db.exec(repriceDispensesSQL());
   return db;
 }
 
@@ -59,7 +64,7 @@ test("one shared BTC payment across 20 dispensers books protocol notional, not p
   const db = fixture();
   const rows = db
     .prepare(DISPENSE_AGG_SQL(Array.from({ length: 20 }, () => "?").join(",")))
-    .all(...Array.from({ length: 20 }, (_, i) => `CARD${i}`), 0) as Array<{
+    .all(...Array.from({ length: 20 }, (_, i) => `CARD${String(i).padStart(2, "0")}`), 0) as Array<{
     asset: string;
     bv: number;
     qv: number;
@@ -79,11 +84,12 @@ test("one shared BTC payment across 20 dispensers books protocol notional, not p
   db.close();
 });
 
-test("a dispense whose dispenser row is gone falls back to the stored per-row price", () => {
+test("a single-asset dispense with missing metadata uses its payment", () => {
   const db = fixture();
-  db.prepare(`INSERT INTO dispenses VALUES (NULL,'solo',0,'LONER',1786600000,2,0.0002,0.0001,'missing')`).run();
+  db.prepare(`INSERT INTO dispenses (tx_hash,dispense_index,asset,block_time,dispense_quantity,btc_amount,price,dispenser_tx_hash) VALUES ('solo',0,'LONER',1786600000,2,0.0002,0.0001,'missing')`).run();
+  db.exec(repriceDispensesSQL());
   const rows = db.prepare(DISPENSE_AGG_SQL("?")).all("LONER", 0) as Array<{ qv: number }>;
-  assert.equal(rows[0].qv, 0.0002); // 2 units x stored 0.0001/unit
+  assert.equal(rows[0].qv, 0.0002); // payment remains capped even without the dispenser rate
   db.close();
 });
 

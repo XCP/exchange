@@ -185,7 +185,8 @@ export async function handleDispensesLatest(
 
   const columns = `e.tx_hash, e.dispense_index, e.dispenser_tx_hash,
                       e.source, e.destination, e.asset, ds_ln.asset_longname,
-                      e.dispense_quantity, e.btc_amount, e.price,
+                      e.dispense_quantity, e.btc_amount, e.execution_price AS price,
+                      e.quote_volume, e.payment_asset_count,
                       e.block_index, e.block_time,
                       etag.slug AS collection_slug, etag.name AS collection_name`;
   const whereClause = conditions.length > 0 ? ` WHERE ${conditions.join(" AND ")}` : "";
@@ -193,8 +194,8 @@ export async function handleDispensesLatest(
 
   const sort = url.searchParams.get("sort");
   let orderClause = "ORDER BY e.block_index DESC";
-  if (sort === "price") orderClause = "ORDER BY e.price ASC";
-  else if (sort === "price_desc") orderClause = "ORDER BY e.price DESC";
+  if (sort === "price") orderClause = "ORDER BY e.execution_price ASC";
+  else if (sort === "price_desc") orderClause = "ORDER BY e.execution_price DESC";
   else if (sort === "time") orderClause = "ORDER BY e.block_index ASC";
   else if (sort === "time_desc") orderClause = "ORDER BY e.block_index DESC";
 

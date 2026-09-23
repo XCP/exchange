@@ -99,20 +99,14 @@ export async function handleDispenseOhlc(
   );
   const { windowStart, windowEnd } = resolveWindow(url, interval, limit);
 
-  // Protocol-priced: the dispenser's own rate when its row is on file, the
-  // stored per-row price otherwise. The stored price is btc_amount / qty and
-  // one BTC payment hitting N dispensers is stamped in FULL on each row — so
-  // charting it directly drew an N× wick on every shared payment
-  // (market-summary.ts refuses this column for exactly that reason). Zero
-  // still means the per-unit price rounded below a satoshi, a storage
-  // artefact rather than a real sale price — charting it would draw a spike
-  // to the floor.
+  // Bundle executions use their allocated BTC/unit, not the independent
+  // dispenser offer rate or the gross payment copied onto every asset.
   const [rowsResult, seedResult] = await Promise.all([
     db
       .prepare(
-        `SELECT d.block_time, COALESCE(p.price, d.price) AS price, d.dispense_quantity
-         FROM dispenses d LEFT JOIN dispensers p ON p.tx_hash = d.dispenser_tx_hash
-         WHERE d.asset = ? AND COALESCE(p.price, d.price) > 0
+        `SELECT d.block_time, d.execution_price AS price, d.dispense_quantity
+         FROM dispenses d
+         WHERE d.asset = ? AND d.execution_price > 0
            AND d.block_time >= ? AND d.block_time < ?
          ORDER BY d.block_time DESC, d.id DESC
          LIMIT ?`
@@ -129,9 +123,9 @@ export async function handleDispenseOhlc(
       .all<DispenseRow>(),
     db
       .prepare(
-        `SELECT COALESCE(p.price, d.price) AS price
-         FROM dispenses d LEFT JOIN dispensers p ON p.tx_hash = d.dispenser_tx_hash
-         WHERE d.asset = ? AND COALESCE(p.price, d.price) > 0 AND d.block_time < ?
+        `SELECT d.execution_price AS price
+         FROM dispenses d
+         WHERE d.asset = ? AND d.execution_price > 0 AND d.block_time < ?
          ORDER BY d.block_time DESC, d.id DESC LIMIT 1`
       )
       .bind(asset, windowStart)

@@ -557,7 +557,7 @@ function DispensesTable({ dispenses, isLoading, satsMode, assetSearch, debounced
               </td>
               <td className="text-right text-zinc-400 font-mono px-3 py-1.5">
                 {(() => {
-                  const p = (d.price > 0 && isFinite(d.price)) ? d.price : (d.dispense_quantity > 0 && d.btc_amount > 0) ? d.btc_amount / d.dispense_quantity : 0
+                  const p = (d.price > 0 && isFinite(d.price)) ? d.price : 0
                   return p > 0 ? formatPrice(p, satsMode) : '—'
                 })()}
               </td>
@@ -584,7 +584,9 @@ function DispensesTable({ dispenses, isLoading, satsMode, assetSearch, debounced
                 )}
               </td>
               <td className="text-right text-zinc-500 font-mono px-3 py-1.5">
-                {d.btc_amount > 0 ? formatPrice(d.btc_amount, satsMode) : '—'}
+                <span title={d.payment_asset_count > 1 ? `Allocated share of a ${d.payment_asset_count}-asset bundle` : undefined}>
+                  {d.quote_volume > 0 ? formatPrice(d.quote_volume, satsMode) : '—'}
+                </span>
               </td>
               <td className="text-left font-mono px-3 py-1.5">
                 <span className="inline-flex items-center gap-1">
