@@ -237,7 +237,7 @@ Endpoints shaped to CoinGecko's "Integration Ideal API Endpoints" spec and CoinM
 
 Accounting rules:
 
-- **Dispenser volume is protocol-priced notional** (`dispense_quantity × dispenser rate`, joined via `dispenser_tx_hash`), never the gross BTC recorded on the dispense row. One BTC payment can trigger dispensers for several assets at one address and Counterparty stamps the FULL payment on every resulting row (audited in prod: 7,303 payments produced 35,232 multi-asset rows), so summing `btc_amount` double-counts and the stored per-row price is inflated. Overpayment beyond the rate is likewise excluded.
+- **Dispenser volume is payment-capped allocation**, stored in `dispenses.quote_volume`; prices use `execution_price`. Allocate the full output across all released assets before filtering and cap at the actual payment. Neither repeated `btc_amount` nor summed standalone offer rates are safe. Migration 0052 corrects history; `dispense-accounting.ts` applies the same policy to new blocks and backfills.
 - Quantities/volumes are fixed 8-decimal strings. **Unit prices are full-precision decimal strings** (`decPrice`) — 8dp would zero out sub-satoshi unit prices (1 sat per 1,000 units = 1e-11).
 - Timestamps are UTC milliseconds. Tickers carry `last_trade_timestamp` + `is_stale` (no completed fill in 90 days) so decade-old last prices are labeled, not hidden.
 - `trade_id` = `source_id × 8 + code` (0 = order-book, 1 = AMM pool, 2 = dispenser, 3 reserved for PSBT swaps). Rows only ever append under protocol-derived UNIQUE keys, so IDs are permanent unless a table is dropped. Each historical trade also carries `source` and `settlement_txid` for independent audit.

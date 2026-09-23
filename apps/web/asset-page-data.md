@@ -146,9 +146,9 @@ Using PEPECASH as the reference. Sources: our D1 database, Counterparty API, xcp
 | Data | Available |
 |------|-----------|
 | Each dispense: tx, source (seller), destination (buyer), qty, btc_amount, price, block, time | Yes |
-| **Top buyers** | Queryable: `SELECT destination, COUNT(*), SUM(btc_amount) FROM dispenses WHERE asset=? GROUP BY destination` |
+| **Top buyers** | Queryable: `SELECT destination, COUNT(*), SUM(quote_volume) FROM dispenses WHERE asset=? GROUP BY destination` |
 | **Top sellers** | Queryable: same with `source` |
-| **Largest single dispense** | Queryable: `ORDER BY btc_amount DESC` |
+| **Largest single dispense** | Queryable: `ORDER BY quote_volume DESC` |
 
 ## 7. ATOMIC SWAPS (from `swap_listings` table)
 | Data | Available |
