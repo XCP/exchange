@@ -431,7 +431,7 @@ export async function scoreNewDispensers(
       .prepare(
         `SELECT price, dispense_quantity, block_time
          FROM (
-           SELECT price, dispense_quantity, block_time,
+           SELECT execution_price AS price, dispense_quantity, block_time,
                   ROW_NUMBER() OVER (ORDER BY block_time DESC) as rn
            FROM dispenses WHERE asset = ?
          ) WHERE rn <= 10`,
@@ -954,7 +954,7 @@ async function processDispenserDeals(
       .prepare(
         `SELECT asset, price, dispense_quantity, block_time
          FROM (
-           SELECT asset, price, dispense_quantity, block_time,
+           SELECT asset, execution_price AS price, dispense_quantity, block_time,
                   ROW_NUMBER() OVER (PARTITION BY asset ORDER BY block_time DESC) as rn
            FROM dispenses
            WHERE asset IN (${ph})

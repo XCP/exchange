@@ -9,13 +9,9 @@ import { makePairString } from "./pairs";
  * pairs. Dispensers are one-sided sell offers settled in BTC, so they only
  * ever contribute to *_BTC markets.
  *
- * Dispenser accounting: one BTC payment can trigger dispensers for several
- * assets at the same address, and Counterparty records the FULL payment on
- * every resulting dispense row — so summing stored btc_amount double-counts,
- * and stored price (btc/qty) is inflated on shared rows. All dispense prices
- * and quote volumes here are therefore protocol-priced notional instead:
- * dispense_quantity x the dispenser's own per-unit price (satoshirate-derived,
- * joined via dispenser_tx_hash). Gross BTC paid is never used as market volume.
+ * Dispenser prices/volumes use payment-capped allocations across all assets
+ * in an output. The rate of a bundle-triggered dispenser is an offer rate,
+ * not an independently paid execution price. See dispense-accounting.ts.
  *
  * Each consumer feed has an explicit allowlist, not an activity heuristic.
  * The lists may currently overlap, but are intentionally separate so one
@@ -185,20 +181,15 @@ interface BookRow {
   best_ask: number | null;
 }
 
-// Protocol-priced per-unit dispense price: the dispenser's own rate when the
-// row is still on file, the stored per-row price otherwise (single-asset
-// payments only ever differ by overpayment, which the rate excludes).
-const DISPENSE_PRICE = `COALESCE(p.price, d.price)`;
+// Effective execution price; never substitute the standalone offer rate.
+const DISPENSE_PRICE = `d.execution_price`;
 
-/** Exported for the node:sqlite regression test that encodes the shared-payment
- *  pathology: one BTC output triggering many dispensers, the full payment
- *  stamped on every dispense row. Quote volume must be protocol-priced
- *  notional, never a multiple of the payment. */
+/** Exported for accounting regression tests. */
 export const DISPENSE_AGG_SQL = (assetPlaceholders: string) =>
   `SELECT d.asset, SUM(d.dispense_quantity) AS bv,
-          SUM(d.dispense_quantity * ${DISPENSE_PRICE}) AS qv,
+          SUM(d.quote_volume) AS qv,
           MAX(${DISPENSE_PRICE}) AS high, MIN(${DISPENSE_PRICE}) AS low
-   FROM dispenses d LEFT JOIN dispensers p ON p.tx_hash = d.dispenser_tx_hash
+   FROM dispenses d
    WHERE d.asset IN (${assetPlaceholders}) AND d.block_time >= ?
    GROUP BY d.asset`;
 
@@ -257,17 +248,16 @@ export async function getMarketSummaries(
         `SELECT asset, price, block_time FROM (
            SELECT d.asset, ${DISPENSE_PRICE} AS price, d.block_time,
                   ROW_NUMBER() OVER (PARTITION BY d.asset ORDER BY d.block_time ASC, d.id ASC) AS rn
-           FROM dispenses d LEFT JOIN dispensers p ON p.tx_hash = d.dispenser_tx_hash
+           FROM dispenses d
            WHERE d.asset IN (${basePh}) AND d.block_time >= ?
          ) WHERE rn = 1`
       ).bind(...btcBases, cutoff24h),
-      // Last completed dispense per asset, protocol-priced — one indexed
-      // LIMIT 1 probe per asset instead of trusting dispenser_stats, whose
-      // last price is derived from the inflatable stored per-row price.
+      // Last completed dispense per asset, payment-capped — one indexed
+      // LIMIT 1 probe per asset, independent of the stats refresh schedule.
       ...btcBases.map((asset) =>
         db.prepare(
           `SELECT d.asset, ${DISPENSE_PRICE} AS price, d.block_time
-           FROM dispenses d LEFT JOIN dispensers p ON p.tx_hash = d.dispenser_tx_hash
+           FROM dispenses d
            WHERE d.asset = ? ORDER BY d.block_time DESC, d.id DESC LIMIT 1`
         ).bind(asset)
       )

@@ -47,13 +47,30 @@ writes.
 
 This is the unusual part of the venue, so it is stated precisely:
 
-> **Dispenser price and quote volume are calculated from the dispenser's protocol-defined
-> satoshi rate and the quantity actually dispensed — protocol-priced notional. The gross
-> Bitcoin payment is never treated as market notional**, because one Bitcoin payment can
-> trigger dispensers for several different assets at the same address (the protocol stamps the
-> full payment on every resulting dispense record), and because a payment can exceed the exact
-> protocol price. Counting gross payments would duplicate and inflate quote volume; counting
-> protocol notional cannot.
+Dispenser executions use a payment-capped allocation. For each BTC output, calculate
+all triggered assets' protocol notionals (quantity × dispenser rate), then multiply
+each by `min(1, payment / sum_of_notionals)`. Sum the resulting allocations for volume;
+divide an asset's allocation by its quantity for execution price. This is an accounting
+allocation for bundles, not a claim that assets had independently negotiated prices.
+
+All assets participate before asset, collection, time-window or hidden-asset filters.
+Separate outputs in one transaction remain separate, including repeated outputs to
+the same address. Overpayment above the summed protocol notional is excluded. If a
+historical dispenser's metadata is absent, the raw payment supplies its allocation
+weight; the whole output is still capped. Raw payments remain available for audit and
+must never be summed across dispense records. Open offers retain their advertised rates.
+
+Counterparty emits dispense records in Bitcoin output order, then asset order, with a
+transaction-wide `dispense_index`. We recover output boundaries from an asset-order
+restart or a change in seller, buyer or payment amount. Allocation runs only on complete
+transactions at ingestion and after historical backfills, and is stored as `quote_volume`,
+`execution_price` and `payment_asset_count`. Raw `btc_amount` remains the output payment.
+See [Counterparty's dispense parser](https://github.com/CounterpartyXCP/counterparty-core/blob/master/counterparty-core/counterpartycore/lib/messages/dispense.py).
+
+Migration 0052 recalculates historical allocations and dispenser statistics and invalidates
+cached analytics. Indexing repairs any old-format records written between migration and
+Worker deployment. Third-party historical charts may require a separate re-fetch of the
+corrected daily feed; updating our endpoint does not rewrite their stored history.
 
 On **BTC-quoted pairs, open DEX orders are excluded from all aggregator bid/ask fields**.
 Counterparty does not commit the BTC leg when the order is placed, so an open intent is not
@@ -117,7 +134,7 @@ no nonpositive prices; sorted books; and stale flags consistent with the 90-day 
 
 The accounting rules above are additionally locked by regression tests, including a fixture
 reproducing a real observed pathology: one Bitcoin output triggering twenty dispensers, where
-the venue must book twenty protocol-priced notionals rather than twenty copies of the payment.
+the venue must cap the combined allocations at the one output payment. A second regression covers the 151-asset Pokémon bundle on 2026-09-16: 0.02 BTC total, not 3.02 BTC.
 
 - API reference: [`api.xcpdex.com/openapi.json`](https://api.xcpdex.com/openapi.json)
 - Market catalog: [`api.xcpdex.com/catalog/pairs`](https://api.xcpdex.com/catalog/pairs)

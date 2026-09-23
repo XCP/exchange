@@ -5,6 +5,7 @@ import { test } from "node:test";
 import { checkpointStatements, findCommonCheckpoint } from "../src/indexer/block-checkpoint";
 import { addLpDelta, addBalanceSnapshots, allocatePoolFees, loadAppliedPoolBalances, type PendingPoolBalances } from "../src/indexer/pool-accounting";
 import { syncBlocks } from "../src/indexer/sync-block";
+import { repairUnaccountedDispenses } from "../src/indexer/dispense-accounting-repair";
 
 function same(actual: unknown, expected: unknown) {
   assert.deepEqual(JSON.parse(JSON.stringify(actual)), JSON.parse(JSON.stringify(expected)));
@@ -367,4 +368,55 @@ test("catch-up cannot join an old applied parent to a new branch whose own hash 
     await rejects(() => syncBlocks(h.db, "https://core.test", 10), "Applied chain changed");
     same(h.sqlite.prepare("SELECT value FROM indexer_state WHERE key='last_block_index'").get(), { value: "2" });
   } finally { globalThis.fetch = original; h.sqlite.close(); }
+});
+
+
+test("real dispense ingestion cannot checkpoint failed allocation; retry prices the complete bundle", async () => {
+  const h = fixture(); await h.db.batch(checkpointStatements(h.db, block(1)));
+  h.sqlite.exec("INSERT OR REPLACE INTO indexer_state VALUES('indexer_mode','FOLLOWING')");
+  const original = globalThis.fetch;
+  globalThis.fetch = async input => {
+    const url = new URL(String(input));
+    if (url.pathname.endsWith("/last")) return Response.json({ result: block(2) });
+    if (url.pathname.endsWith("/events")) return Response.json({ result: ["AAA", "BBB"].map((asset, i) => ({
+      event: "DISPENSE", event_index: i, tx_hash: "bundle", block_index: 2,
+      params: { tx_hash: "bundle", dispense_index: i, dispenser_tx_hash: asset, asset,
+        source: "seller", destination: "buyer", dispense_quantity_normalized: "1", btc_amount_normalized: "0.02" },
+    })), next_cursor: null });
+    return Response.json({ result: block(Number(url.pathname.split("/")[2])) });
+  };
+  try {
+    h.fail(sql => sql.includes("UPDATE dispenses SET quote_volume"));
+    await rejects(() => syncBlocks(h.db, "https://core.test", 10), "Injected");
+    same(h.sqlite.prepare("SELECT value FROM indexer_state WHERE key='last_block_index'").get(), { value: "1" });
+    h.fail(() => false);
+    await syncBlocks(h.db, "https://core.test", 10);
+    same(h.sqlite.prepare("SELECT SUM(quote_volume) v, COUNT(*) n, MIN(payment_asset_count) c FROM dispenses").get(), { v: 0.02, n: 2, c: 2 });
+    same(h.sqlite.prepare("SELECT SUM(total_btc_spent) v FROM dispenser_stats").get(), { v: 0.02 });
+    same(h.sqlite.prepare("SELECT value FROM indexer_state WHERE key='last_block_index'").get(), { value: "2" });
+  } finally { globalThis.fetch = original; h.sqlite.close(); }
+});
+
+test("deployment-gap repair survives stats failure and excludes incomplete blocks", async () => {
+  const h = fixture();
+  for (const [asset, index, height] of [["AAA", 0, 1], ["BBB", 1, 1], ["CCC", 0, 2]]) {
+    h.sqlite.prepare(`INSERT INTO dispenses(tx_hash,dispense_index,asset,source,destination,dispenser_tx_hash,
+      dispense_quantity,btc_amount,price,block_index,block_time)
+      VALUES (?,?,?,'seller','buyer','missing',1,0.02,0.02,?,?)`).run(`bundle${height}`, index, asset, height, block(1).block_time);
+  }
+  try {
+    h.fail(sql => sql.includes("INSERT INTO dispenser_stats"));
+    await rejects(() => repairUnaccountedDispenses(h.db, 1), "Injected");
+    same(h.sqlite.prepare("SELECT value FROM indexer_state WHERE key='dispense_accounting_pending_block'").get(), { value: "1" });
+    h.fail(() => false);
+    await repairUnaccountedDispenses(h.db, 1);
+    same(h.sqlite.prepare("SELECT SUM(total_btc_spent) v FROM dispenser_stats").get(), { v: 0.02 });
+    same(h.sqlite.prepare("SELECT payment_asset_count c FROM dispenses WHERE block_index=2").get(), { c: 0 });
+    const before = h.sqlite.prepare("SELECT total_changes() n").get();
+    await repairUnaccountedDispenses(h.db, 1);
+    same(h.sqlite.prepare("SELECT total_changes() n").get(), before);
+    const plan = h.sqlite.prepare(`EXPLAIN QUERY PLAN SELECT block_index FROM dispenses
+      WHERE payment_asset_count = 0 AND block_index <= 1 ORDER BY block_index LIMIT 1`).all();
+    assert.ok(JSON.stringify(plan).includes("idx_dispenses_unaccounted"));
+  } finally { h.sqlite.close(); }
 });

@@ -28,7 +28,10 @@ export interface LatestDispense {
   asset: string
   asset_longname: string | null
   dispense_quantity: number
+  /** Original output payment, repeated across assets; never sum it. */
   btc_amount: number
+  quote_volume: number
+  payment_asset_count: number
   price: number
   block_index: number
   block_time: number

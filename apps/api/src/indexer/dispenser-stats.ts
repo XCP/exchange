@@ -3,21 +3,11 @@ import { batchExec } from "../lib/batch";
 /** Max items per SQL chunk — constrained by D1's 100 bound params per statement */
 const BULK_CHUNK = 95;
 
-/**
- * Protocol-priced per-unit dispense price — the same expression
- * market-summary.ts and the aggregator feeds already use, for the same
- * reason: one BTC payment can trigger dispensers for several assets at one
- * address, and Counterparty stamps the FULL payment on every resulting
- * dispense row. Summing stored btc_amount therefore double-counts (the
- * methodology doc's regression case is one output hitting twenty
- * dispensers), and the stored per-row price (btc/qty) is inflated on every
- * shared row. The dispenser's own rate is the truth when its row is still on
- * file; the stored price only ever differs by overpayment on single-asset
- * rows, which the rate rightly excludes.
- */
-const DISPENSE_PRICE = `COALESCE(p.price, d.price)`;
-const DISPENSE_NOTIONAL = `(d.dispense_quantity * ${DISPENSE_PRICE})`;
-const DISPENSES_PRICED = `dispenses d LEFT JOIN dispensers p ON p.tx_hash = d.dispenser_tx_hash`;
+/** Allocated execution values computed once for the whole BTC output.
+ * Offer rates remain separate in dispensers for executable asks. */
+const DISPENSE_PRICE = `d.execution_price`;
+const DISPENSE_NOTIONAL = `d.quote_volume`;
+const DISPENSES_PRICED = `dispenses d`;
 
 /**
  * Bulk-update dispenser_stats for many assets at once using set-based SQL.
@@ -45,8 +35,8 @@ export async function bulkUpdateDispenserStats(
     const [statsRes, lastRes, p24Res, p30Res, p1yRes, dispenserRes] =
       await db.batch([
         // Q1: Windowed + all-time stats from dispenses (?1=t24h, ?2=t30d, ?3=t1y).
-        // Volume is protocol-priced notional and prices are the protocol
-        // price — see DISPENSE_PRICE. Counts and buyers still count rows:
+        // Volume and prices use the payment-capped allocation.
+        // Counts and buyers still count rows:
         // a fill is a fill however its payment was shared.
         db
           .prepare(
@@ -309,7 +299,7 @@ export async function updateDispenserStats(
   const t1y = now - 31536000;
 
   // Single consolidated query for latest, first, and windowed stats —
-  // protocol-priced, same as the bulk path above.
+  // payment-capped, same as the bulk path above.
   const stats = await db
     .prepare(
       `SELECT

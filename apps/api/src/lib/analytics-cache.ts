@@ -18,7 +18,7 @@ export function analyticsCacheKey(request: Request): string | null {
   const quote = url.searchParams.get("quote_asset") || "XCP";
   if (quote !== "XCP" && quote !== "BTC") return null;
   const hidden = url.searchParams.get("include_hidden") === "1" ? "1" : "0";
-  return `v1/${timeframe}/${hidden}/${section}/${section === "charts" ? "-" : quote}`;
+  return `v2/${timeframe}/${hidden}/${section}/${section === "charts" ? "-" : quote}`;
 }
 
 /** Shared cache at the route's existing one-hour freshness bound. A hit's

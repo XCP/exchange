@@ -127,7 +127,10 @@ app.use('*', async (c, next) => {
   if (c.req.header('Upgrade') === 'websocket') return next();
 
   const cache = caches.default;
-  const hit = await cache.match(c.req.raw);
+  const cacheUrl = new URL(c.req.url);
+  cacheUrl.searchParams.set("__accounting", "2");
+  const cacheKey = new Request(cacheUrl.toString(), c.req.raw);
+  const hit = await cache.match(cacheKey);
   if (hit) return hit;
 
   await next();
@@ -145,7 +148,7 @@ app.use('*', async (c, next) => {
 
   // clone() because a body reads once and the caller still needs it;
   // waitUntil so filling the cache never delays the response that filled it.
-  c.executionCtx.waitUntil(cache.put(c.req.raw, res.clone()));
+  c.executionCtx.waitUntil(cache.put(cacheKey, res.clone()));
 });
 
 // Fix scientific notation in JSON responses (e.g. 7.1e-7 -> 0.00000071)

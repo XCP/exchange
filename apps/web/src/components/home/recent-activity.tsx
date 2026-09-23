@@ -385,7 +385,7 @@ function DispenserRow({ d, satsMode, last }: { d: LatestDispenser; satsMode: boo
 
 function DispenseRow({ d, satsMode, last }: { d: LatestDispense; satsMode: boolean; last: boolean }) {
   const displayName = d.asset_longname ?? d.asset
-  const price = (d.price > 0 && isFinite(d.price)) ? d.price : (d.dispense_quantity > 0 && d.btc_amount > 0) ? d.btc_amount / d.dispense_quantity : 0
+  const price = (d.price > 0 && isFinite(d.price)) ? d.price : 0
   const unit = satsMode ? 'sats' : 'BTC'
 
   return (
@@ -417,9 +417,10 @@ function DispenseRow({ d, satsMode, last }: { d: LatestDispense; satsMode: boole
         <span className="text-[10px] text-zinc-500 font-mono tabular-nums">
           {d.block_time ? compactTime(d.block_time) : ''}
         </span>
-        {d.btc_amount > 0 && (
-          <span className="text-[11px] text-zinc-400 font-mono tabular-nums">
-            {formatPrice(satsMode ? toSats(d.btc_amount) : d.btc_amount, false)} {unit}
+        {d.quote_volume > 0 && (
+          <span className="text-[11px] text-zinc-400 font-mono tabular-nums"
+            title={d.payment_asset_count > 1 ? `Allocated share of a ${d.payment_asset_count}-asset bundle` : undefined}>
+            {formatPrice(satsMode ? toSats(d.quote_volume) : d.quote_volume, false)} {unit}
           </span>
         )}
       </div>

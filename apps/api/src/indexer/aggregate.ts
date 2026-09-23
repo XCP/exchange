@@ -1,3 +1,4 @@
+import { accountAllDispenses } from "../lib/dispense-accounting";
 import { ALL_INTERVALS, calendarBucket, sqlBucketExpr, sqlPartitionExpr } from "../lib/constants";
 import { batchExec } from "../lib/batch";
 import { bulkUpdatePairStats } from "./stats";
@@ -245,6 +246,7 @@ export async function runCatchupAggregation(
   if (!pairs.results.length) {
     // All pairs processed - clean up and transition
     const mode = await getMode(db);
+    if (mode === "BUILD_AGGREGATES") await accountAllDispenses(db);
     const nextMode = mode === "BUILD_AGGREGATES" ? "REFRESH_STATS" : "FOLLOWING";
     await db.batch([
       db.prepare(`DELETE FROM indexer_state WHERE key = 'aggregation_cursor'`),

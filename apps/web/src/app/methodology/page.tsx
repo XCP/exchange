@@ -4,7 +4,7 @@ import Link from 'next/link'
 export const metadata: Metadata = {
   title: 'Market Data Methodology | XCP DEX',
   description:
-    'How XCP DEX calculates prices and volumes: completed Counterparty order-book settlements, AMM pool fills, and protocol-priced dispenser executions.',
+    'How XCP DEX calculates prices and volumes: completed Counterparty order-book settlements, AMM pool fills, and payment-capped dispenser executions.',
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -71,14 +71,15 @@ export default function MethodologyPage() {
         <div className="rounded border border-zinc-800 bg-zinc-900/50 p-4">
           <P>
             <span className="text-zinc-200">
-              Dispenser price and quote volume are calculated from the dispenser&apos;s protocol-defined
-              satoshi rate and the quantity actually dispensed — protocol-priced notional. The gross Bitcoin
-              payment is never treated as market notional
+              A Bitcoin payment can release several assets at once. We allocate that payment across
+              all assets in the bundle, in proportion to their protocol prices and quantities, with
+              total volume capped at the actual payment.
             </span>
-            , because one Bitcoin payment can trigger dispensers for several different assets at the same
-            address (the protocol stamps the full payment on every resulting dispense record), and because a
-            payment can exceed the exact protocol price. Counting gross payments would duplicate and inflate
-            quote volume; counting protocol notional cannot.
+            {' '}If total protocol notional is below the payment, the excess is excluded as overpayment.
+            Execution prices use each asset&apos;s allocated BTC share; these are bundle allocations,
+            not independently negotiated prices. Allocation happens before any asset or visibility
+            filter. Separate Bitcoin outputs remain separate payments. Advertised dispenser rates
+            remain the prices used for open offers.
           </P>
         </div>
         <P>
@@ -176,7 +177,7 @@ export default function MethodologyPage() {
         <P>
           The accounting rules above are additionally locked by regression tests, including a fixture
           reproducing a real observed pathology: one Bitcoin output triggering twenty dispensers, where the
-          venue must book twenty protocol-priced notionals rather than twenty copies of the payment.
+          venue must cap combined allocations at the one payment. The 151-asset Pokémon bundle on September 16, 2026 is also covered: 0.02 BTC total, not 3.02 BTC.
         </P>
         <ul className="list-disc space-y-1 pl-5 text-sm text-zinc-400">
           <li>

@@ -103,9 +103,9 @@ export async function handleCombinedOhlc(
       .all<{ timestamp: number; open: number; high: number; low: number; close: number; volume: number; trades: number }>(),
     db
       .prepare(
-        `SELECT d.block_time, COALESCE(p.price, d.price) AS price, d.dispense_quantity
-         FROM dispenses d LEFT JOIN dispensers p ON p.tx_hash = d.dispenser_tx_hash
-         WHERE d.asset = ? AND COALESCE(p.price, d.price) > 0
+        `SELECT d.block_time, d.execution_price AS price, d.dispense_quantity
+         FROM dispenses d
+         WHERE d.asset = ? AND d.execution_price > 0
            AND d.block_time >= ? AND d.block_time < ?
          ORDER BY d.block_time DESC, d.id DESC
          LIMIT ?`
@@ -122,9 +122,9 @@ export async function handleCombinedOhlc(
       .first<{ timestamp: number; close: number }>(),
     db
       .prepare(
-        `SELECT d.block_time, COALESCE(p.price, d.price) AS price
-         FROM dispenses d LEFT JOIN dispensers p ON p.tx_hash = d.dispenser_tx_hash
-         WHERE d.asset = ? AND COALESCE(p.price, d.price) > 0 AND d.block_time < ?
+        `SELECT d.block_time, d.execution_price AS price
+         FROM dispenses d
+         WHERE d.asset = ? AND d.execution_price > 0 AND d.block_time < ?
          ORDER BY d.block_time DESC, d.id DESC LIMIT 1`
       )
       .bind(base, windowStart)

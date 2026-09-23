@@ -93,15 +93,11 @@ export async function handleAssetTrades(
   }
 
   if (wantDispenses) {
-    // A dispense is always the buyer acquiring the asset for BTC. The price
-    // is the dispenser's own rate when its row is on file: the stored
-    // per-row price carries the FULL payment of a shared multi-dispenser
-    // hit, inflated by however many dispensers the payment touched.
+    // Show the allocated execution price, including assets bought as a bundle.
     parts.push(
       `SELECT 'dispense' AS kind, block_time, block_index, tx_hash,
               'buy' AS side, dispense_quantity AS amount,
-              COALESCE((SELECT dp.price FROM dispensers dp
-                         WHERE dp.tx_hash = dispenses.dispenser_tx_hash), price) AS price,
+              execution_price AS price,
               'BTC' AS quote_asset, destination AS counterparty, id
        FROM dispenses
        WHERE asset = ?`

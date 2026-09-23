@@ -212,6 +212,7 @@ interface TradeRow {
 interface DispenseRow {
   id: number;
   price: number;
+  quote_volume: number;
   dispense_quantity: number;
   block_time: number;
   tx_hash: string;
@@ -262,11 +263,10 @@ export async function handleCgHistoricalTrades(
   let tradeQuery = `SELECT id, price, amount, volume, block_time, side, source_type, tx1_hash
                     FROM trades WHERE pair = ?`;
   const tradeBinds: (string | number)[] = [parsed.pair];
-  // Protocol-priced: the dispenser's own rate, never the shared/overpaid
-  // gross BTC recorded on the dispense row (see market-summary.ts).
-  let dispenseQuery = `SELECT d.id, COALESCE(p.price, d.price) AS price, d.dispense_quantity,
+  // Effective bundle allocation, never the shared gross BTC or offer rate.
+  let dispenseQuery = `SELECT d.id, d.execution_price AS price, d.dispense_quantity, d.quote_volume,
                               d.block_time, d.tx_hash
-                       FROM dispenses d LEFT JOIN dispensers p ON p.tx_hash = d.dispenser_tx_hash
+                       FROM dispenses d
                        WHERE d.asset = ?`;
   const dispenseBinds: (string | number)[] = [parsed.base];
 
@@ -330,7 +330,7 @@ export async function handleCgHistoricalTrades(
       trade_id: d.id * 8 + SOURCE_CODE.dispenser,
       price: decPrice(d.price),
       base_volume: dec(d.dispense_quantity),
-      target_volume: dec(d.dispense_quantity * d.price),
+      target_volume: dec(d.quote_volume),
       trade_timestamp: d.block_time,
       type: "buy",
       source: "dispenser",
