@@ -355,6 +355,50 @@ test("real sync retries beyond the D1 batch boundary without doubling LP invento
   } finally { globalThis.fetch = original; h.sqlite.close(); }
 });
 
+for (const identityPresent of [true, false]) test(`fairminter LP credit with null envelope ${identityPresent ? "survives retry and rolls back" : "fails closed without payload identity"}`, async () => {
+  const h = fixture(); await h.db.batch(checkpointStatements(h.db, block(1)));
+  h.sqlite.exec("INSERT OR REPLACE INTO indexer_state VALUES('indexer_mode','FOLLOWING')");
+  const original = globalThis.fetch; let branch = "a";
+  const txHash = "c".repeat(64), holder = "1CounterpartyXXXXXXXXXXXXXXXUWLpVr";
+  const events = [
+    { event: "CREDIT", event_index: 1, tx_hash: null,
+      params: { address: holder, asset: "LP", quantity: 14625320509308,
+        quantity_normalized: "146253.20509308", calling_function: "fairminter pool deposit",
+        event: identityPresent ? txHash : "not-a-transaction", tx_index: 10, block_index: 2 } },
+    { event: "OPEN_POOL", event_index: 2, tx_hash: null,
+      params: { tx_hash: txHash, tx_index: 10, block_index: 2, asset_a: "AAA", asset_b: "XCP",
+        lp_asset: "LP", reserve_a: 3100000000000000, reserve_b: 69000000000,
+        reserve_a_normalized: "31000000", reserve_b_normalized: "690" } },
+  ];
+  globalThis.fetch = async input => {
+    const path = new URL(String(input)).pathname;
+    if (path.endsWith("/last")) return Response.json({ result: block(2, branch) });
+    if (path.endsWith("/events")) return Response.json({ result: branch === "a" ? events : [], next_cursor: null });
+    const height = Number(path.split("/")[2]);
+    return Response.json({ result: block(height, height === 1 ? "a" : branch) });
+  };
+  try {
+    if (!identityPresent) {
+      await rejects(() => syncBlocks(h.db, "https://core.test", 10), "Missing LP balance event transaction identity");
+      same(h.sqlite.prepare("SELECT value FROM indexer_state WHERE key='last_block_index'").get(), { value: "1" });
+      same(h.sqlite.prepare("SELECT COUNT(*) n FROM pool_lp_balance_events").get(), { n: 0 });
+      return;
+    }
+    h.fail(sql => sql.includes("DELETE FROM pool_address_fee_totals"));
+    await rejects(() => syncBlocks(h.db, "https://core.test", 10), "Injected");
+    h.fail(() => false);
+    await syncBlocks(h.db, "https://core.test", 10);
+    same(h.sqlite.prepare("SELECT holder,balance_raw FROM pool_lp_balances").get(), { holder, balance_raw: 14625320509308 });
+    same(h.sqlite.prepare("SELECT tx_hash,event_index FROM pool_lp_balance_events").get(), { tx_hash: txHash, event_index: 1 });
+    await syncBlocks(h.db, "https://core.test", 10);
+    same(h.sqlite.prepare("SELECT balance_raw FROM pool_lp_balances").get(), { balance_raw: 14625320509308 });
+    branch = "b";
+    await syncBlocks(h.db, "https://core.test", 10);
+    same(h.sqlite.prepare("SELECT COUNT(*) n FROM pool_lp_balance_events").get(), { n: 0 });
+    same(h.sqlite.prepare("SELECT COALESCE(SUM(balance_raw),0) n FROM pool_lp_balances").get(), { n: 0 });
+  } finally { globalThis.fetch = original; h.sqlite.close(); }
+});
+
 test("catch-up cannot join an old applied parent to a new branch whose own hash remains stable", async () => {
   const h = fixture(); await h.db.batch(checkpointStatements(h.db, block(1)));
   h.sqlite.exec("INSERT OR REPLACE INTO indexer_state VALUES('indexer_mode','FOLLOWING')");
