@@ -46,7 +46,7 @@ interface FeeAllocationInput {
 
 interface CreditDebitInput {
   event: "CREDIT" | "DEBIT";
-  txHash: string;
+  txHash: string | null;
   params: Record<string, unknown>;
   eventIndex: number;
   blockIndex: number;
@@ -178,6 +178,9 @@ export function addLpDelta(
     throw new Error("Invalid LP balance delta");
   }
   if (!input.holder || input.deltaRaw === 0) return;
+  // INSERT OR IGNORE also ignores NOT NULL violations. Never let a missing
+  // transaction identity silently discard a balance event and its trigger.
+  if (!input.txHash) throw new Error("Missing LP balance event transaction identity");
 
   const key = balanceKey(input.lpAsset, input.holder);
   const existing = pendingBalances.get(key);
@@ -249,9 +252,16 @@ export function addCreditDebitLpDelta(
     (input.params.action as string | undefined) ??
     input.event.toLowerCase();
 
+  // End-of-block fairminter pool credits have no envelope transaction. Core
+  // records the originating fairminter transaction in the credit's event field.
+  const origin = input.params.event;
+  const txHash = input.txHash ||
+    (typeof origin === "string" && /^[0-9a-f]{64}$/i.test(origin) ? origin : null);
+  if (!txHash) throw new Error("Missing LP balance event transaction identity");
+
   addLpDelta(stmts, pendingBalances, {
     event: input.event,
-    txHash: input.txHash,
+    txHash,
     eventIndex: input.eventIndex,
     txIndex: (input.params.tx_index as number | undefined) ?? null,
     blockIndex: input.blockIndex,

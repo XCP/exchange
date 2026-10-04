@@ -65,7 +65,7 @@ interface BlockEvent {
   event_index: number;
   event: string;
   params: Record<string, unknown>;
-  tx_hash: string;
+  tx_hash: string | null;
   block_index?: number;  // Present in /v2/events, absent in /blocks/{N}/events
   block_time?: number;   // Present in some event types (ORDER_MATCH, OPEN_ORDER) but not others
 }
@@ -1199,7 +1199,7 @@ export async function syncBlocks(
             // tx_hash lives on the envelope for this event, not in params —
             // see processPoolUpdate. Resolved once and used for both the row
             // and the key, so they cannot disagree.
-            const updateTxHash = (params.tx_hash as string | undefined) ?? event.tx_hash;
+            const updateTxHash = (params.tx_hash as string | undefined) ?? event.tx_hash ?? undefined;
             const pool = processPoolUpdate(params, lpAsset, event.event_index, blockIndex, eventBlockTime, updateTxHash);
             if (pool) {
               stmts.push(pool.stmt);
