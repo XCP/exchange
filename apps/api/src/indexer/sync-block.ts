@@ -1,3 +1,5 @@
+import { freshCounterpartyUrl } from "../lib/fresh-read";
+import { initializeUndo, pruneUndo, restoreUndo, writeWithUndo } from "./reorg-undo";
 import { accountDispensesInBlock } from "../lib/dispense-accounting";
 import { repairUnaccountedDispenses } from "./dispense-accounting-repair";
 import { OrderMatch, Order, CounterpartyDispenser, fetchOrderByHash } from "../lib/counterparty";
@@ -178,7 +180,7 @@ function computePoolMatchExecutionContext(
 async function fetchCurrentBlock(
   apiBase: string
 ): Promise<{ block_index: number; block_time: number; block_hash: string }> {
-  const res = await fetch(`${apiBase}/blocks/last`, { signal: AbortSignal.timeout(API_TIMEOUT_MS) });
+  const res = await fetch(freshCounterpartyUrl(`${apiBase}/blocks/last`), { signal: AbortSignal.timeout(API_TIMEOUT_MS) });
   if (!res.ok) {
     await discard(res);
     throw new Error(`Failed to fetch last block: ${res.status}`);
@@ -192,7 +194,7 @@ async function fetchBlockHash(
   apiBase: string,
   blockIndex: number
 ): Promise<string> {
-  const res = await fetch(`${apiBase}/blocks/${blockIndex}`, { signal: AbortSignal.timeout(API_TIMEOUT_MS) });
+  const res = await fetch(freshCounterpartyUrl(`${apiBase}/blocks/${blockIndex}`), { signal: AbortSignal.timeout(API_TIMEOUT_MS) });
   if (!res.ok) {
     await discard(res);
     throw new Error(`Failed to fetch block ${blockIndex}: ${res.status}`);
@@ -204,13 +206,13 @@ async function fetchBlockHash(
 async function fetchBlockInfo(
   apiBase: string,
   blockIndex: number
-): Promise<{ block_hash: string; block_time: number }> {
-  const res = await fetch(`${apiBase}/blocks/${blockIndex}`, { signal: AbortSignal.timeout(API_TIMEOUT_MS) });
+): Promise<{ block_hash: string; block_time: number; previous_block_hash: string }> {
+  const res = await fetch(freshCounterpartyUrl(`${apiBase}/blocks/${blockIndex}`), { signal: AbortSignal.timeout(API_TIMEOUT_MS) });
   if (!res.ok) {
     await discard(res);
     throw new Error(`Failed to fetch block ${blockIndex}: ${res.status}`);
   }
-  const data: { result: { block_hash: string; block_time: number } } = await res.json();
+  const data: { result: { block_hash: string; block_time: number; previous_block_hash: string } } = await res.json();
   return data.result;
 }
 
@@ -222,7 +224,7 @@ interface BlockEventPage {
 async function fetchBlockEventPage(url: URL, blockIndex: number): Promise<BlockEventPage> {
   for (let attempt = 0; ; attempt++) {
     try {
-      const res = await fetch(url.toString(), { signal: AbortSignal.timeout(API_TIMEOUT_MS) });
+      const res = await fetch(freshCounterpartyUrl(url.toString()), { signal: AbortSignal.timeout(API_TIMEOUT_MS) });
       if (!res.ok) {
         await discard(res);
         throw new Error(`Failed to fetch events for block ${blockIndex}: ${res.status}`);
@@ -706,6 +708,8 @@ export async function syncBlocks(
   const currentBlock = await fetchCurrentBlock(apiBase);
   let lastBlock = lastRow ? parseInt(lastRow.value, 10) : currentBlock.block_index - 1;
 
+  await initializeUndo(db, lastBlock);
+
   // Reorg detection
   const savedRollback: RollbackPlan | null = rollbackRow ? JSON.parse(rollbackRow.value) : null;
   let rollbackCheckpoint: BlockCheckpoint | null = savedRollback?.checkpoint ?? null;
@@ -854,7 +858,9 @@ export async function syncBlocks(
       db.prepare(`DELETE FROM candles WHERE pair = ? AND timestamp >= ?`)
         .bind(p.pair, bucketTimestamp(plan.earliestTime!, "1h")));
 
-    // Core rollback: delete invalidated data + re-open recently closed orders/dispensers
+    // Restore exact quantities and statuses before removing orphan history.
+    await restoreUndo(db, rollbackTo);
+    // Core rollback: delete invalidated data
     await db.batch([
       db.prepare(`DELETE FROM trades WHERE block_index > ?`).bind(rollbackTo),
       db.prepare(`DELETE FROM dispenses WHERE block_index > ?`).bind(rollbackTo),
@@ -872,17 +878,6 @@ export async function syncBlocks(
         WHERE lp_asset IN (SELECT value FROM json_each(?))
           AND (balance_raw < 0 OR balance_raw > 9007199254740991))
         THEN json('Invalid LP rollback balance') ELSE 1 END`).bind(JSON.stringify(plan.pools)),
-      // Re-open orders/dispensers that pre-date the rollback but were closed recently
-      // (i.e., closed by events in the now-invalidated blocks).
-      // The next sync cycle re-processes replacement blocks and re-closes as needed.
-      db.prepare(
-        `UPDATE orders SET status = 'open', closed_at = NULL
-         WHERE status != 'open' AND block_index <= ? AND closed_at >= ?`
-      ).bind(rollbackTo, plan.closureCutoff),
-      db.prepare(
-        `UPDATE dispensers SET status = 0, closed_at = NULL
-         WHERE status != 0 AND block_index <= ? AND closed_at >= ?`
-      ).bind(rollbackTo, plan.closureCutoff),
     ]);
 
     // Candle deletes in separate batches (one per pair, could exceed D1's 100-stmt limit)
@@ -1414,7 +1409,7 @@ export async function syncBlocks(
     if (await fetchBlockHash(apiBase, blockIdx) !== header.block_hash) {
       throw new Error(`Block ${blockIdx} changed while fetching events`);
     }
-    if (expectedPreviousHash && await fetchBlockHash(apiBase, blockIdx - 1) !== expectedPreviousHash) {
+    if (expectedPreviousHash && (header.previous_block_hash !== expectedPreviousHash || await fetchBlockHash(apiBase, blockIdx - 1) !== expectedPreviousHash)) {
       throw new Error(`Applied chain changed before block ${blockIdx}`);
     }
     const checkpoint = { ...header, block_index: blockIdx };
@@ -1429,7 +1424,7 @@ export async function syncBlocks(
     // Execute all statements for this block in batches
     if (stmts.length > 0) {
       try {
-        await batchExec(db, stmts.map((fn) => fn(db)));
+        await writeWithUndo(db, stmts.map((fn) => ({ statement: fn(db), block: blockIdx })));
       } catch (e) {
         logError("BLOCK_BATCH_FAILED", {
           block_index: blockIdx,
@@ -1458,6 +1453,7 @@ export async function syncBlocks(
       ] : []),
     ]);
 
+    await pruneUndo(db, blockIdx);
     lastBlock = blockIdx;
     expectedPreviousHash = header.block_hash;
     result.blocks_processed++;

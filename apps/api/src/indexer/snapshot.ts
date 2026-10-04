@@ -1,3 +1,4 @@
+import { freshCounterpartyUrl } from "../lib/fresh-read";
 import { fetchOrders, fetchOrderByHash, fetchDispensers } from "../lib/counterparty";
 import { API_TIMEOUT_MS, MAX_PAGINATION_PAGES } from "../lib/constants";
 import { batchExec } from "../lib/batch";
@@ -184,7 +185,7 @@ export async function runSnapshotStep(
 
   if (phase === "orders") {
     // Fetch chain tip first, but only persist AFTER syncOrders succeeds
-    const res = await fetch(`${apiBase}/blocks/last`, { signal: AbortSignal.timeout(API_TIMEOUT_MS) });
+    const res = await fetch(freshCounterpartyUrl(`${apiBase}/blocks/last`), { signal: AbortSignal.timeout(API_TIMEOUT_MS) });
     if (!res.ok) {
       await discard(res);
       throw new Error(`Failed to fetch last block: ${res.status}`);

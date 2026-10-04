@@ -1,3 +1,5 @@
+import { initializeUndo, restoreUndo, writeWithUndo } from "../src/indexer/reorg-undo";
+import { freshCounterpartyUrl } from "../src/lib/fresh-read";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
@@ -21,6 +23,7 @@ function fixture() {
       if (!(error instanceof Error) || error.message !== "duplicate column name: reserve_a_before") throw error;
     }
   }
+  sqlite.exec("INSERT INTO reorg_undo_state(singleton,floor) VALUES(1,0)");
   let fail: (sql: string) => boolean = () => false;
   class Statement {
     values: unknown[] = [];
@@ -55,7 +58,7 @@ async function rejects(run: () => Promise<unknown>, text: string) {
   assert.ok(caught, `Expected failure: ${text}`);
 }
 
-const block = (height: number, branch = "a") => ({ block_index: height, block_hash: branch.repeat(62) + String(height).padStart(2, "0"), block_time: 1_800_000_000 + height });
+const block = (height: number, branch = "a") => ({ block_index: height, block_hash: branch.repeat(62) + String(height).padStart(2, "0"), block_time: 1_800_000_000 + height, previous_block_hash: (height === 2 ? "a" : branch).repeat(62) + String(height - 1).padStart(2, "0") });
 function seed(h: ReturnType<typeof fixture>, holder: string, amount: number) {
   h.sqlite.prepare(`INSERT INTO pool_lp_balances(lp_asset,pair,address,holder,holder_type,balance_raw,balance)
     VALUES ('LP','AAA_XCP',?,?,'address',?,?)`).run(holder, holder, amount, amount);
@@ -84,7 +87,7 @@ test("checkpoint height/hash/time and retained history commit together; unchange
 test("common ancestor must match retained hashes; missing history fails closed", async () => {
   const h = fixture();
   for (let height = 1; height <= 4; height++) await h.db.batch(checkpointStatements(h.db, block(height)));
-  same(await findCommonCheckpoint(h.db, 3, async height => block(height, height > 1 ? "b" : "a").block_hash), block(1));
+  same(await findCommonCheckpoint(h.db, 3, async height => block(height, height > 1 ? "b" : "a").block_hash), { block_index: 1, block_hash: block(1).block_hash, block_time: block(1).block_time });
   await rejects(() => findCommonCheckpoint(h.db, 3, async height => block(height, "b").block_hash), "No verified");
   h.sqlite.close();
 });
@@ -339,7 +342,7 @@ test("real sync retries beyond the D1 batch boundary without doubling LP invento
   try {
     h.fail(sql => sql.includes("INTO pool_lp_balance_snapshots"));
     await rejects(() => syncBlocks(h.db, "https://core.test", 10), "Injected");
-    same(h.sqlite.prepare("SELECT balance_raw FROM pool_lp_balances").get(), { balance_raw: 150 });
+    same(h.sqlite.prepare("SELECT balance_raw FROM pool_lp_balances").get(), { balance_raw: 140 });
     h.fail(sql => sql.includes("DELETE FROM pool_address_fee_totals"));
     await rejects(() => syncBlocks(h.db, "https://core.test", 10), "Injected");
     same(h.sqlite.prepare("SELECT balance_raw FROM pool_lp_balances").get(), { balance_raw: 160 });
@@ -419,4 +422,56 @@ test("deployment-gap repair survives stats failure and excludes incomplete block
       WHERE payment_asset_count = 0 AND block_index <= 1 ORDER BY block_index LIMIT 1`).all();
     assert.ok(JSON.stringify(plan).includes("idx_dispenses_unaccounted"));
   } finally { h.sqlite.close(); }
+});
+
+
+test("exact undo restores partial fills and closing dispensers; interruption resumes", async () => {
+  const h = fixture();
+  h.sqlite.exec(`INSERT INTO orders(tx_hash,tx_index,pair,base_asset,quote_asset,source,side,price,amount,give_remaining,get_remaining,expiration,block_index,block_time,first_seen_at,remaining)
+    VALUES('order',1,'AAA_XCP','AAA','XCP','alice','sell',2,100,80,160,0,1,1,1,80);
+    INSERT INTO dispensers(tx_hash,tx_index,asset,source,give_quantity,escrow_quantity,give_remaining,satoshi_price,price,block_index,block_time,first_seen_at)
+    VALUES('dispenser',2,'AAA','alice',10,100,70,100,1,1,1,1);`);
+  await writeWithUndo(h.db, [
+    { block: 2, statement: h.db.prepare("UPDATE orders SET give_remaining=0,get_remaining=0,remaining=0,status='filled' WHERE tx_hash='order'") },
+    { block: 2, statement: h.db.prepare("UPDATE dispensers SET give_remaining=0,status=11,dispense_count=7 WHERE tx_hash='dispenser'") },
+  ]);
+  same(h.sqlite.prepare("SELECT COUNT(*) n FROM reorg_undo_context").get(), { n: 0 });
+  h.fail(sql => sql.includes("DELETE FROM reorg_undo WHERE seq"));
+  await rejects(() => restoreUndo(h.db, 1), "Injected");
+  same(h.sqlite.prepare("SELECT status FROM dispensers").get(), { status: 11 });
+  h.fail(() => false);
+  await restoreUndo(h.db, 1); await restoreUndo(h.db, 1);
+  same(h.sqlite.prepare("SELECT give_remaining,get_remaining,remaining,status,expire_index FROM orders").get(),
+    { give_remaining: 80, get_remaining: 160, remaining: 80, status: 'open', expire_index: null });
+  same(h.sqlite.prepare("SELECT give_remaining,status,dispense_count FROM dispensers").get(), { give_remaining: 70, status: 0, dispense_count: 0 });
+  h.sqlite.exec("DELETE FROM reorg_undo_state"); await initializeUndo(h.db, 100);
+  await rejects(() => restoreUndo(h.db, 99), "predates exact undo");
+  h.sqlite.close();
+});
+
+test("fresh reads cannot hit a retained URL cache, even at fixed continuation cursors", () => {
+  const urls = new Set<string>();
+  for (let i = 0; i < 300; i++) {
+    const url = new URL(freshCounterpartyUrl("https://core.test/blocks/2/events?cursor=100&limit=100&verbose=true"));
+    assert.equal(url.searchParams.get("cursor"), "100");
+    assert.equal(url.searchParams.get("limit"), "100");
+    assert.equal(url.searchParams.get("verbose"), "true");
+    urls.add(url.toString());
+  }
+  assert.equal(urls.size, 300);
+});
+
+test("a stale height lookup cannot hide a replacement header's different parent", async () => {
+  const h = fixture();
+  h.sqlite.exec("INSERT OR REPLACE INTO indexer_state VALUES('indexer_mode','FOLLOWING')");
+  await h.db.batch(checkpointStatements(h.db, block(1)));
+  const original = globalThis.fetch;
+  globalThis.fetch = async input => {
+    const path = new URL(String(input)).pathname;
+    if (path.endsWith('/events')) return Response.json({result: [], next_cursor: null});
+    if (path.endsWith('/last') || path.endsWith('/2')) return Response.json({result: {...block(2, 'b'), previous_block_hash: block(1, 'b').block_hash}});
+    return Response.json({result: block(1)});
+  };
+  try { await rejects(() => syncBlocks(h.db, 'https://core.test'), 'Applied chain changed'); }
+  finally { globalThis.fetch = original; h.sqlite.close(); }
 });
