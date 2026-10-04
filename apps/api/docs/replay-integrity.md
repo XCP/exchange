@@ -72,3 +72,20 @@ Every Counterparty indexer read uses a fresh URL, including continuation pages a
 A repeated scalar `verbose` parameter preserves Core's first-value semantics while changing its
 URL cache key. Block acceptance also compares the new header's actual `previous_block_hash` with
 the applied hash. This trusts the configured Core provider; it is not an independent Bitcoin oracle.
+
+## Protocol reparses
+
+Migration `0054_protocol_checkpoints.sql` adds ledger and message hashes to retained checkpoints.
+The pending block records the same identity before any event writes. Reparse detection compares
+all three hashes at the fixed applied height, including interrupted blocks and rollback retries.
+Block and parent identities are rechecked after fetching events. An ordinary new descendant does
+not invalidate those fixed anchors. Missing parsed protocol hashes stop replay before event writes.
+
+Apply 0054 before deploying. It only adds nullable columns and does not rewrite application data.
+The first successful pass verifies the existing Bitcoin checkpoint and establishes a protocol
+baseline there. Older NULL hashes are not historical evidence: protocol recovery requires a
+previously recorded protocol ancestor within the undo window, otherwise it stops for a verified
+rebuild. This rollout cannot certify protocol history from before that baseline.
+
+Regression coverage includes ledger/message changes with unchanged Bitcoin hashes, messages-only
+changes, interrupted block writes followed by restart, absent protocol evidence, and normal tip growth.

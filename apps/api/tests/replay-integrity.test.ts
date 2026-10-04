@@ -58,7 +58,7 @@ async function rejects(run: () => Promise<unknown>, text: string) {
   assert.ok(caught, `Expected failure: ${text}`);
 }
 
-const block = (height: number, branch = "a") => ({ block_index: height, block_hash: branch.repeat(62) + String(height).padStart(2, "0"), block_time: 1_800_000_000 + height, previous_block_hash: (height === 2 ? "a" : branch).repeat(62) + String(height - 1).padStart(2, "0") });
+const block = (height: number, branch = "a") => ({ block_index: height, block_hash: branch.repeat(62) + String(height).padStart(2, "0"), ledger_hash: branch.repeat(64), messages_hash: branch.repeat(64), block_time: 1_800_000_000 + height, previous_block_hash: (height === 2 ? "a" : branch).repeat(62) + String(height - 1).padStart(2, "0") });
 function seed(h: ReturnType<typeof fixture>, holder: string, amount: number) {
   h.sqlite.prepare(`INSERT INTO pool_lp_balances(lp_asset,pair,address,holder,holder_type,balance_raw,balance)
     VALUES ('LP','AAA_XCP',?,?,'address',?,?)`).run(holder, holder, amount, amount);
@@ -87,8 +87,8 @@ test("checkpoint height/hash/time and retained history commit together; unchange
 test("common ancestor must match retained hashes; missing history fails closed", async () => {
   const h = fixture();
   for (let height = 1; height <= 4; height++) await h.db.batch(checkpointStatements(h.db, block(height)));
-  same(await findCommonCheckpoint(h.db, 3, async height => block(height, height > 1 ? "b" : "a").block_hash), { block_index: 1, block_hash: block(1).block_hash, block_time: block(1).block_time });
-  await rejects(() => findCommonCheckpoint(h.db, 3, async height => block(height, "b").block_hash), "No verified");
+  same(await findCommonCheckpoint(h.db, 3, async height => block(height, height > 1 ? "b" : "a")), { block_index: 1, block_hash: block(1).block_hash, block_time: block(1).block_time,ledger_hash:block(1).ledger_hash,messages_hash:block(1).messages_hash });
+  await rejects(() => findCommonCheckpoint(h.db, 3, async height => block(height, "b")), "No verified");
   h.sqlite.close();
 });
 
@@ -680,4 +680,48 @@ test("verified snapshot repairs the historical eleven missing and four stale ord
       status: "filled", give_remaining: Number(order.give_remaining_normalized), get_remaining: Number(order.get_remaining_normalized),
     });
   } finally { globalThis.fetch = original; h.sqlite.close(); }
+});
+
+for (const messagesOnly of [false, true]) for (const interrupted of [false, true]) test(`same Bitcoin hash with changed protocol state recovers (interrupted=${interrupted}, messagesOnly=${messagesOnly})`, async () => {
+  const h = fixture(); await h.db.batch(checkpointStatements(h.db, block(1)));
+  h.sqlite.exec("INSERT OR REPLACE INTO indexer_state VALUES('indexer_mode','FOLLOWING')");
+  const original = globalThis.fetch; let reparsed = false;
+  const identity = (height: number) => ({ ...block(height), ledger_hash: (reparsed && height === 2 && !messagesOnly ? 'b' : 'a').repeat(64), messages_hash: (reparsed && height === 2 ? 'b' : 'a').repeat(64) });
+  globalThis.fetch = async input => {
+    const path = new URL(String(input)).pathname;
+    if (path.endsWith('/events')) return Response.json({result: reparsed ? [] : [{event:'SEND',event_index:1,block_index:2,params:{status:'valid',asset:'AAA',source:'alice',destination:'bob',quantity:1,tx_hash:'orphan'}}],next_cursor:null});
+    return Response.json({result:identity(path.endsWith('/last') ? 2 : Number(path.split('/')[2]))});
+  };
+  try {
+    let checkpoints = 0;
+    if (interrupted) h.fail(sql=>sql.includes('INSERT INTO indexer_block_checkpoints') && ++checkpoints === 2);
+    if (interrupted) await rejects(()=>syncBlocks(h.db,'https://core.test',1),'Injected');
+    else await syncBlocks(h.db,'https://core.test',1);
+    same(h.sqlite.prepare('SELECT COUNT(*) n FROM sends').get(),{n:1});
+    h.fail(()=>false); reparsed = true;
+    await syncBlocks(h.db,'https://core.test',1);
+    same(h.sqlite.prepare('SELECT COUNT(*) n FROM sends').get(),{n:0});
+    same(h.sqlite.prepare('SELECT ledger_hash,messages_hash FROM indexer_block_checkpoints WHERE block_index=2').get(),{ledger_hash:(messagesOnly?'a':'b').repeat(64),messages_hash:'b'.repeat(64)});
+    assert.equal(h.sqlite.prepare("SELECT value FROM indexer_state WHERE key='pending_block'").get(),undefined);
+  } finally { globalThis.fetch=original; h.sqlite.close(); }
+});
+
+test('normal descendant arrival does not invalidate a fixed block anchor', async () => {
+  const h=fixture(); await h.db.batch(checkpointStatements(h.db,block(1)));
+  h.sqlite.exec("INSERT OR REPLACE INTO indexer_state VALUES('indexer_mode','FOLLOWING')");
+  const original=globalThis.fetch; let latestReads=0;
+  globalThis.fetch=async input=>{const path=new URL(String(input)).pathname;
+    if(path.endsWith('/events'))return Response.json({result:[],next_cursor:null});
+    return Response.json({result:block(path.endsWith('/last') ? (++latestReads===1 ? 2:3) : Number(path.split('/')[2]))});};
+  try { assert.equal((await syncBlocks(h.db,'https://core.test',1)).last_block,2); assert.equal(latestReads,1); }
+  finally {globalThis.fetch=original;h.sqlite.close();}
+});
+
+test('missing protocol hashes stop before writes; legacy rows cannot prove a protocol ancestor', async () => {
+  const h=fixture(); await h.db.batch(checkpointStatements(h.db,{...block(1),ledger_hash:null,messages_hash:null}));
+  h.sqlite.exec("INSERT OR REPLACE INTO indexer_state VALUES('indexer_mode','FOLLOWING')");
+  await rejects(()=>findCommonCheckpoint(h.db,1,async height=>block(height),true),'No verified');
+  const original=globalThis.fetch;globalThis.fetch=async()=>Response.json({result:{...block(2),ledger_hash:null}});
+  try {await rejects(()=>syncBlocks(h.db,'https://core.test',1),'protocol hashes unavailable');same(h.sqlite.prepare("SELECT value FROM indexer_state WHERE key='last_block_index'").get(),{value:'1'});}
+  finally{globalThis.fetch=original;h.sqlite.close();}
 });
