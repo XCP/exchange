@@ -475,3 +475,129 @@ test("a stale height lookup cannot hide a replacement header's different parent"
   try { await rejects(() => syncBlocks(h.db, 'https://core.test'), 'Applied chain changed'); }
   finally { globalThis.fetch = original; h.sqlite.close(); }
 });
+import { syncOrders } from "../src/indexer/snapshot";
+import { buildOrderUpsertStmt, normalizeOrder } from "../src/indexer/normalize";
+import type { Order } from "../src/lib/counterparty";
+
+const orderHistory = JSON.parse(readFileSync("tests/fixtures/order-reconciliation.json", "utf8")) as {
+  orders: Record<string, Order>;
+  blocks: Record<string, { event: string; event_index: number; tx_hash: string; block_index?: number; params: Record<string, unknown> }[]>;
+};
+const historicalOrders = Object.values(orderHistory.orders);
+const staleOrders = historicalOrders.filter(order => order.status === "filled");
+const missingOrders = historicalOrders.filter(order => order.status === "open");
+
+for (const height of [961106, 963588, 964435]) {
+  test(`historical order block ${height} replays creations and terminal statuses`, async () => {
+    const h = fixture();
+    await h.db.batch(checkpointStatements(h.db, block(1)));
+    h.sqlite.exec("INSERT OR REPLACE INTO indexer_state VALUES('indexer_mode','FOLLOWING')");
+    const events = orderHistory.blocks[String(height)];
+    const created = new Set(events.filter(e => e.event === "OPEN_ORDER").map(e => String(e.params.tx_hash)));
+    for (const order of staleOrders) {
+      if (!created.has(order.tx_hash)) await buildOrderUpsertStmt(h.db, normalizeOrder(order), 1).run();
+    }
+    if (height === 964435) {
+      for (const event of events) h.sqlite.prepare("INSERT INTO deal_scores(listing_id,listing_type,asset,quote,listing_price) VALUES(?,'order','XCP','BTC',1)").run(String(event.params.tx_hash));
+    }
+    const original = globalThis.fetch;
+    globalThis.fetch = async input => {
+      const url = new URL(String(input));
+      if (url.pathname.endsWith("/events")) {
+        const requested = new Set(url.searchParams.get("event_name")?.split(","));
+        return Response.json({ result: events.filter(e => requested.has(e.event)).map(e => ({
+          ...e, block_index: 2, params: { ...e.params, block_index: 2 },
+        })), next_cursor: null });
+      }
+      if (url.pathname.includes("/orders/")) return Response.json({ result: orderHistory.orders[url.pathname.split("/").pop()!] });
+      return Response.json({ result: block(url.pathname.endsWith("/last") ? 2 : Number(url.pathname.split("/")[2])) });
+    };
+    try {
+      await syncBlocks(h.db, "https://core.test", 1);
+      if (height === 961106) {
+        same(h.sqlite.prepare("SELECT COUNT(*) n FROM orders WHERE expiration=0 AND expire_index IS NULL AND status='open'").get(), { n: 11 });
+      } else {
+        const affected = events.filter(e => e.params.status === "filled").map(e => String(e.params.tx_hash));
+        assert.equal(affected.length, 2);
+        for (const hash of affected) {
+          const row = h.sqlite.prepare("SELECT status,give_remaining,get_remaining FROM orders WHERE tx_hash=?").get(hash);
+          same(row, { status: "filled", give_remaining: Number(orderHistory.orders[hash].give_remaining_normalized), get_remaining: Number(orderHistory.orders[hash].get_remaining_normalized) });
+        }
+      }
+      if (height === 964435) same(h.sqlite.prepare("SELECT COUNT(*) n FROM deal_scores").get(), { n: 0 });
+      same(h.sqlite.prepare("SELECT value FROM indexer_state WHERE key='last_block_index'").get(), { value: "2" });
+    } finally { globalThis.fetch = original; h.sqlite.close(); }
+  });
+}
+
+test("ORDER_UPDATE replays event amounts instead of a later filled snapshot; lookup failures cannot checkpoint", async () => {
+  for (const missingMetadata of [false, true]) {
+    const h = fixture(); await h.db.batch(checkpointStatements(h.db, block(1)));
+    h.sqlite.exec("INSERT OR REPLACE INTO indexer_state VALUES('indexer_mode','FOLLOWING')");
+    const order = staleOrders.find(o => o.give_asset === "BTC")!;
+    await buildOrderUpsertStmt(h.db, normalizeOrder(order), 1).run();
+    const original = globalThis.fetch;
+    globalThis.fetch = async input => {
+      const path = new URL(String(input)).pathname;
+      if (path.includes("/orders/")) return Response.json({ result: missingMetadata ? null : order });
+      if (path.endsWith("/events")) return Response.json({ result: [{ event: "ORDER_UPDATE", event_index: 1, tx_hash: "partial", block_index: 2,
+        params: { tx_hash: order.tx_hash, status: "open", give_remaining: 50000, get_remaining: 2000000000 } }], next_cursor: null });
+      return Response.json({ result: block(path.endsWith("/last") ? 2 : Number(path.split("/")[2])) });
+    };
+    try {
+      if (missingMetadata) {
+        await rejects(() => syncBlocks(h.db, "https://core.test", 1), "Cannot verify order metadata");
+        same(h.sqlite.prepare("SELECT value FROM indexer_state WHERE key='last_block_index'").get(), { value: "1" });
+      } else {
+        await syncBlocks(h.db, "https://core.test", 1);
+        same(h.sqlite.prepare("SELECT give_remaining,get_remaining,status FROM orders WHERE tx_hash=?").get(order.tx_hash), { give_remaining: 0.0005, get_remaining: 20, status: "open" });
+        await restoreUndo(h.db, 1);
+        same(h.sqlite.prepare("SELECT give_remaining FROM orders WHERE tx_hash=?").get(order.tx_hash), { give_remaining: 0.00000001 });
+      }
+    } finally { globalThis.fetch = original; h.sqlite.close(); }
+  }
+});
+
+for (const failure of ["missing lookup", "empty continuation", "repeated cursor", "malformed quantity", "changed tip", "conflicting status"]) {
+  test(`order snapshot writes nothing after ${failure}`, async () => {
+    const h = fixture();
+    await buildOrderUpsertStmt(h.db, normalizeOrder(staleOrders[0]), 1).run();
+    const before = h.sqlite.prepare("SELECT * FROM orders").all();
+    let anchors = 0;
+    const original = globalThis.fetch;
+    globalThis.fetch = async input => {
+      const url = new URL(String(input));
+      if (url.pathname.endsWith("/last")) return Response.json({ result: { ...block(2, failure === "changed tip" && anchors++ > 0 ? "b" : "a"), ledger_hash: "ledger", messages_hash: "messages" } });
+      if (url.pathname.endsWith("/orders")) {
+        if (failure === "empty continuation") return Response.json({ result: [], next_cursor: 100 });
+        if (failure === "repeated cursor") return Response.json({ result: [missingOrders[url.searchParams.has("cursor") ? 1 : 0]], next_cursor: 100 });
+        const order = failure === "malformed quantity" ? { ...missingOrders[0], give_quantity_normalized: "invalid" } : missingOrders[0];
+        return Response.json({ result: [order], next_cursor: null });
+      }
+      return Response.json({ result: failure === "missing lookup" ? null : { ...staleOrders[0], status: failure === "conflicting status" ? "open" : "filled" } });
+    };
+    try {
+      let threw = false; try { await syncOrders(h.db, "https://core.test"); } catch { threw = true; }
+      assert.ok(threw); same(h.sqlite.prepare("SELECT * FROM orders").all(), before);
+    } finally { globalThis.fetch = original; h.sqlite.close(); }
+  });
+}
+
+test("verified snapshot repairs the historical eleven missing and four stale orders, preserving BTC dust", async () => {
+  const h = fixture();
+  for (const order of staleOrders) await buildOrderUpsertStmt(h.db, normalizeOrder(order), 1).run();
+  const original = globalThis.fetch;
+  globalThis.fetch = async input => {
+    const path = new URL(String(input)).pathname;
+    if (path.endsWith("/last")) return Response.json({ result: { ...block(2), ledger_hash: "ledger", messages_hash: "messages" } });
+    if (path.endsWith("/orders")) return Response.json({ result: missingOrders, next_cursor: null });
+    return Response.json({ result: orderHistory.orders[path.split("/").pop()!] });
+  };
+  try {
+    same(await syncOrders(h.db, "https://core.test"), { synced: 11, closed: 4 });
+    same(h.sqlite.prepare("SELECT COUNT(*) n FROM orders WHERE status='open'").get(), { n: 11 });
+    for (const order of staleOrders) same(h.sqlite.prepare("SELECT status,give_remaining,get_remaining FROM orders WHERE tx_hash=?").get(order.tx_hash), {
+      status: "filled", give_remaining: Number(order.give_remaining_normalized), get_remaining: Number(order.get_remaining_normalized),
+    });
+  } finally { globalThis.fetch = original; h.sqlite.close(); }
+});

@@ -72,6 +72,8 @@ export interface Order {
   block_index: number;
   block_time: number;
   status: string;
+  give_asset_info?: { divisible: boolean };
+  get_asset_info?: { divisible: boolean };
   give_quantity_normalized: string;
   get_quantity_normalized: string;
   give_remaining_normalized: string;
