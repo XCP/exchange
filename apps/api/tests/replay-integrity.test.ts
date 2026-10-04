@@ -399,6 +399,42 @@ for (const identityPresent of [true, false]) test(`fairminter LP credit with nul
   } finally { globalThis.fetch = original; h.sqlite.close(); }
 });
 
+for (const scenario of [
+  { name: "delayed close without count", params: { status: 10, give_remaining_normalized: "0" }, remaining: 0, count: 7 },
+  { name: "closing status only", params: { status: 11 }, remaining: 300, count: 7 },
+  { name: "remaining without count", params: { status: 0, give_remaining_normalized: "3" }, remaining: 3, count: 7 },
+  { name: "zero count without remaining", params: { status: 0, dispense_count: 0 }, remaining: 300, count: 0 },
+]) test(`partial dispenser update: ${scenario.name}, retry and exact rollback`, async () => {
+  const h = fixture(); await h.db.batch(checkpointStatements(h.db, block(1)));
+  h.sqlite.exec(`INSERT OR REPLACE INTO indexer_state VALUES('indexer_mode','FOLLOWING');
+    INSERT INTO dispensers(tx_hash,tx_index,asset,source,give_quantity,escrow_quantity,give_remaining,
+      satoshi_price,price,dispense_count,status,block_index,block_time,first_seen_at,closed_at)
+    VALUES('dispenser',1,'XCP','seller',1,300,300,2985,0.00002985,7,11,1,1800000001,1800000001,1800000001);`);
+  const before = h.sqlite.prepare("SELECT * FROM dispensers").get();
+  const original = globalThis.fetch; let branch = "a";
+  globalThis.fetch = async input => {
+    const path = new URL(String(input)).pathname;
+    if (path.endsWith("/last")) return Response.json({ result: block(2, branch) });
+    if (path.endsWith("/events")) return Response.json({ result: branch === "a" ? [{
+      event: "DISPENSER_UPDATE", event_index: 1, tx_hash: null,
+      params: { tx_hash: "dispenser", asset: "XCP", source: "seller", ...scenario.params },
+    }] : [], next_cursor: null });
+    const height = Number(path.split("/")[2]);
+    return Response.json({ result: block(height, height === 1 ? "a" : branch) });
+  };
+  try {
+    await syncBlocks(h.db, "https://core.test", 10);
+    same(h.sqlite.prepare("SELECT status,give_remaining,dispense_count FROM dispensers").get(), {
+      status: scenario.params.status, give_remaining: scenario.remaining, dispense_count: scenario.count,
+    });
+    if (scenario.params.status < 10) same(h.sqlite.prepare("SELECT closed_at FROM dispensers").get(), { closed_at: null });
+    const after = h.sqlite.prepare("SELECT * FROM dispensers").get();
+    await syncBlocks(h.db, "https://core.test", 10);same(h.sqlite.prepare("SELECT * FROM dispensers").get(), after);
+    branch = "b";await syncBlocks(h.db, "https://core.test", 10);
+    same(h.sqlite.prepare("SELECT * FROM dispensers").get(), before);
+  } finally { globalThis.fetch = original; h.sqlite.close(); }
+});
+
 test("catch-up cannot join an old applied parent to a new branch whose own hash remains stable", async () => {
   const h = fixture(); await h.db.batch(checkpointStatements(h.db, block(1)));
   h.sqlite.exec("INSERT OR REPLACE INTO indexer_state VALUES('indexer_mode','FOLLOWING')");

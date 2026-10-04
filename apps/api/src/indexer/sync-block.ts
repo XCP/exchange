@@ -568,43 +568,21 @@ function processDispenserUpdate(
   }
   if (giveRemaining != null && !isFinite(giveRemaining)) giveRemaining = null;
 
-  const dispenseCount = params.dispense_count as number | undefined;
+  const dispenseCount = (params.dispense_count as number | undefined) ?? null;
 
-  if (status >= 10) {
-    // Dispenser closed (10=STATUS_CLOSED) or closing (11=STATUS_CLOSING)
-    if (giveRemaining != null && dispenseCount != null) {
-      return (db) =>
-        db
-          .prepare(
-            `UPDATE dispensers SET status = ?, give_remaining = ?,
-             dispense_count = ?, closed_at = ? WHERE tx_hash = ?`
-          )
-          .bind(status, giveRemaining, dispenseCount, now, txHash);
-    }
-    // Some close events (status=11) omit remaining/count - just update status
-    return (db) =>
-      db
-        .prepare(`UPDATE dispensers SET status = ?, closed_at = ? WHERE tx_hash = ?`)
-        .bind(status, now, txHash);
-  }
-
-  // status 0 (STATUS_OPEN) or 1 (STATUS_OPEN_EMPTY_ADDRESS) - still open
-  if (giveRemaining != null && dispenseCount != null) {
-    return (db) =>
-      db
-        .prepare(
-          `UPDATE dispensers SET status = ?, give_remaining = ?, dispense_count = ?
-           WHERE tx_hash = ?`
-        )
-        .bind(status, giveRemaining, dispenseCount, txHash);
-  }
-  // Fallback: just update status
+  // Update fields independently. Delayed close events supply remaining=0 but
+  // omit dispense_count; status-only closing events omit both quantities.
   return (db) =>
     db
-      .prepare(`UPDATE dispensers SET status = ? WHERE tx_hash = ?`)
-      .bind(status, txHash);
+      .prepare(
+        `UPDATE dispensers SET status = ?,
+         give_remaining = COALESCE(?, give_remaining),
+         dispense_count = COALESCE(?, dispense_count),
+         closed_at = CASE WHEN ? >= 10 THEN ? ELSE NULL END
+         WHERE tx_hash = ?`
+      )
+      .bind(status, giveRemaining, dispenseCount, status, now, txHash);
 }
-
 function processDispense(
   params: Record<string, unknown>,
   blockIndex: number,
