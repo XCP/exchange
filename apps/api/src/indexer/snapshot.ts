@@ -1,3 +1,4 @@
+import { freshCounterpartyUrl } from "../lib/fresh-read";
 import { fetchOrders, fetchOrderByHash, fetchDispensers } from "../lib/counterparty";
 import { API_TIMEOUT_MS, MAX_PAGINATION_PAGES } from "../lib/constants";
 import { batchExec } from "../lib/batch";
@@ -8,107 +9,93 @@ import { setState, deleteState } from "./state";
 import { discard } from "../lib/net";
 import { logError } from "../lib/log";
 
+interface OrderSnapshotAnchor {
+  block_index: number;
+  block_hash: string;
+  ledger_hash: string;
+  messages_hash: string;
+}
+
+async function orderSnapshotAnchor(apiBase: string): Promise<OrderSnapshotAnchor> {
+  const response = await fetch(freshCounterpartyUrl(`${apiBase}/blocks/last`), {
+    signal: AbortSignal.timeout(API_TIMEOUT_MS),
+  });
+  if (!response.ok) {
+    await discard(response);
+    throw new Error(`Order snapshot anchor failed: ${response.status}`);
+  }
+  const { result } = await response.json<{ result: OrderSnapshotAnchor }>();
+  if (!Number.isSafeInteger(result?.block_index) || !result.block_hash ||
+      !result.ledger_hash || !result.messages_hash) {
+    throw new Error("Incomplete order snapshot anchor");
+  }
+  return result;
+}
+
 export async function syncOrders(
   db: D1Database,
   apiBase: string
 ): Promise<{ synced: number; closed: number }> {
   const now = Math.floor(Date.now() / 1000);
-
-  // Fetch ALL open orders from CP API
+  const anchor = await orderSnapshotAnchor(apiBase);
   const allOrders: NormalizedOrder[] = [];
+  const openHashes = new Set<string>();
+  const cursors = new Set<string>();
   let cursor: string | null = null;
-  let pages = 0;
+  let complete = false;
 
-  while (pages < MAX_PAGINATION_PAGES) {
+  // Do not infer absence from a truncated feed or a row we failed to normalize.
+  for (let page = 0; page < MAX_PAGINATION_PAGES; page++) {
     const { orders, nextCursor } = await fetchOrders(apiBase, "open", cursor);
-    if (orders.length === 0) break;
-
+    if (!Array.isArray(orders) || (orders.length === 0 && nextCursor !== null)) {
+      throw new Error("Incomplete open-order page");
+    }
     for (const order of orders) {
-      try {
-        const rawGive = parseFloat(order.give_quantity_normalized ?? order.give_remaining_normalized ?? "0");
-        if (rawGive <= 0) continue;
-        allOrders.push(normalizeOrder(order));
-      } catch (e) {
-        logError("ORDER_NORMALIZATION_FAILED", { tx_hash: order.tx_hash, error: e });
+      if (order.status !== "open" || openHashes.has(order.tx_hash)) {
+        throw new Error("Inconsistent open-order snapshot");
       }
+      allOrders.push(normalizeOrder(order));
+      openHashes.add(order.tx_hash);
     }
-
+    if (nextCursor === null) { complete = true; break; }
+    if (cursors.has(nextCursor)) throw new Error("Repeated open-order cursor");
+    cursors.add(nextCursor);
     cursor = nextCursor;
-    pages++;
-    if (!nextCursor) break;
   }
+  if (!complete) throw new Error("Open-order pagination limit reached");
 
-  // Upsert all open orders
-  const upsertStmts = allOrders.map((o) => buildOrderUpsertStmt(db, o, now));
-  await batchExec(db, upsertStmts);
-
-  // Close orders that were open in our DB but not in the fresh set
-  const openHashes = new Set(allOrders.map((o) => o.tx_hash));
-  const dbOpen = await db
-    .prepare(`SELECT tx_hash, expire_index FROM orders WHERE status = 'open'`)
-    .all<{ tx_hash: string; expire_index: number | null }>();
-
-  const lastBlockRow = await db
-    .prepare(`SELECT value FROM indexer_state WHERE key = 'last_block_index'`)
-    .first<{ value: string }>();
-  const lastBlock = lastBlockRow ? parseInt(lastBlockRow.value, 10) : 0;
-
-  const toClose = dbOpen.results.filter((r) => !openHashes.has(r.tx_hash));
+  const dbOpen = await db.prepare(`SELECT tx_hash FROM orders WHERE status = 'open'`)
+    .all<{ tx_hash: string }>();
+  const toClose = dbOpen.results.filter(row => !openHashes.has(row.tx_hash));
   const closeStmts: D1PreparedStatement[] = [];
-
-  for (const r of toClose) {
-    if (r.expire_index != null && r.expire_index <= lastBlock) {
-      // Clearly expired — no need to hit the API
-      closeStmts.push(
-        db
-          .prepare(`UPDATE orders SET status = 'expired', closed_at = ? WHERE tx_hash = ?`)
-          .bind(now, r.tx_hash)
-      );
-    } else {
-      // Look up the real status + remaining from the Counterparty API
-      const cpOrder = await fetchOrderByHash(apiBase, r.tx_hash);
-      const realStatus = cpOrder?.status ?? "filled";
-
-      if (cpOrder) {
-        // Use actual remaining values from the API for full accuracy
-        const giveRem = parseFloat(cpOrder.give_remaining_normalized);
-        const getRem = parseFloat(cpOrder.get_remaining_normalized);
-        closeStmts.push(
-          db
-            .prepare(
-              `UPDATE orders SET status = ?, closed_at = ?,
-                 give_remaining = ?, get_remaining = ?,
-                 remaining = MAX(0, CASE WHEN side = 'bid' THEN ? ELSE ? END)
-               WHERE tx_hash = ?`
-            )
-            .bind(
-              realStatus, now,
-              isFinite(giveRem) ? giveRem : 0,
-              isFinite(getRem) ? getRem : 0,
-              isFinite(getRem) ? getRem : 0,
-              isFinite(giveRem) ? giveRem : 0,
-              r.tx_hash
-            )
-        );
-      } else {
-        // API fetch failed — default to filled with zeroed remaining
-        closeStmts.push(
-          db
-            .prepare(
-              `UPDATE orders SET status = ?, closed_at = ?,
-                 give_remaining = 0, get_remaining = 0, remaining = 0
-               WHERE tx_hash = ?`
-            )
-            .bind(realStatus, now, r.tx_hash)
-        );
-      }
+  for (const row of toClose) {
+    const order = await fetchOrderByHash(apiBase, row.tx_hash);
+    if (!order || order.tx_hash !== row.tx_hash) {
+      throw new Error(`Cannot verify missing order ${row.tx_hash}`);
     }
+    if (!["filled", "expired", "cancelled"].includes(order.status) &&
+        !order.status.startsWith("invalid")) {
+      throw new Error(`Unresolved order status for ${row.tx_hash}: ${order.status}`);
+    }
+    const normalized = normalizeOrder(order);
+    // A filled BTC order can retain one satoshi. Preserve the canonical values.
+    closeStmts.push(db.prepare(
+      `UPDATE orders SET status = ?, closed_at = ?, give_remaining = ?,
+         get_remaining = ?, remaining = ? WHERE tx_hash = ? AND status = 'open'`
+    ).bind(order.status, now, normalized.give_remaining, normalized.get_remaining,
+      normalized.remaining, row.tx_hash));
   }
+
+  const end = await orderSnapshotAnchor(apiBase);
+  if (["block_index", "block_hash", "ledger_hash", "messages_hash"].some(
+    key => anchor[key as keyof OrderSnapshotAnchor] !== end[key as keyof OrderSnapshotAnchor]
+  )) throw new Error("Order snapshot chain changed; retry before writing");
+
+  // All canonical reads and validations finish before the first order mutation.
+  // Writers must be coordinated by the caller; batches remain retryable.
+  await batchExec(db, allOrders.map(order => buildOrderUpsertStmt(db, order, now)));
   await batchExec(db, closeStmts);
-
-  // Update pair_stats with order book metrics
   await updateOrderBookStats(db, now);
-
   return { synced: allOrders.length, closed: toClose.length };
 }
 
@@ -184,7 +171,7 @@ export async function runSnapshotStep(
 
   if (phase === "orders") {
     // Fetch chain tip first, but only persist AFTER syncOrders succeeds
-    const res = await fetch(`${apiBase}/blocks/last`, { signal: AbortSignal.timeout(API_TIMEOUT_MS) });
+    const res = await fetch(freshCounterpartyUrl(`${apiBase}/blocks/last`), { signal: AbortSignal.timeout(API_TIMEOUT_MS) });
     if (!res.ok) {
       await discard(res);
       throw new Error(`Failed to fetch last block: ${res.status}`);

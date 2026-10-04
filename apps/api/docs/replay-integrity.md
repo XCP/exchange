@@ -57,5 +57,18 @@ balances exceed retained history by the same amount. Two checked against Core ma
 stored balances exactly, confirming that zero-based reconstruction would be unsafe. No production
 LP balances were changed by this investigation. A full source audit is still separate work.
 
-Order/dispenser rollback still uses the existing closure-time heuristic. This change does not claim
-an exact undo journal for all DEX order fields or global historical balance certification.
+Migration `0053_reorg_undo.sql` records exact before-images for block replay mutations of orders,
+dispensers and pools. Context and writes share a transaction; inverse writes and journal deletion
+also share a transaction. Partial fills, closing status 11 and remaining quantities are restored,
+without closure-time guesses. Existing LP inverse triggers and derived-state rebuilds remain.
+
+The journal retains 24 blocks and starts at the deployment checkpoint. A fork below that floor
+stops before deleting branch data; rebuild from a verified baseline is required. Apply migration
+0053 before deploying this writer. Snapshot/admin rebuilds must run with the block writer paused;
+they establish a new baseline and must reset the undo journal/floor to that verified checkpoint.
+Keep the generated trigger column lists in sync when changing these tables.
+
+Every Counterparty indexer read uses a fresh URL, including continuation pages and retry attempts.
+A repeated scalar `verbose` parameter preserves Core's first-value semantics while changing its
+URL cache key. Block acceptance also compares the new header's actual `previous_block_hash` with
+the applied hash. This trusts the configured Core provider; it is not an independent Bitcoin oracle.

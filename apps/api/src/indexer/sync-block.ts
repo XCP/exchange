@@ -1,3 +1,5 @@
+import { freshCounterpartyUrl } from "../lib/fresh-read";
+import { initializeUndo, pruneUndo, restoreUndo, writeWithUndo } from "./reorg-undo";
 import { accountDispensesInBlock } from "../lib/dispense-accounting";
 import { repairUnaccountedDispenses } from "./dispense-accounting-repair";
 import { OrderMatch, Order, CounterpartyDispenser, fetchOrderByHash } from "../lib/counterparty";
@@ -40,6 +42,7 @@ const DEX_EVENTS = [
   "ORDER_MATCH",
   "OPEN_ORDER",
   "ORDER_UPDATE",
+  "ORDER_FILLED",
   "CANCEL_ORDER",
   "ORDER_EXPIRATION",
   "OPEN_DISPENSER",
@@ -178,7 +181,7 @@ function computePoolMatchExecutionContext(
 async function fetchCurrentBlock(
   apiBase: string
 ): Promise<{ block_index: number; block_time: number; block_hash: string }> {
-  const res = await fetch(`${apiBase}/blocks/last`, { signal: AbortSignal.timeout(API_TIMEOUT_MS) });
+  const res = await fetch(freshCounterpartyUrl(`${apiBase}/blocks/last`), { signal: AbortSignal.timeout(API_TIMEOUT_MS) });
   if (!res.ok) {
     await discard(res);
     throw new Error(`Failed to fetch last block: ${res.status}`);
@@ -192,7 +195,7 @@ async function fetchBlockHash(
   apiBase: string,
   blockIndex: number
 ): Promise<string> {
-  const res = await fetch(`${apiBase}/blocks/${blockIndex}`, { signal: AbortSignal.timeout(API_TIMEOUT_MS) });
+  const res = await fetch(freshCounterpartyUrl(`${apiBase}/blocks/${blockIndex}`), { signal: AbortSignal.timeout(API_TIMEOUT_MS) });
   if (!res.ok) {
     await discard(res);
     throw new Error(`Failed to fetch block ${blockIndex}: ${res.status}`);
@@ -204,13 +207,13 @@ async function fetchBlockHash(
 async function fetchBlockInfo(
   apiBase: string,
   blockIndex: number
-): Promise<{ block_hash: string; block_time: number }> {
-  const res = await fetch(`${apiBase}/blocks/${blockIndex}`, { signal: AbortSignal.timeout(API_TIMEOUT_MS) });
+): Promise<{ block_hash: string; block_time: number; previous_block_hash: string }> {
+  const res = await fetch(freshCounterpartyUrl(`${apiBase}/blocks/${blockIndex}`), { signal: AbortSignal.timeout(API_TIMEOUT_MS) });
   if (!res.ok) {
     await discard(res);
     throw new Error(`Failed to fetch block ${blockIndex}: ${res.status}`);
   }
-  const data: { result: { block_hash: string; block_time: number } } = await res.json();
+  const data: { result: { block_hash: string; block_time: number; previous_block_hash: string } } = await res.json();
   return data.result;
 }
 
@@ -222,7 +225,7 @@ interface BlockEventPage {
 async function fetchBlockEventPage(url: URL, blockIndex: number): Promise<BlockEventPage> {
   for (let attempt = 0; ; attempt++) {
     try {
-      const res = await fetch(url.toString(), { signal: AbortSignal.timeout(API_TIMEOUT_MS) });
+      const res = await fetch(freshCounterpartyUrl(url.toString()), { signal: AbortSignal.timeout(API_TIMEOUT_MS) });
       if (!res.ok) {
         await discard(res);
         throw new Error(`Failed to fetch events for block ${blockIndex}: ${res.status}`);
@@ -484,8 +487,9 @@ function processOrderPartialFill(
     db
       .prepare(
         `UPDATE orders SET give_remaining = ?, get_remaining = ?,
-           remaining = MAX(0, CASE WHEN side = 'bid' THEN ? ELSE ? END)
-         WHERE tx_hash = ? AND status = 'open'`
+           remaining = MAX(0, CASE WHEN side = 'bid' THEN ? ELSE ? END),
+           status = 'open', closed_at = NULL
+         WHERE tx_hash = ?`
       )
       .bind(giveRemaining, getRemaining, getRemaining, giveRemaining, txHash);
 }
@@ -498,17 +502,8 @@ function processOrderClose(
   // ORDER_UPDATE uses tx_hash, CANCEL_ORDER uses offer_hash, ORDER_EXPIRATION uses order_hash
   const txHash = (params.tx_hash ?? params.offer_hash ?? params.order_hash) as string;
 
-  // When filled, zero out remaining - the order is fully consumed
-  if (closedStatus === "filled") {
-    return (db) =>
-      db
-        .prepare(
-          `UPDATE orders SET status = ?, closed_at = ?,
-             give_remaining = 0, get_remaining = 0, remaining = 0
-           WHERE tx_hash = ? AND status = 'open'`
-        )
-        .bind(closedStatus, now, txHash);
-  }
+  // Status-only updates (notably BTC settlement) must preserve residual dust.
+  // When supplied, event quantities are applied immediately before this closure.
 
   return (db) =>
     db
@@ -706,6 +701,8 @@ export async function syncBlocks(
   const currentBlock = await fetchCurrentBlock(apiBase);
   let lastBlock = lastRow ? parseInt(lastRow.value, 10) : currentBlock.block_index - 1;
 
+  await initializeUndo(db, lastBlock);
+
   // Reorg detection
   const savedRollback: RollbackPlan | null = rollbackRow ? JSON.parse(rollbackRow.value) : null;
   let rollbackCheckpoint: BlockCheckpoint | null = savedRollback?.checkpoint ?? null;
@@ -854,7 +851,9 @@ export async function syncBlocks(
       db.prepare(`DELETE FROM candles WHERE pair = ? AND timestamp >= ?`)
         .bind(p.pair, bucketTimestamp(plan.earliestTime!, "1h")));
 
-    // Core rollback: delete invalidated data + re-open recently closed orders/dispensers
+    // Restore exact quantities and statuses before removing orphan history.
+    await restoreUndo(db, rollbackTo);
+    // Core rollback: delete invalidated data
     await db.batch([
       db.prepare(`DELETE FROM trades WHERE block_index > ?`).bind(rollbackTo),
       db.prepare(`DELETE FROM dispenses WHERE block_index > ?`).bind(rollbackTo),
@@ -872,17 +871,6 @@ export async function syncBlocks(
         WHERE lp_asset IN (SELECT value FROM json_each(?))
           AND (balance_raw < 0 OR balance_raw > 9007199254740991))
         THEN json('Invalid LP rollback balance') ELSE 1 END`).bind(JSON.stringify(plan.pools)),
-      // Re-open orders/dispensers that pre-date the rollback but were closed recently
-      // (i.e., closed by events in the now-invalidated blocks).
-      // The next sync cycle re-processes replacement blocks and re-closes as needed.
-      db.prepare(
-        `UPDATE orders SET status = 'open', closed_at = NULL
-         WHERE status != 'open' AND block_index <= ? AND closed_at >= ?`
-      ).bind(rollbackTo, plan.closureCutoff),
-      db.prepare(
-        `UPDATE dispensers SET status = 0, closed_at = NULL
-         WHERE status != 0 AND block_index <= ? AND closed_at >= ?`
-      ).bind(rollbackTo, plan.closureCutoff),
     ]);
 
     // Candle deletes in separate batches (one per pair, could exceed D1's 100-stmt limit)
@@ -1079,30 +1067,46 @@ export async function syncBlocks(
 
           case "ORDER_UPDATE": {
             const orderStatus = params.status as string;
-            if (orderStatus === "open") {
-              // Partial fill - ORDER_UPDATE events don't include _normalized remaining
-              // fields, so fetch the full order from the Counterparty API with verbose=true.
+            if (typeof orderStatus !== "string") throw new Error("Missing order update status");
+            const knownStatus = ["open", "expired", "filled", "cancelled"].includes(orderStatus);
+            if (knownStatus) {
               const txHash = params.tx_hash as string;
-              const cpOrder = await fetchOrderByHash(apiBase, txHash);
-              if (cpOrder) {
-                const giveRemaining = parseFloat(cpOrder.give_remaining_normalized);
-                const getRemaining = parseFloat(cpOrder.get_remaining_normalized);
-                if (isFinite(giveRemaining) && isFinite(getRemaining)) {
-                  stmts.push(processOrderPartialFill(txHash, giveRemaining, getRemaining));
-                  result.orders_upserted++;
-                }
+              if (orderStatus === "open" || params.give_remaining != null || params.get_remaining != null) {
+                // Current-state quantities may describe a later block. Only use
+                // the lookup's immutable divisibility; replay the event's amounts.
+                const order = await fetchOrderByHash(apiBase, txHash);
+                if (!order || order.tx_hash !== txHash) throw new Error(`Cannot verify order metadata: ${txHash}`);
+                const remaining = (key: "give" | "get") => {
+                  const raw = params[`${key}_remaining`];
+                  const info = order[`${key}_asset_info`];
+                  if ((typeof raw !== "number" && typeof raw !== "string") ||
+                      String(raw).trim() === "" || !Number.isFinite(Number(raw)) ||
+                      typeof info?.divisible !== "boolean") {
+                    throw new Error(`Incomplete ${key} remaining in order event: ${txHash}`);
+                  }
+                  return normalizeRawQuantity(Number(raw), info);
+                };
+                stmts.push(processOrderPartialFill(txHash, remaining("give"), remaining("get")));
               }
-            } else if (
-              orderStatus === "expired" ||
-              orderStatus === "filled" ||
-              orderStatus === "cancelled"
-            ) {
-              stmts.push(processOrderClose(params, now, orderStatus));
-              result.orders_closed++;
+              if (orderStatus === "open") result.orders_upserted++;
+              else {
+                stmts.push(processOrderClose(params, now, orderStatus));
+                result.orders_closed++;
+              }
             } else if (orderStatus.toLowerCase().startsWith("invalid")) {
               stmts.push(processOrderClose(params, now, "invalid"));
               result.orders_closed++;
+            } else throw new Error(`Unknown order update status: ${orderStatus}`);
+            break;
+          }
+
+          case "ORDER_FILLED": {
+            // BTC settlement emits a dedicated status-only event, not ORDER_UPDATE.
+            if (params.status !== "filled" || typeof params.tx_hash !== "string") {
+              throw new Error("Invalid ORDER_FILLED event");
             }
+            stmts.push(processOrderClose(params, now, "filled"));
+            result.orders_closed++;
             break;
           }
 
@@ -1414,7 +1418,7 @@ export async function syncBlocks(
     if (await fetchBlockHash(apiBase, blockIdx) !== header.block_hash) {
       throw new Error(`Block ${blockIdx} changed while fetching events`);
     }
-    if (expectedPreviousHash && await fetchBlockHash(apiBase, blockIdx - 1) !== expectedPreviousHash) {
+    if (expectedPreviousHash && (header.previous_block_hash !== expectedPreviousHash || await fetchBlockHash(apiBase, blockIdx - 1) !== expectedPreviousHash)) {
       throw new Error(`Applied chain changed before block ${blockIdx}`);
     }
     const checkpoint = { ...header, block_index: blockIdx };
@@ -1429,7 +1433,7 @@ export async function syncBlocks(
     // Execute all statements for this block in batches
     if (stmts.length > 0) {
       try {
-        await batchExec(db, stmts.map((fn) => fn(db)));
+        await writeWithUndo(db, stmts.map((fn) => ({ statement: fn(db), block: blockIdx })));
       } catch (e) {
         logError("BLOCK_BATCH_FAILED", {
           block_index: blockIdx,
@@ -1458,6 +1462,7 @@ export async function syncBlocks(
       ] : []),
     ]);
 
+    await pruneUndo(db, blockIdx);
     lastBlock = blockIdx;
     expectedPreviousHash = header.block_hash;
     result.blocks_processed++;
@@ -1487,7 +1492,8 @@ export async function syncBlocks(
   // Incremental deal scoring for affected orders/dispensers. Fills AND fresh
   // listings: scoreNewOrders scores all open sells for a pair, so a pair
   // qualifies when either its book or its tape moved.
-  if (affectedPairs.size > 0 || newOrderPairs.size > 0 || affectedDispenseAssets.size > 0) {
+  if (affectedPairs.size > 0 || newOrderPairs.size > 0 || affectedDispenseAssets.size > 0 ||
+      previousPostprocess?.listingsClosed || result.orders_closed > 0 || result.dispensers_updated > 0) {
     try {
       const orderPairs = [...new Set([...affectedPairs.keys(), ...newOrderPairs])];
       const dispAssets = [...affectedDispenseAssets.keys()];

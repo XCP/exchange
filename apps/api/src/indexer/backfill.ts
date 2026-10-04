@@ -1,3 +1,4 @@
+import { freshCounterpartyUrl } from "../lib/fresh-read";
 import { normalizeOrderMatch, NormalizedTrade, normalizeDispensePrice, normalizeDispenser, normalizePoolMatch, buildDispenserUpsertStmt } from "./normalize";
 import { fetchOrderMatches, fetchDispenses, fetchDispensers } from "../lib/counterparty";
 import { API_TIMEOUT_MS } from "../lib/constants";
@@ -126,7 +127,7 @@ export async function backfillTrades(
     const probeUrl = new URL(`${apiBase}/order_matches`);
     probeUrl.searchParams.set("status", "completed");
     probeUrl.searchParams.set("limit", "1");
-    const probeRes = await fetch(probeUrl.toString(), { signal: AbortSignal.timeout(API_TIMEOUT_MS) });
+    const probeRes = await fetch(freshCounterpartyUrl(probeUrl.toString()), { signal: AbortSignal.timeout(API_TIMEOUT_MS) });
     if (!probeRes.ok) {
       throw new Error(`Counterparty API probe error: ${probeRes.status} ${probeRes.statusText}`);
     }
@@ -238,7 +239,7 @@ export async function backfillDispenses(
     // Probe for total count
     const probeUrl = new URL(`${apiBase}/dispenses`);
     probeUrl.searchParams.set("limit", "1");
-    const probeRes = await fetch(probeUrl.toString(), { signal: AbortSignal.timeout(API_TIMEOUT_MS) });
+    const probeRes = await fetch(freshCounterpartyUrl(probeUrl.toString()), { signal: AbortSignal.timeout(API_TIMEOUT_MS) });
     if (!probeRes.ok) {
       throw new Error(`Counterparty API probe error: ${probeRes.status} ${probeRes.statusText}`);
     }
@@ -346,7 +347,7 @@ export async function backfillDispensers(
   } else {
     const probeUrl = new URL(`${apiBase}/dispensers`);
     probeUrl.searchParams.set("limit", "1");
-    const probeRes = await fetch(probeUrl.toString(), { signal: AbortSignal.timeout(API_TIMEOUT_MS) });
+    const probeRes = await fetch(freshCounterpartyUrl(probeUrl.toString()), { signal: AbortSignal.timeout(API_TIMEOUT_MS) });
     if (!probeRes.ok) {
       throw new Error(`Counterparty API probe error: ${probeRes.status} ${probeRes.statusText}`);
     }

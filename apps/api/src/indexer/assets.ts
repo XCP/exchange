@@ -1,3 +1,4 @@
+import { freshCounterpartyUrl } from "../lib/fresh-read";
 /**
  * Indexes asset metadata from Counterparty API into the assets table.
  * Full paginated index on first run, incremental polling after.
@@ -43,7 +44,7 @@ async function fetchAssetsPage(cursor?: string): Promise<CpAssetsResponse> {
   url.searchParams.set("limit", String(PAGE_LIMIT));
   if (cursor) url.searchParams.set("cursor", cursor);
 
-  const resp = await fetch(url.toString(), {
+  const resp = await fetch(freshCounterpartyUrl(url.toString()), {
     headers: { Accept: "application/json" },
   });
   if (!resp.ok) {

@@ -1,3 +1,4 @@
+import { freshCounterpartyUrl } from "../lib/fresh-read";
 import { API_TIMEOUT_MS } from "../lib/constants";
 import { batchExec } from "../lib/batch";
 import { buildPoolSnapshotStmt, refreshPoolAggregates } from "./pools";
@@ -19,7 +20,7 @@ async function fetchPoolsPage(
   url.searchParams.set("limit", String(limit));
   if (cursor) url.searchParams.set("cursor", cursor);
 
-  const res = await fetch(url.toString(), { signal: AbortSignal.timeout(API_TIMEOUT_MS) });
+  const res = await fetch(freshCounterpartyUrl(url.toString()), { signal: AbortSignal.timeout(API_TIMEOUT_MS) });
   if (!res.ok) {
     await discard(res);
     throw new Error(`Failed to fetch pools: ${res.status}`);

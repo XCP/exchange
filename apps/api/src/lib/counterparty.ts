@@ -1,3 +1,4 @@
+import { freshCounterpartyUrl } from "./fresh-read";
 import { API_TIMEOUT_MS } from "./constants";
 
 /** The longest we will wait on a node that asked us to come back later. */
@@ -9,7 +10,7 @@ async function fetchWithRetry(
   backoffMs: number = 1000
 ): Promise<Response> {
   for (let attempt = 0; attempt <= retries; attempt++) {
-    const res = await fetch(url, { signal: AbortSignal.timeout(API_TIMEOUT_MS) });
+    const res = await fetch(freshCounterpartyUrl(url), { signal: AbortSignal.timeout(API_TIMEOUT_MS) });
     if (res.ok) return res;
 
     // 429 is the one status this loop used to treat as fatal, which is exactly
@@ -71,6 +72,8 @@ export interface Order {
   block_index: number;
   block_time: number;
   status: string;
+  give_asset_info?: { divisible: boolean };
+  get_asset_info?: { divisible: boolean };
   give_quantity_normalized: string;
   get_quantity_normalized: string;
   give_remaining_normalized: string;
