@@ -11,7 +11,7 @@ import { updatePairStats, updateOrderBookStats } from "./stats";
 import { updateDispenserStats } from "./dispenser-stats";
 import { scoreNewOrders, scoreNewDispensers, pruneClosedDeals } from "./deal-scores";
 import { getMode } from "./state";
-import { checkpointStatements, findCommonCheckpoint, type BlockCheckpoint } from "./block-checkpoint";
+import { checkpointStatements, findCommonCheckpoint, sameBlockIdentity, requireProtocolIdentity, type BlockCheckpoint } from "./block-checkpoint";
 import { makePoolPair } from "../lib/pools";
 import { eventQuantity, normalizeRawQuantity, parseQuantity } from "../lib/quantity";
 import { logError, logInfo } from "../lib/log";
@@ -180,40 +180,30 @@ function computePoolMatchExecutionContext(
 
 async function fetchCurrentBlock(
   apiBase: string
-): Promise<{ block_index: number; block_time: number; block_hash: string }> {
+): Promise<BlockCheckpoint> {
   const res = await fetch(freshCounterpartyUrl(`${apiBase}/blocks/last`), { signal: AbortSignal.timeout(API_TIMEOUT_MS) });
   if (!res.ok) {
     await discard(res);
     throw new Error(`Failed to fetch last block: ${res.status}`);
   }
-  const data: { result: { block_index: number; block_time: number; block_hash: string } } =
+  const data: { result: BlockCheckpoint } =
     await res.json();
+  requireProtocolIdentity(data.result);
   return data.result;
-}
-
-async function fetchBlockHash(
-  apiBase: string,
-  blockIndex: number
-): Promise<string> {
-  const res = await fetch(freshCounterpartyUrl(`${apiBase}/blocks/${blockIndex}`), { signal: AbortSignal.timeout(API_TIMEOUT_MS) });
-  if (!res.ok) {
-    await discard(res);
-    throw new Error(`Failed to fetch block ${blockIndex}: ${res.status}`);
-  }
-  const data: { result: { block_hash: string } } = await res.json();
-  return data.result.block_hash;
 }
 
 async function fetchBlockInfo(
   apiBase: string,
   blockIndex: number
-): Promise<{ block_hash: string; block_time: number; previous_block_hash: string }> {
+): Promise<BlockCheckpoint & { previous_block_hash: string }> {
   const res = await fetch(freshCounterpartyUrl(`${apiBase}/blocks/${blockIndex}`), { signal: AbortSignal.timeout(API_TIMEOUT_MS) });
   if (!res.ok) {
     await discard(res);
     throw new Error(`Failed to fetch block ${blockIndex}: ${res.status}`);
   }
-  const data: { result: { block_hash: string; block_time: number; previous_block_hash: string } } = await res.json();
+  const data: { result: BlockCheckpoint & { previous_block_hash: string } } = await res.json();
+  requireProtocolIdentity(data.result);
+  if (data.result.block_index !== blockIndex) throw new Error("Wrong block identity returned");
   return data.result;
 }
 
@@ -684,9 +674,11 @@ export async function syncBlocks(
   // Reorg detection
   const savedRollback: RollbackPlan | null = rollbackRow ? JSON.parse(rollbackRow.value) : null;
   let rollbackCheckpoint: BlockCheckpoint | null = savedRollback?.checkpoint ?? null;
+  let previousIdentity = await db.prepare(`SELECT block_index,block_hash,block_time,ledger_hash,messages_hash
+    FROM indexer_block_checkpoints WHERE block_index=?`).bind(lastBlock).first<BlockCheckpoint>();
 
   if (savedRollback) {
-    if (await fetchBlockHash(apiBase, savedRollback.checkpoint.block_index) !== savedRollback.checkpoint.block_hash) {
+    if (!sameBlockIdentity(savedRollback.checkpoint, await fetchBlockInfo(apiBase, savedRollback.checkpoint.block_index))) {
       throw new Error("Chain changed during rollback; operator recovery required");
     }
   } else if (currentBlock.block_index < lastBlock) {
@@ -696,20 +688,20 @@ export async function syncBlocks(
       chain_tip: currentBlock.block_index,
       checkpoint: lastBlock,
     });
-    rollbackCheckpoint = await findCommonCheckpoint(db, currentBlock.block_index, height => fetchBlockHash(apiBase, height));
+    rollbackCheckpoint = await findCommonCheckpoint(db, currentBlock.block_index, height => fetchBlockInfo(apiBase, height),
+      !!(previousIdentity?.ledger_hash && previousIdentity.messages_hash));
   } else if (lastHashRow) {
     // Same-height reorg detection: verify our checkpoint block hash hasn't changed
-    const checkpointHash = currentBlock.block_index === lastBlock
-      ? currentBlock.block_hash
-      : await fetchBlockHash(apiBase, lastBlock);
-    if (checkpointHash !== lastHashRow.value) {
+    const checkpoint = currentBlock.block_index === lastBlock ? currentBlock : await fetchBlockInfo(apiBase, lastBlock);
+    const protocolChanged = previousIdentity !== null && !sameBlockIdentity(previousIdentity, checkpoint);
+    if (checkpoint.block_hash !== lastHashRow.value || protocolChanged) {
       logInfo("CHAIN_REORG_DETECTED", {
         reason: "checkpoint_hash_mismatch",
         block_index: lastBlock,
         stored_hash_prefix: lastHashRow.value.slice(0, 16),
-        actual_hash_prefix: checkpointHash.slice(0, 16),
+        actual_hash_prefix: checkpoint.block_hash.slice(0, 16),
       });
-      rollbackCheckpoint = await findCommonCheckpoint(db, lastBlock - 1, height => fetchBlockHash(apiBase, height));
+      rollbackCheckpoint = await findCommonCheckpoint(db, lastBlock - 1, height => fetchBlockInfo(apiBase, height), protocolChanged);
     }
   }
 
@@ -717,14 +709,16 @@ export async function syncBlocks(
   // Seed retained history only after verifying the existing checkpoint.
   if (!rollbackCheckpoint && lastHashRow) {
     const header = lastBlock === currentBlock.block_index ? currentBlock : await fetchBlockInfo(apiBase, lastBlock);
-    if (header.block_hash !== lastHashRow.value) throw new Error("Checkpoint changed during verification");
+    if (header.block_hash !== lastHashRow.value || (previousIdentity && !sameBlockIdentity(previousIdentity,header)))
+      throw new Error("Checkpoint changed during verification");
     await db.batch(checkpointStatements(db, { ...header, block_index: lastBlock }));
+    previousIdentity = header;
   }
   if (!rollbackCheckpoint && pendingRow) {
     const pending = JSON.parse(pendingRow.value) as BlockCheckpoint;
     if (pending.block_index !== lastBlock + 1) throw new Error("Unexpected pending block checkpoint");
-    if (await fetchBlockHash(apiBase, pending.block_index) !== pending.block_hash) {
-      rollbackCheckpoint = await findCommonCheckpoint(db, lastBlock, height => fetchBlockHash(apiBase, height));
+    if (!sameBlockIdentity(pending, await fetchBlockInfo(apiBase, pending.block_index))) {
+      rollbackCheckpoint = await findCommonCheckpoint(db, lastBlock, height => fetchBlockInfo(apiBase, height), true);
     }
   }
   const rollbackTo = rollbackCheckpoint?.block_index ?? null;
@@ -909,6 +903,7 @@ export async function syncBlocks(
   // identities so a caught-up retry can finish them without a global sweep.
   const previousPostprocess: PostprocessPlan | null = postprocessRow ? JSON.parse(postprocessRow.value) : null;
   let expectedPreviousHash = rollbackCheckpoint?.block_hash ?? lastHashRow?.value;
+  previousIdentity = rollbackCheckpoint ?? previousIdentity;
   // Track affected pairs/assets for post-processing
   const affectedPairs = new Map<
     string,
@@ -1393,10 +1388,12 @@ export async function syncBlocks(
     }
 
     // Reject a chain change while fetching/composing this block, before writes.
-    if (await fetchBlockHash(apiBase, blockIdx) !== header.block_hash) {
+    if (!sameBlockIdentity(header, await fetchBlockInfo(apiBase, blockIdx))) {
       throw new Error(`Block ${blockIdx} changed while fetching events`);
     }
-    if (expectedPreviousHash && (header.previous_block_hash !== expectedPreviousHash || await fetchBlockHash(apiBase, blockIdx - 1) !== expectedPreviousHash)) {
+    const parent = expectedPreviousHash ? await fetchBlockInfo(apiBase, blockIdx - 1) : null;
+    if (expectedPreviousHash && (header.previous_block_hash !== expectedPreviousHash || parent?.block_hash !== expectedPreviousHash
+      || (previousIdentity && parent && !sameBlockIdentity(previousIdentity,parent)))) {
       throw new Error(`Applied chain changed before block ${blockIdx}`);
     }
     const checkpoint = { ...header, block_index: blockIdx };
@@ -1443,6 +1440,7 @@ export async function syncBlocks(
     await pruneUndo(db, blockIdx);
     lastBlock = blockIdx;
     expectedPreviousHash = header.block_hash;
+    previousIdentity = header;
     result.blocks_processed++;
   }
 
