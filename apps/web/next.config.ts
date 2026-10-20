@@ -2,6 +2,13 @@ import type { NextConfig } from "next";
 import path from "node:path";
 
 const nextConfig: NextConfig = {
+  async headers() {
+    return [
+      { source: "/.well-known/:path*", headers: [{ key: "Access-Control-Allow-Origin", value: "*" }] },
+      { source: "/.well-known/wallet-app.json", headers: [{ key: "Content-Type", value: "application/json; charset=utf-8" }] },
+      { source: "/wallet-app/:path*", headers: [{ key: "Access-Control-Allow-Origin", value: "*" }] },
+    ];
+  },
   reactCompiler: true,
   // /swap used to be the atomic-swap surface; it now belongs to the pool+book
   // swap widget, so the old paths move to /atomic permanently. Listing links

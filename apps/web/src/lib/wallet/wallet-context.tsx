@@ -7,6 +7,7 @@ import {
   WalletProvider as SdkWalletProvider,
   useWallet as useSdkWallet,
 } from '@xcp/wallet-sdk/react'
+import { CASATOOKAN_WALLET, discoverWallets, KNOWN_WALLETS } from '@xcp/wallet-sdk/web'
 import { trackWallet } from '@/lib/analytics'
 import '@/lib/wallet/sdk-config'
 
@@ -32,8 +33,14 @@ const events = {
   onRejected: () => trackWallet('rejected'),
 }
 
+const wallets = discoverWallets(
+  process.env.NEXT_PUBLIC_CASATOOKAN_ENABLED === 'true'
+    ? [...KNOWN_WALLETS, CASATOOKAN_WALLET]
+    : KNOWN_WALLETS,
+)
+
 export function WalletProvider({ children }: { children: ReactNode }) {
-  return <SdkWalletProvider events={events}>{children}</SdkWalletProvider>
+  return <SdkWalletProvider wallets={wallets} events={events}>{children}</SdkWalletProvider>
 }
 
 export function useWallet() {

@@ -26,8 +26,8 @@ export function WalletModal({ chooser }: { chooser: WalletChooserState }) {
             <h3 className="text-sm font-semibold text-zinc-100">{installing ? 'Wallet Required' : 'Choose a Wallet'}</h3>
             <p className="text-xs text-zinc-400 mt-1">
               {installing
-                ? 'Install a Counterparty wallet extension to trade on the DEX.'
-                : 'More than one wallet is installed. Pick the one to connect with.'}
+                ? 'Use a supported wallet to trade on the DEX.'
+                : 'More than one wallet is available. Pick the one to connect with.'}
             </p>
           </div>
         </div>

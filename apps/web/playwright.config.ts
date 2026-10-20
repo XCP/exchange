@@ -10,7 +10,11 @@ export default defineConfig({
     {
       command: 'npm run dev -- --hostname 127.0.0.1 --port 3114',
       url: 'http://127.0.0.1:3114/limit', timeout: 120_000,
-      env: { NEXT_PUBLIC_COUNTERPARTY_API_BASE: 'http://127.0.0.1:3115/v2', NEXT_PUBLIC_DEX_API_BASE: 'http://127.0.0.1:3115/dex' },
+      env: {
+        NEXT_PUBLIC_COUNTERPARTY_API_BASE: 'http://127.0.0.1:3115/v2',
+        NEXT_PUBLIC_DEX_API_BASE: 'http://127.0.0.1:3115/dex',
+        NEXT_PUBLIC_CASATOOKAN_ENABLED: 'true',
+      },
     },
   ],
 })
