@@ -2,8 +2,9 @@ import { expect, test, type Page } from '@playwright/test'
 const accounts = [
   { address: 'bc1qvux25709r4uw6rzc8wyl7wwecjdhrx085hm5ty', publicKey: '0256b328b30c8bf5839e24058747879408bdb36241dc9c2e7c619faa12b2920967' },
   { address: 'bc1qpmflkvrhqxn288kc43rl3c8urpvdrxjst0darl', publicKey: '03f76a39d05686e34a4420897e359371836145dd3973e3982568b60f8433adde6e' },
+  { address: 'bc1pfqarxerx6v0zh6zcj2f3a3np8jselxn8vgefdx95c0n328qpzg4ssw6kv5', publicKey: '0256b328b30c8bf5839e24058747879408bdb36241dc9c2e7c619faa12b2920967' },
 ]
-const taproot = 'bc1pfqarxerx6v0zh6zcj2f3a3np8jselxn8vgefdx95c0n328qpzg4ssw6kv5'
+const unsupported = '3QJmV3qfvL9SuYo34YihAf3sRCW3qSinyC'
 const short = (address: string) => `${address.slice(0, 6)}...${address.slice(-4)}`
 
 type BridgeState = {
@@ -18,13 +19,13 @@ type BridgeState = {
 }
 type TestWindow = typeof window & { casaTest: BridgeState }
 
-async function bridge(page: Page, options: { delay?: boolean; competing?: boolean; marker?: boolean } = {}) {
-  await page.addInitScript(({ accounts, taproot, options }) => {
+async function bridge(page: Page, options: { delay?: boolean; competing?: boolean; marker?: boolean; taproot?: boolean } = {}) {
+  await page.addInitScript(({ accounts, unsupported, options }) => {
     const listeners = new Map<string, Set<(...args: unknown[]) => void>>()
     const state = {
       reject: false,
       granted: sessionStorage.getItem('casa-grant') === 'yes',
-      index: 0,
+      index: options.taproot ? 2 : 0,
       requests: 0,
       unsupported: false,
       switchProfile() {
@@ -45,9 +46,9 @@ async function bridge(page: Page, options: { delay?: boolean; competing?: boolea
               if (state.reject) throw { code: 4001, message: 'User rejected connection' }
               state.granted = true
               sessionStorage.setItem('casa-grant', 'yes')
-              return [state.unsupported ? taproot : accounts[state.index].address]
+              return [state.unsupported ? unsupported : accounts[state.index].address]
             },
-            getAccounts: async () => state.granted ? [state.unsupported ? taproot : accounts[state.index].address] : [],
+            getAccounts: async () => state.granted ? [state.unsupported ? unsupported : accounts[state.index].address] : [],
             getPublicKey: async () => accounts[state.index].publicKey,
             getNetwork: async () => 'livenet',
             signMessage: async () => { throw new Error('Unexpected signing in connection test') },
@@ -66,7 +67,7 @@ async function bridge(page: Page, options: { delay?: boolean; competing?: boolea
     if (options.competing) Object.assign(window, {
       HorizonWalletProvider: { request: async () => { throw new Error('Wrong wallet selected') } },
     })
-  }, { accounts, taproot, options })
+  }, { accounts, unsupported, options })
   for (const host of ['api.xcp.io', 'api.xcp.fun', 'mempool.space']) {
     await page.route(`https://${host}/**`, route => route.fulfill({ json: { result: [], fastestFee: 1, halfHourFee: 1, hourFee: 1 } }))
   }
@@ -149,7 +150,7 @@ test('rejected and unsupported connections show an error and allow retry', async
     ;(window as TestWindow).casaTest.unsupported = true
   })
   await connect(page).click()
-  await expect(connectionError(page)).toContainText('Legacy or Native SegWit')
+  await expect(connectionError(page)).toContainText('Legacy, Native SegWit or BIP-86 Taproot')
   await page.screenshot({ path: testInfo.outputPath('unsupported-account.png') })
   await page.evaluate(() => { (window as TestWindow).casaTest.unsupported = false })
   await connect(page).click()
@@ -195,4 +196,14 @@ test('the app manifest and missing public resources have CORS headers', async ({
     expect(missing.status()).toBe(404)
     expect(missing.headers()['access-control-allow-origin']).toBe('*')
   }
+})
+
+test('Taproot connects and restores through the same wallet button', async ({ page }) => {
+  await bridge(page, { taproot: true })
+  await page.goto('/settings')
+  await connect(page).click()
+  await expect(accountButton(page, 2)).toBeVisible()
+  await page.reload()
+  await expect(accountButton(page, 2)).toBeVisible()
+  expect(await page.evaluate(() => (window as TestWindow).casaTest.requests)).toBe(0)
 })

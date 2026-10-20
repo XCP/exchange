@@ -23,10 +23,7 @@ Set `NEXT_PUBLIC_CASATOOKAN_ENABLED=true` **at build time** on a preview build.
 The default build keeps the existing wallet choices. The SDK commit is pinned
 in `apps/web/package.json` and the lockfile.
 
-The pilot supports mainnet Legacy and Native SegWit accounts, ordinary
-SIGHASH_ALL transactions whose inputs all belong to the selected account, and
-verified message proofs. Taproot, batches, partial signing, marketplace intents
-and commit/reveal are unavailable. The raw compose path falls back to PSBT.
+The integration supports mainnet Legacy, Native SegWit and BIP-86 Taproot accounts, verified message proofs, selected-input transactions and batches up to 20. Each PSBT must include prevouts and fit within 64 KiB. Raw compose signing falls back to PSBT. Script-path commit/reveal remains unavailable; Casa does not validate application intents.
 
 Before turning on production, complete the native signer checks in the SDK's
 `docs/casatookan.md`, including a normal DEX compose, rejection, profile change
@@ -58,3 +55,9 @@ grant: it displayed Connect, with no cached account and no unsolicited prompt.
 
 The temporary bridge is not part of this site's build. Production remains opt-in;
 installed iOS/Android signing and a funded DEX compose remain unverified.
+
+## Expanded SDK support
+
+Pinned SDK `c04b34226bba26e8f9c8a757fa11aef31aab2bf3` passed 476 unit tests and a real dev-wallet check of Taproot proof signing, a shared PSBT v2 transaction, a reusable authorization and a twenty-transaction batch. Evidence is in XCP/wallet-sdk#13. These are unfunded signing checks; installed-phone lifecycle and funded settlement remain unverified.
+
+Expanded site browser suite: 10 passing checks, including Taproot connection, restore/revocation and mobile discovery. The browser suite uses a deterministic injected bridge; separate live-wallet evidence is recorded in the SDK PR.

@@ -17,7 +17,7 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
-    "@xcp/wallet-sdk": "github:XCP/wallet-sdk#25425b75142f832705d1c3611ab2cba2adc0f942",
+    "@xcp/wallet-sdk": "github:XCP/wallet-sdk#c04b34226bba26e8f9c8a757fa11aef31aab2bf3",
     "babel-plugin-react-compiler": "^1.0.0",
     "bignumber.js": "^9.3.1",
     "date-fns": "^4.1.0",
