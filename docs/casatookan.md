@@ -58,6 +58,6 @@ installed iOS/Android signing and a funded DEX compose remain unverified.
 
 ## Expanded SDK support
 
-Pinned SDK `c04b34226bba26e8f9c8a757fa11aef31aab2bf3` passed 476 unit tests and a real dev-wallet check of Taproot proof signing, a shared PSBT v2 transaction, a reusable authorization and a twenty-transaction batch. Evidence is in XCP/wallet-sdk#13. These are unfunded signing checks; installed-phone lifecycle and funded settlement remain unverified.
+Pinned SDK `089ca36869ab72440292c3064143e7dc0ea8e75c` passed 481 unit tests and a real dev-wallet check of Taproot proof signing, a shared PSBT v2 transaction, a reusable authorization and a twenty-transaction batch. Evidence is in XCP/wallet-sdk#13. These are unfunded signing checks; installed-phone lifecycle and funded settlement remain unverified.
 
 Expanded site browser suite: 10 passing checks, including Taproot connection, restore/revocation and mobile discovery. The browser suite uses a deterministic injected bridge; separate live-wallet evidence is recorded in the SDK PR.
