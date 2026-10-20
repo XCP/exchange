@@ -105,6 +105,20 @@ test('the chooser connects the selected wallet when another provider is present'
   await expect(accountButton(page)).toBeVisible()
 })
 
+test('a grant revoked while the page was closed clears the restored account', async ({ page }) => {
+  await bridge(page)
+  await page.goto('/settings')
+  await connect(page).click()
+  await expect(accountButton(page)).toBeVisible()
+  await page.evaluate(() => sessionStorage.removeItem('casa-grant'))
+  await page.reload()
+  await expect(connect(page)).toBeVisible()
+  await expect(accountButton(page)).toHaveCount(0)
+  expect(await page.evaluate(() => (window as TestWindow).casaTest.requests)).toBe(0)
+  await connect(page).click()
+  await expect(accountButton(page)).toBeVisible()
+})
+
 test('late injection is discovered without refreshing the page', async ({ page }) => {
   await bridge(page, { delay: true })
   await page.goto('/settings')

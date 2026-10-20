@@ -39,3 +39,22 @@ header and wallet chooser with an injected test bridge: connect, silent restore,
 disconnect, competing wallets, late injection, rejection/retry, unsupported
 accounts, profile changes, revocation and mobile layout. It also checks manifest
 and 404 CORS responses. These tests do not run Casa Tookan's installed signer.
+
+## Live development signer check — 2026-10-20
+
+XCPDEX's production build was also exercised inside Casa Tookan's web development
+app (2.1.0, build `bfbcddd-dirty`) through its official iframe bridge and a
+temporary HTTPS preview. Legacy and Native SegWit connection, rejection,
+disconnect, reconnect and passive restore were checked against the actual
+provider. Separate SDK fixtures verified message and synthetic PSBT signatures
+for both address types without broadcasting.
+
+That run found a stale account after permission was revoked while the page was
+closed. The pinned SDK clears that cached identity and restores event listeners
+after React's development effect restart. The browser suite covers the revoked
+grant on reload and explicit reconnect.
+The final production build was reopened after revoking its real Casa Tookan
+grant: it displayed Connect, with no cached account and no unsolicited prompt.
+
+The temporary bridge is not part of this site's build. Production remains opt-in;
+installed iOS/Android signing and a funded DEX compose remain unverified.
